@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PO Helper - Product Owner Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f5f5;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header */
+        .header {
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 1rem 0;
+        }
+
+        .nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #1976d2;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: #1976d2;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1565c0;
+        }
+
+        .btn-secondary {
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .btn.active {
+            background: #1976d2;
+            color: white;
+        }
+
+        /* Main Content */
+        .main {
+            padding: 2rem 0;
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        .page-title {
+            font-size: 2.5rem;
+            color: #333;
+            margin-bottom: 2rem;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border-left: 5px solid #1976d2;
+            transition: transform 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .stat-card.green { border-left-color: #4caf50; }
+        .stat-card.orange { border-left-color: #ff9800; }
+        .stat-card.purple { border-left-color: #9c27b0; }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-subtitle {
+            color: #666;
+            font-size: 0.85rem;
+        }
+
+        /* Projects Grid */
+        .projects-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .project-card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .project-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+
+        .project-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+
+        .project-title {
+            font-size: 1.3rem;
+            color: #333;
+            margin: 0;
+        }
+
+        .project-status {
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            text-transform: capitalize;
+        }
+
+        .status-active {
+            background: #e8f5e8;
+            color: #2e7d32;
+        }
+
+        .status-planning {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        .project-description {
+            color: #666;
+            margin-bottom: 1.5rem;
+        }
+
+        .project-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #333;
+            display: block;
+        }
+
+        .metric-label {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .progress-bar {
+            background: #e0e0e0;
+            border-radius: 10px;
+            height: 10px;
+            overflow: hidden;
+            margin-top: 1rem;
+        }
+
+        .progress-fill {
+            background: linear-gradient(90deg, #4caf50, #2196f3);
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.3s ease;
+        }
+
+        /* Risk Assessment */
+        .risk-section {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            margin-top: 2rem;
+        }
+
+        .risk-level {
+            text-align: center;
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .risk-medium {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        .risk-high {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .risk-low {
+            background: #e8f5e8;
+            color: #2e7d32;
+        }
+
+        .risk-breakdown {
+            display: flex;
+            justify-content: space-around;
+            text-align: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .risk-item {
+            font-size: 1.1rem;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            font-size: 1.2rem;
+            color: #666;
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .nav {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .nav-buttons {
+                width: 100%;
+                justify-content: center;
+                flex-wrap: wrap;
+            }
+
+            .stats-grid, .projects-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .project-metrics {
+                grid-template-columns: 1fr;
+                text-align: left;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <nav class="nav container">
+            <div class="logo">🎯 PO Helper</div>
+            <div class="nav-buttons">
+                <button class="btn btn-secondary active" onclick="showPage('dashboard')">Dashboard</button>
+                <button class="btn btn-secondary" onclick="showPage('projects')">Projects</button>
+                <button class="btn btn-secondary" onclick="showPage('analytics')">Analytics</button>
+                <button class="btn btn-primary" onclick="loadData()">🔄 Refresh</button>
+            </div>
+        </nav>
+    </header>
+
+    <main class="main container">
+        <!-- Dashboard Page -->
+        <div id="dashboard" class="page active">
+            <h1 class="page-title">Dashboard</h1>
+            
+            <div class="stats-grid" id="dashboardStats">
+                <div class="loading">Loading...</div>
+            </div>
+
+            <div id="projectsOverview">
+                <h2>Project Overview</h2>
+                <div class="projects-grid" id="dashboardProjects">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+
+            <div id="riskAssessment"></div>
+        </div>
+
+        <!-- Projects Page -->
+        <div id="projects" class="page">
+            <h1 class="page-title">Projects</h1>
+            <div class="projects-grid" id="allProjects">
+                <div class="loading">Loading...</div>
+            </div>
+        </div>
+
+        <!-- Analytics Page -->
+        <div id="analytics" class="page">
+            <h1 class="page-title">Analytics</h1>
+            <div id="analyticsContent">
+                <div class="loading">Loading...</div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api/v1';
+        let projectsData = [];
+        let analyticsData = null;
+
+        // Page Navigation
+        function showPage(pageName) {
+            // Hide all pages
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+            
+            // Show selected page
+            document.getElementById(pageName).classList.add('active');
+            
+            // Update nav buttons
+            document.querySelectorAll('.nav-buttons .btn-secondary').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+        }
+
+        // Load data from API
+        async function loadData() {
+            try {
+                // Load projects
+                const projectsResponse = await fetch(`${API_BASE}/projects/`);
+                projectsData = await projectsResponse.json();
+                
+                // Load analytics
+                const analyticsResponse = await fetch(`${API_BASE}/analytics/demo`);
+                analyticsData = await analyticsResponse.json();
+                
+                renderDashboard();
+                renderProjects();
+                renderAnalytics();
+            } catch (error) {
+                console.error('Error loading data:', error);
+                showError('Failed to load data. Make sure the backend is running on http://localhost:8000');
+            }
+        }
+
+        function showError(message) {
+            const errorDiv = `<div class="error">${message}</div>`;
+            document.getElementById('dashboardStats').innerHTML = errorDiv;
+            document.getElementById('allProjects').innerHTML = errorDiv;
+            document.getElementById('analyticsContent').innerHTML = errorDiv;
+        }
+
+        function renderDashboard() {
+            // Render stats
+            const statsHtml = `
+                <div class="stat-card">
+                    <div class="stat-label">Average Velocity</div>
+                    <div class="stat-value">${analyticsData?.velocity?.average_velocity || 0}</div>
+                    <div class="stat-subtitle">story points per sprint</div>
+                </div>
+                <div class="stat-card green">
+                    <div class="stat-label">Sprint Success</div>
+                    <div class="stat-value">${analyticsData?.velocity?.sprint_success_rate || 0}%</div>
+                    <div class="stat-subtitle">completion rate</div>
+                </div>
+                <div class="stat-card purple">
+                    <div class="stat-label">Team Size</div>
+                    <div class="stat-value">${analyticsData?.team_performance?.total_members || 0}</div>
+                    <div class="stat-subtitle">active members</div>
+                </div>
+                <div class="stat-card orange">
+                    <div class="stat-label">Efficiency</div>
+                    <div class="stat-value">${analyticsData?.team_performance?.efficiency_rating || 0}%</div>
+                    <div class="stat-subtitle">team rating</div>
+                </div>
+            `;
+            document.getElementById('dashboardStats').innerHTML = statsHtml;
+
+            // Render recent projects
+            const recentProjects = projectsData.slice(0, 3);
+            const projectsHtml = recentProjects.map(project => createProjectCard(project)).join('');
+            document.getElementById('dashboardProjects').innerHTML = projectsHtml;
+
+            // Render risk assessment
+            if (analyticsData?.risks) {
+                const riskHtml = `
+                    <div class="risk-section">
+                        <h2>Risk Assessment</h2>
+                        <div class="risk-level risk-${analyticsData.risks.risk_level}">
+                            Overall Risk: ${analyticsData.risks.risk_level.toUpperCase()}
+                        </div>
+                        <div class="risk-breakdown">
+                            <div class="risk-item">🔴 Critical: ${analyticsData.risks.critical_risks}</div>
+                            <div class="risk-item">🟡 High: ${analyticsData.risks.high_risks}</div>
+                            <div class="risk-item">🟢 Medium: ${analyticsData.risks.medium_risks}</div>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('riskAssessment').innerHTML = riskHtml;
+            }
+        }
+
+        function renderProjects() {
+            const projectsHtml = projectsData.map(project => createProjectCard(project)).join('');
+            document.getElementById('allProjects').innerHTML = projectsHtml;
+        }
+
+        function createProjectCard(project) {
+            return `
+                <div class="project-card">
+                    <div class="project-header">
+                        <h3 class="project-title">${project.name}</h3>
+                        <span class="project-status status-${project.status}">${project.status}</span>
+                    </div>
+                    <p class="project-description">${project.description}</p>
+                    <div class="project-metrics">
+                        <div>
+                            <span class="metric-value">${project.jira_key}</span>
+                            <div class="metric-label">Project Key</div>
+                        </div>
+                        <div>
+                            <span class="metric-value">${project.completed_tasks}/${project.total_tasks}</span>
+                            <div class="metric-label">Tasks Completed</div>
+                        </div>
+                        <div>
+                            <span class="metric-value">${project.completion_percentage}%</span>
+                            <div class="metric-label">Progress</div>
+                        </div>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${project.completion_percentage}%"></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAnalytics() {
+            if (!analyticsData) return;
+
+            const analyticsHtml = `
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Velocity Trend</div>
+                        <div class="stat-value">${analyticsData.velocity.velocity_trend}</div>
+                    </div>
+                    <div class="stat-card green">
+                        <div class="stat-label">Work Completed</div>
+                        <div class="stat-value">${analyticsData.burndown.completed}h</div>
+                        <div class="stat-subtitle">of ${analyticsData.burndown.total_estimate}h total</div>
+                    </div>
+                    <div class="stat-card orange">
+                        <div class="stat-label">Remaining Work</div>
+                        <div class="stat-value">${analyticsData.burndown.remaining}h</div>
+                    </div>
+                    <div class="stat-card purple">
+                        <div class="stat-label">Completion Rate</div>
+                        <div class="stat-value">${analyticsData.burndown.completion_percentage}%</div>
+                    </div>
+                </div>
+
+                <div class="risk-section">
+                    <h2>Team Performance Metrics</h2>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Average Tasks per Member</div>
+                            <div class="stat-value">${analyticsData.team_performance.avg_tasks_per_member}</div>
+                        </div>
+                        <div class="stat-card green">
+                            <div class="stat-label">Efficiency Rating</div>
+                            <div class="stat-value">${analyticsData.team_performance.efficiency_rating}%</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('analyticsContent').innerHTML = analyticsHtml;
+        }
+
+        // Load data on page load
+        window.addEventListener('load', loadData);
+    </script>
+</body>
+</html>

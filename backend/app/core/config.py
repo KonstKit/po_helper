@@ -1,0 +1,162 @@
+﻿import os
+from typing import Optional, List
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    PROJECT_NAME: str = "PO Helper"
+    VERSION: str = "1.0.0"
+    API_V1_STR: str = "/api/v1"
+
+    SECRET_KEY: str = Field(..., min_length=32)
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ENVIRONMENT: str = Field(default='development', alias='ENVIRONMENT')
+
+    # SQLite database - use absolute path to ensure consistency
+    @property
+    def DATABASE_URL(self) -> str:
+        # Get absolute path relative to backend directory
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        db_path = os.path.join(backend_dir, "po_helper.db")
+        return f"sqlite+aiosqlite:///{db_path}"
+
+    DB_POOL_SIZE: int = 5
+    DB_POOL_MAX_OVERFLOW: int = 10
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 1800
+    DB_POOL_PRE_PING: bool = True
+
+    JIRA_BASE_URL: Optional[str] = None
+    JIRA_EMAIL: Optional[str] = None
+    JIRA_API_TOKEN: Optional[str] = None
+
+    CONFLUENCE_BASE_URL: Optional[str] = None
+    CONFLUENCE_EMAIL: Optional[str] = None
+    CONFLUENCE_API_TOKEN: Optional[str] = None
+
+    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000", "http://localhost:8001"]
+
+    # Encryption
+    ENCRYPTION_SECRET: Optional[str] = None  # if not set, falls back to SECRET_KEY
+
+    # Feature flags
+    ENABLE_CONFLUENCE_AUTOLINK: bool = False
+
+    # Task queue / async processing
+    CELERY_ENABLED: bool = False
+    CELERY_BROKER_URL: Optional[str] = None
+    CELERY_RESULT_BACKEND: Optional[str] = None
+    CELERY_TASK_ALWAYS_EAGER: bool = False
+    CELERY_USE_IN_DEV: bool = False
+
+    # Redis cache / broker
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    # Traceability caching (in-memory, optional)
+    ENABLE_MATRIX_CACHE: bool = False
+    MATRIX_CACHE_TTL_SECONDS: int = 300
+
+    # Webhook secrets
+    GITHUB_WEBHOOK_SECRET: Optional[str] = None
+    GITLAB_WEBHOOK_SECRET: Optional[str] = None
+    GITHUB_API_TOKEN: Optional[str] = None  # for setting commit statuses
+
+    # Jira integration knobs
+    JIRA_FORCE_PAT: bool = False  # Force PAT (Bearer) mode even if email provided
+    JIRA_DISABLE_DISCOVERY: bool = False  # Skip baseUrl discovery adjustments
+    # HTTP client behavior for Jira
+    JIRA_HTTP_TIMEOUT: int = 25  # seconds (reduced from 60 to fail faster)
+    JIRA_WORKLOG_TIMEOUT: int = 30  # seconds for worklog endpoints (reduced from 120)
+    JIRA_HTTP_MAX_RETRIES: int = 2  # number of retries on timeouts
+    JIRA_HTTP_BACKOFF_SECONDS: float = 1.0  # base backoff seconds (exponential)
+    # Optional circuit breaker to avoid request loops when Jira is misbehaving
+    JIRA_CB_ENABLED: bool = True  # Enable circuit breaker
+    JIRA_CB_THRESHOLD: int = 3  # Open circuit after 3 failures
+    JIRA_CB_SLEEP_SECONDS: int = 30  # Wait 30 seconds before retrying
+
+    # Pagination settings for Jira API
+    JIRA_PAGE_SIZE: int = 50  # Fetch 50 items per request
+    JIRA_MAX_RESULTS: int = 500  # Maximum total results to fetch
+
+    # Cache settings for Jira data
+    JIRA_CACHE_TTL: int = 300  # Cache TTL in seconds (5 minutes)
+    JIRA_CACHE_ENABLED: bool = True  # Enable caching for expensive operations
+
+    # PR metrics aggregation knobs
+    PR_METRICS_CACHE_TTL_SECONDS: int = 60
+    PR_METRICS_SAMPLE_LIMIT: int = 20
+
+    # WIP limits (simple per-assignee)
+    WIP_LIMIT_PER_ASSIGNEE: int = 2
+    # Optional per-assignee overrides: { "email": 3, ... }
+    WIP_LIMIT_OVERRIDES: dict[str, int] = {}
+
+    # Sprint capacity baseline (hours per week per developer)
+    CAPACITY_HOURS_PER_WEEK: int = 30
+
+    # Debug/Diagnostics
+    DEBUG: bool = False
+
+    # Service auto-connection control
+    SKIP_SERVICE_AUTOCONNECT: bool = False
+
+    # Jira status mapping to normalize different workflows
+    # Used by analytics to decide what is done vs active
+    JIRA_STATUS_MAPPING: dict = {
+        "todo": ["To Do", "Open", "Backlog", "New"],
+        "in_progress": ["In Progress", "In Development", "Active"],
+        "done": ["Done", "Closed", "Resolved", "Complete"],
+    }
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT == 'production'
+
+    @property
+    def is_development(self) -> bool:
+        return self.ENVIRONMENT == 'development'
+
+    @property
+    def is_staging(self) -> bool:
+        return self.ENVIRONMENT == 'staging'
+
+    model_config = SettingsConfigDict(env_file='.env', case_sensitive=True, extra='ignore')
+
+    @field_validator('ENVIRONMENT', mode='before')
+    @classmethod
+    def _normalize_environment(cls, value: str | None) -> str:
+        if value is None:
+            return 'development'
+        normalized = str(value).strip().lower()
+        mapping = {
+            'development': 'development',
+            'dev': 'development',
+            'staging': 'staging',
+            'production': 'production',
+            'prod': 'production',
+            'test': 'test',
+        }
+        if normalized not in mapping:
+            raise ValueError('ENVIRONMENT must be one of development, staging, production, or test')
+        return mapping[normalized]
+
+    @field_validator("SECRET_KEY", mode="before")
+    @classmethod
+    def _validate_secret_key(cls, value: str) -> str:
+        if value is None:
+            raise ValueError(
+                "SECRET_KEY is required. Run python backend/scripts/generate_secret_key.py --write to generate one."
+            )
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("SECRET_KEY cannot be blank.")
+        if normalized == "your-secret-key-here-change-in-production":
+            raise ValueError("SECRET_KEY must be changed from the insecure placeholder value.")
+        if len(normalized) < 32:
+            raise ValueError("SECRET_KEY must be at least 32 characters long.")
+        return normalized
+
+
+settings = Settings()
