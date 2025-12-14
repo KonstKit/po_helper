@@ -1,0 +1,94 @@
+async def commits_for_issue(jira_key: str, db: AsyncSession = Depends(get_db)):
+    """Return commits linked to a given Jira issue key using stored artifacts/links.
+    No external API calls, no mocks.
+    """
+    # Find issue artifact
+    res_issue = await db.execute(
+        select(Artifact).where(Artifact.type == "jira_issue", Artifact.external_id == jira_key)
+    )
+    issue = res_issue.scalar_one_or_none()
+    if not issue:
+        return {"total": 0, "commits": []}
+
+    # Find commit artifacts linked to the issue
+    res_links = await db.execute(
+        select(Artifact)
+        .join(ArtifactLink, ArtifactLink.from_artifact_id == Artifact.id)
+        .where(ArtifactLink.to_artifact_id == issue.id)
+        .where(Artifact.type == "commit")
+    )
+    commit_arts = res_links.scalars().all()
+
+    # Map to Commit rows and include repo info
+    out: list[dict] = []
+    for a in commit_arts:
+        sha = a.external_id
+        cm = None
+        try:
+            res_cm = await db.execute(select(CommitModel).where(CommitModel.sha == sha))
+            cm = res_cm.scalars().first()
+        except Exception:
+            cm = None
+        repo_info = None
+        if cm and getattr(cm, 'repository_id', None):
+            try:
+                res_repo = await db.execute(select(Repository).where(Repository.id == cm.repository_id))
+                repo = res_repo.scalar_one_or_none()
+                if repo:
+                    repo_info = {"provider": repo.provider, "slug": repo.repo_slug}
+            except Exception:
+                pass
+        out.append({
+            "sha": sha,
+            "message": getattr(cm, 'message', None) or (getattr(a, 'title', None) or ""),
+            "author_email": getattr(cm, 'author_email', None),
+            "author_name": getattr(cm, 'author_name', None),
+            "repo": repo_info,
+            "artifact": {
+                "id": a.id,
+                "title": a.title,
+                "url": a.url,
+            },
+        })
+
+    return {"total": len(out), "commits": out}
+
+
+    # Find commit artifacts linked to the issue
+    res_links = await db.execute(
+        select(Artifact)
+        .join(ArtifactLink, ArtifactLink.from_artifact_id == Artifact.id)
+        .where(ArtifactLink.to_artifact_id == issue.id)
+        .where(Artifact.type == "commit")
+    )
+    commit_arts = res_links.scalars().all()
+
+    # Map to Commit rows and include repo info
+    out: list[dict] = []
+    for a in commit_arts:
+        sha = a.external_id
+        cm = None
+            res_cm = await db.execute(select(CommitModel).where(CommitModel.sha == sha))
+            cm = res_cm.scalars().first()
+        except Exception:
+            cm = None
+        repo_info = None
+        if cm and getattr(cm, 'repository_id', None):
+                res_repo = await db.execute(select(Repository).where(Repository.id == cm.repository_id))
+                repo = res_repo.scalar_one_or_none()
+                if repo:
+                    repo_info = {"provider": repo.provider, "slug": repo.repo_slug}
+            except Exception:
+                pass
+        out.append({
+            "sha": sha,
+            "message": getattr(cm, 'message', None) or (getattr(a, 'title', None) or ""),
+            "author": {"email": getattr(cm, 'author_email', None), "name": getattr(cm, 'author_name', None)},
+            "repo": repo_info,
+            "url": getattr(a, 'url', None),
+        })
+    return {"total": len(out), "commits": out}
+
+
+@router.get("/pull-requests")
+
