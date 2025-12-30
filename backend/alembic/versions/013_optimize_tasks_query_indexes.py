@@ -21,74 +21,60 @@ def upgrade() -> None:
     # These will significantly speed up queries with multiple filters
 
     # 1. Most common: project_id + status (covering index includes common fields)
-    try:
-        op.create_index(
-            'idx_tasks_project_status_covering',
-            'tasks',
-            ['project_id', 'status', 'id', 'key', 'summary', 'assignee_name', 'priority']
-        )
-    except Exception:
-        pass
+    op.create_index(
+        'idx_tasks_project_status_covering',
+        'tasks',
+        ['project_id', 'status', 'id', 'key', 'summary', 'assignee_name', 'priority'],
+        if_not_exists=True
+    )
 
     # 2. Sprint-based queries
-    try:
-        op.create_index(
-            'idx_tasks_sprint_status_covering',
-            'tasks',
-            ['sprint_id', 'status', 'id', 'key', 'summary']
-        )
-    except Exception:
-        pass
+    op.create_index(
+        'idx_tasks_sprint_status_covering',
+        'tasks',
+        ['sprint_id', 'status', 'id', 'key', 'summary'],
+        if_not_exists=True
+    )
 
     # 3. Assignee-based queries
-    try:
-        op.create_index(
-            'idx_tasks_assignee_status',
-            'tasks',
-            ['assignee_email', 'status']
-        )
-    except Exception:
-        pass
+    op.create_index(
+        'idx_tasks_assignee_status',
+        'tasks',
+        ['assignee_email', 'status'],
+        if_not_exists=True
+    )
 
     # 4. Combined filter: project + sprint + status (common in dashboard)
-    try:
-        op.create_index(
-            'idx_tasks_project_sprint_status',
-            'tasks',
-            ['project_id', 'sprint_id', 'status']
-        )
-    except Exception:
-        pass
+    op.create_index(
+        'idx_tasks_project_sprint_status',
+        'tasks',
+        ['project_id', 'sprint_id', 'status'],
+        if_not_exists=True
+    )
 
     # 5. Add index for ORDER BY created_at DESC (common default ordering)
-    try:
-        op.create_index(
-            'idx_tasks_created_at_desc',
-            'tasks',
-            [sa.text('created_at DESC')]
-        )
-    except Exception:
-        pass
+    op.create_index(
+        'idx_tasks_created_at_desc',
+        'tasks',
+        [sa.text('created_at DESC')],
+        if_not_exists=True
+    )
 
     # 6. Partial index for active tasks (not completed/closed)
-    try:
-        op.execute("""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tasks_active_partial
-            ON tasks (project_id, sprint_id, assignee_email)
-            WHERE status NOT IN ('Done', 'Closed', 'Resolved', 'Completed')
-        """)
-    except Exception:
-        pass
+    # Using IF NOT EXISTS in raw SQL since alembic doesn't support partial indexes well
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS idx_tasks_active_partial
+        ON tasks (project_id, sprint_id, assignee_email)
+        WHERE status NOT IN ('Done', 'Closed', 'Resolved', 'Completed')
+    """)
 
     # 7. Index for pagination (LIMIT/OFFSET optimization)
-    try:
-        op.create_index(
-            'idx_tasks_id_project',
-            'tasks',
-            ['id', 'project_id']
-        )
-    except Exception:
-        pass
+    op.create_index(
+        'idx_tasks_id_project',
+        'tasks',
+        ['id', 'project_id'],
+        if_not_exists=True
+    )
 
 
 def downgrade() -> None:
@@ -105,7 +91,4 @@ def downgrade() -> None:
     ]
 
     for idx_name in indexes_to_drop:
-        try:
-            op.drop_index(idx_name, table_name='tasks')
-        except Exception:
-            pass
+        op.drop_index(idx_name, table_name='tasks', if_exists=True)

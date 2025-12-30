@@ -27,7 +27,10 @@ async def _get_or_create_demo_user(db: AsyncSession) -> User:
     """
     # Always target the dedicated demo identity
     demo_email = "demo@example.com"
-    result = await db.execute(select(User).where(User.email == demo_email))
+    # Eagerly load roles to avoid lazy loading in async context
+    result = await db.execute(
+        select(User).options(selectinload(User.roles)).where(User.email == demo_email)
+    )
     user = result.scalar_one_or_none()
     if user:
         return user
@@ -45,7 +48,12 @@ async def _get_or_create_demo_user(db: AsyncSession) -> User:
 
     try:
         await db.commit()
-        await db.refresh(demo)
+
+        # Re-fetch with roles eagerly loaded to avoid lazy loading issues
+        result = await db.execute(
+            select(User).options(selectinload(User.roles)).where(User.email == demo_email)
+        )
+        demo = result.scalar_one()
 
         # Assign admin role to demo user
         admin_role_result = await db.execute(select(Role).where(Role.name == 'admin'))
@@ -54,13 +62,19 @@ async def _get_or_create_demo_user(db: AsyncSession) -> User:
         if admin_role and admin_role not in demo.roles:
             demo.roles.append(admin_role)
             await db.commit()
-            await db.refresh(demo)
+            # Re-fetch again with updated roles
+            result = await db.execute(
+                select(User).options(selectinload(User.roles)).where(User.email == demo_email)
+            )
+            demo = result.scalar_one()
 
         return demo
     except IntegrityError:
         # Another concurrent worker created it — rollback and fetch
         await db.rollback()
-        result = await db.execute(select(User).where(User.email == demo_email))
+        result = await db.execute(
+            select(User).options(selectinload(User.roles)).where(User.email == demo_email)
+        )
         user = result.scalar_one_or_none()
         if user:
             return user

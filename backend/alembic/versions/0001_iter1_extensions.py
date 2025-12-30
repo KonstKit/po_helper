@@ -16,10 +16,22 @@ branch_labels = None
 depends_on = None
 
 
+def _table_exists(table_name: str) -> bool:
+    """Check if a table exists (database-agnostic)."""
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    return table_name in inspector.get_table_names()
+
+
 def _ensure_columns(table_name: str, columns: list[sa.Column]) -> None:
     """Add columns only when missing to support pre-populated dev DBs."""
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+
+    # Skip if table doesn't exist (will be created by create_all)
+    if not _table_exists(table_name):
+        return
+
     existing = {col['name'] for col in inspector.get_columns(table_name)}
     to_add = [column for column in columns if column.name not in existing]
     if not to_add:
@@ -51,11 +63,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    with op.batch_alter_table('tasks', schema=None) as batch_op:
-        batch_op.drop_column('roi')
-        batch_op.drop_column('value_delivered')
-        batch_op.drop_column('business_value')
+    if _table_exists('tasks'):
+        with op.batch_alter_table('tasks', schema=None) as batch_op:
+            batch_op.drop_column('roi')
+            batch_op.drop_column('value_delivered')
+            batch_op.drop_column('business_value')
 
-    with op.batch_alter_table('pull_requests', schema=None) as batch_op:
-        batch_op.drop_column('rework_count')
-        batch_op.drop_column('time_to_first_review_hours')
+    if _table_exists('pull_requests'):
+        with op.batch_alter_table('pull_requests', schema=None) as batch_op:
+            batch_op.drop_column('rework_count')
+            batch_op.drop_column('time_to_first_review_hours')

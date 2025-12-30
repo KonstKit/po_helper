@@ -98,33 +98,21 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     for index_name in ('ix_sync_states_lookup',):
-        try:
-            op.drop_index(index_name, table_name=_SYNC_STATES_TABLE)
-        except Exception:
-            pass
+        op.drop_index(index_name, table_name=_SYNC_STATES_TABLE, if_exists=True)
     if _table_exists(_SYNC_STATES_TABLE):
         op.drop_table(_SYNC_STATES_TABLE)
 
     for index_name in ('ix_sources_identity',):
-        try:
-            op.drop_index(index_name, table_name=_SOURCES_TABLE)
-        except Exception:
-            pass
+        op.drop_index(index_name, table_name=_SOURCES_TABLE, if_exists=True)
     if _table_exists(_SOURCES_TABLE):
         op.drop_table(_SOURCES_TABLE)
 
     for index_name in ('idx_links_confidence_high', 'ix_links_to_type', 'ix_links_from_type'):
-        try:
-            op.drop_index(index_name, table_name=_ARTIFACT_LINKS_TABLE)
-        except Exception:
-            pass
+        op.drop_index(index_name, table_name=_ARTIFACT_LINKS_TABLE, if_exists=True)
     if _table_exists(_ARTIFACT_LINKS_TABLE):
         op.drop_table(_ARTIFACT_LINKS_TABLE)
 
     for index_name in ('ix_artifact_identity',):
-        try:
-            op.drop_index(index_name, table_name=_ARTIFACT_TABLE)
-        except Exception:
-            pass
+        op.drop_index(index_name, table_name=_ARTIFACT_TABLE, if_exists=True)
     if _table_exists(_ARTIFACT_TABLE):
         op.drop_table(_ARTIFACT_TABLE)

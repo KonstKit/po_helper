@@ -14,13 +14,17 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     ENVIRONMENT: str = Field(default='development', alias='ENVIRONMENT')
 
-    # SQLite database - use absolute path to ensure consistency
+    # Database URL - reads from environment, defaults to SQLite for local dev
+    # Note: Default is computed at module load time for compatibility with all call sites
+    DATABASE_URL: str = "sqlite+aiosqlite:///./po_helper.db"
+
     @property
-    def DATABASE_URL(self) -> str:
-        # Get absolute path relative to backend directory
-        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        db_path = os.path.join(backend_dir, "po_helper.db")
-        return f"sqlite+aiosqlite:///{db_path}"
+    def effective_database_url(self) -> str:
+        """Return DATABASE_URL, with fallback to SQLite if empty/None."""
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        # Fallback to SQLite for local development (shouldn't reach here with default set)
+        return "sqlite+aiosqlite:///./po_helper.db"
 
     DB_POOL_SIZE: int = 5
     DB_POOL_MAX_OVERFLOW: int = 10
