@@ -29,4 +29,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     for name, table, _ in reversed(INDEXES):
-        op.drop_index(name, table_name=table)
+        op.drop_index(name, table_name=table, if_exists=True)

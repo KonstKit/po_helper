@@ -24,6 +24,10 @@ def _table_exists(table_name: str) -> bool:
 
 
 def _ensure_columns(table_name: str, columns: list[sa.Column]) -> None:
+    # Skip if table doesn't exist (will be created by create_all)
+    if not _table_exists(table_name):
+        return
+
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     existing = {col['name'] for col in inspector.get_columns(table_name)}
@@ -102,13 +106,12 @@ def upgrade():
         ],
     )
 
-    inspector = sa.inspect(bind)
-    fk_names = {fk['name'] for fk in inspector.get_foreign_keys('tasks')}
-    if dialect != 'sqlite' and 'fk_tasks_parent' not in fk_names:
-        op.create_foreign_key('fk_tasks_parent', 'tasks', 'tasks',
-                              ['parent_task_id'], ['id'], ondelete='SET NULL')
-
     if _table_exists('tasks'):
+        inspector = sa.inspect(bind)
+        fk_names = {fk['name'] for fk in inspector.get_foreign_keys('tasks')}
+        if dialect != 'sqlite' and 'fk_tasks_parent' not in fk_names:
+            op.create_foreign_key('fk_tasks_parent', 'tasks', 'tasks',
+                                  ['parent_task_id'], ['id'], ondelete='SET NULL')
         _ensure_index('tasks', 'idx_tasks_parent', ['parent_task_id'])
 
     _ensure_columns(

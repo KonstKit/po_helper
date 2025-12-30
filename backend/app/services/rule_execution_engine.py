@@ -215,11 +215,11 @@ class CommitSourceExecutor(NodeExecutor):
             # Применяем фильтры
             if filters.get('branch'):
                 branch = InputValidator.validate_string(filters['branch'], 'branch', max_length=500)
-                query = query.filter(Artifact.metadata['branch'].astext == branch)
+                query = query.filter(Artifact.meta['branch'].astext == branch)
 
             if filters.get('author'):
                 author = InputValidator.validate_string(filters['author'], 'author', max_length=500)
-                query = query.filter(Artifact.metadata['author'].astext == author)
+                query = query.filter(Artifact.meta['author'].astext == author)
 
             if filters.get('date_from'):
                 date_from = InputValidator.validate_date(filters['date_from'], 'date_from')
@@ -252,7 +252,7 @@ class JiraIssueSourceExecutor(NodeExecutor):
             # Применяем фильтры
             if filters.get('project'):
                 project = InputValidator.validate_string(filters['project'], 'project', max_length=200)
-                query = query.filter(Artifact.metadata['project'].astext == project)
+                query = query.filter(Artifact.meta['project'].astext == project)
 
             if filters.get('issue_type'):
                 issue_types = InputValidator.validate_list_of_strings(
@@ -261,7 +261,7 @@ class JiraIssueSourceExecutor(NodeExecutor):
                     max_items=50,
                     max_item_length=200
                 )
-                query = query.filter(Artifact.metadata['issue_type'].astext.in_(issue_types))
+                query = query.filter(Artifact.meta['issue_type'].astext.in_(issue_types))
 
             if filters.get('status'):
                 statuses = InputValidator.validate_list_of_strings(
@@ -270,7 +270,7 @@ class JiraIssueSourceExecutor(NodeExecutor):
                     max_items=50,
                     max_item_length=200
                 )
-                query = query.filter(Artifact.metadata['status'].astext.in_(statuses))
+                query = query.filter(Artifact.meta['status'].astext.in_(statuses))
         except ValueError as e:
             context.add_error(f"Invalid filter in JiraIssueSource: {str(e)}")
             return []
@@ -295,7 +295,7 @@ class ConfluenceSourceExecutor(NodeExecutor):
             # Применяем фильтры
             if filters.get('space'):
                 space = InputValidator.validate_string(filters['space'], 'space', max_length=200)
-                query = query.filter(Artifact.metadata['space'].astext == space)
+                query = query.filter(Artifact.meta['space'].astext == space)
 
             if filters.get('labels'):
                 labels = InputValidator.validate_list_of_strings(
@@ -306,7 +306,7 @@ class ConfluenceSourceExecutor(NodeExecutor):
                 )
                 # PostgreSQL: jsonb @> operator, SQLite: нужна другая логика
                 for label in labels:
-                    query = query.filter(Artifact.metadata['labels'].astext.contains(label))
+                    query = query.filter(Artifact.meta['labels'].astext.contains(label))
         except ValueError as e:
             context.add_error(f"Invalid filter in ConfluenceSource: {str(e)}")
             return []
@@ -370,14 +370,15 @@ class JiraKeyExtractorExecutor(NodeExecutor):
 
     def _get_field_value(self, artifact: Artifact, field: str) -> Optional[str]:
         """Получить значение поля из артефакта."""
+        meta = artifact.meta or {}
         if field == 'message' and artifact.type == 'commit':
-            return artifact.metadata.get('message')
+            return meta.get('message')
         elif field == 'branch' and artifact.type == 'commit':
-            return artifact.metadata.get('branch')
+            return meta.get('branch')
         elif field == 'title':
             return artifact.title
         elif field == 'description':
-            return artifact.description
+            return meta.get('description')
         return None
 
 
@@ -421,7 +422,8 @@ class FilterNodeExecutor(NodeExecutor):
         return filtered_artifacts
 
     def _get_field_value(self, artifact: Artifact, field: str) -> Any:
-        return artifact.metadata.get(field)
+        meta = artifact.meta or {}
+        return meta.get(field)
 
     def _apply_operator(self, field_value: Any, operator: str, expected_value: Any) -> bool:
         if operator == 'equals':
@@ -559,8 +561,8 @@ class CreateLinkActionExecutor(NodeExecutor):
         """Создать одну связь между артефактами."""
         # Проверить, существует ли уже такая связь
         existing = context.db.query(ArtifactLink).filter(
-            ArtifactLink.source_artifact_id == source.id,
-            ArtifactLink.target_artifact_id == target.id,
+            ArtifactLink.from_artifact_id == source.id,
+            ArtifactLink.to_artifact_id == target.id,
             ArtifactLink.link_type == link_type
         ).first()
 
@@ -573,11 +575,10 @@ class CreateLinkActionExecutor(NodeExecutor):
 
         # Создать новую связь
         link = ArtifactLink(
-            source_artifact_id=source.id,
-            target_artifact_id=target.id,
+            from_artifact_id=source.id,
+            to_artifact_id=target.id,
             link_type=link_type,
             confidence=confidence,
-            created_by_rule_id=context.rule_id
         )
 
         context.db.add(link)
@@ -586,6 +587,7 @@ class CreateLinkActionExecutor(NodeExecutor):
     def _calculate_confidence(self, source: Artifact, target: Artifact, link_type: str, base: float, context: ExecutionContext) -> float:
         """Вычислить confidence score на основе различных факторов."""
         confidence = base
+        source_meta = source.meta or {}
 
         # Фактор 1: Тип связи (API links = 100%)
         if link_type in ['child_of', 'parent_of']:
@@ -596,7 +598,7 @@ class CreateLinkActionExecutor(NodeExecutor):
         if source.external_id and target.external_id:
             # Если Jira key найден в commit message напрямую
             if source.type == 'commit' and target.type == 'jira_issue':
-                message = source.metadata.get('message', '')
+                message = source_meta.get('message', '')
                 if target.external_id in message:
                     # Проверка позиции ключа в сообщении
                     if message.startswith(target.external_id):
@@ -605,14 +607,14 @@ class CreateLinkActionExecutor(NodeExecutor):
 
         # Фактор 3: Множественные ключи (снижение уверенности)
         if source.type == 'commit':
-            message = source.metadata.get('message', '')
+            message = source_meta.get('message', '')
             jira_keys = re.findall(r'\b[A-Z][A-Z0-9_]+-[0-9]+\b', message)
             if len(jira_keys) > 1:
                 confidence -= 5  # Несколько ключей = -5%
 
         # Фактор 4: Branch name match (повышение уверенности)
         if source.type == 'commit' and target.type == 'jira_issue':
-            branch = source.metadata.get('branch', '')
+            branch = source_meta.get('branch', '')
             if target.external_id in branch:
                 confidence += 5  # Ключ в ветке тоже = +5%
 
@@ -695,12 +697,12 @@ class RuleExecutionEngine:
             rule_id=rule_id,
             status='success' if not context.errors else 'failed',
             links_created=len(context.links_created),
-            execution_log={
+            completed_at=datetime.utcnow(),
+            error_message='; '.join(context.errors) if context.errors else None,
+            error_details={
                 'errors': context.errors,
                 'warnings': context.warnings,
-                'links_created': len(context.links_created)
-            },
-            executed_at=datetime.utcnow()
+            } if context.errors or context.warnings else None,
         )
         self.db.add(execution)
 

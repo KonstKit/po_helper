@@ -14,23 +14,11 @@ depends_on = None
 
 
 def upgrade():
-    try:
-        op.create_index('idx_task_sprint_status', 'tasks', ['sprint_id', 'status'])
-    except Exception:
-        pass
-    try:
-        op.create_index('idx_task_project_delivered', 'tasks', ['project_id', 'value_delivered'])
-    except Exception:
-        pass
+    op.create_index('idx_task_sprint_status', 'tasks', ['sprint_id', 'status'], if_not_exists=True)
+    op.create_index('idx_task_project_delivered', 'tasks', ['project_id', 'value_delivered'], if_not_exists=True)
 
 
 def downgrade():
-    try:
-        op.drop_index('idx_task_project_delivered', table_name='tasks')
-    except Exception:
-        pass
-    try:
-        op.drop_index('idx_task_sprint_status', table_name='tasks')
-    except Exception:
-        pass
+    op.drop_index('idx_task_project_delivered', table_name='tasks', if_exists=True)
+    op.drop_index('idx_task_sprint_status', table_name='tasks', if_exists=True)
 

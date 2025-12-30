@@ -7,7 +7,6 @@ Create Date: 2025-01-29 08:00:00
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy import text
 
 
 # revision identifiers, used by Alembic.
@@ -17,13 +16,16 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade():
-    # Check if table already exists (for SQLite)
-    conn = op.get_bind()
-    result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='project_repositories'"))
-    table_exists = result.fetchone() is not None
+def _table_exists(table_name: str) -> bool:
+    """Check if a table exists (database-agnostic)."""
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    return table_name in inspector.get_table_names()
 
-    if table_exists:
+
+def upgrade():
+    # Check if table already exists
+    if _table_exists('project_repositories'):
         return  # Table already exists, skip creation
 
     # Create project_repositories association table
@@ -47,14 +49,10 @@ def upgrade():
 
 def downgrade():
     # Check if table exists before trying to drop it
-    conn = op.get_bind()
-    result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='project_repositories'"))
-    table_exists = result.fetchone() is not None
-
-    if not table_exists:
+    if not _table_exists('project_repositories'):
         return  # Table doesn't exist, nothing to drop
 
-    op.drop_index('ix_project_repositories_is_primary', 'project_repositories')
-    op.drop_index('ix_project_repositories_repository_id', 'project_repositories')
-    op.drop_index('ix_project_repositories_project_id', 'project_repositories')
+    op.drop_index('ix_project_repositories_is_primary', 'project_repositories', if_exists=True)
+    op.drop_index('ix_project_repositories_repository_id', 'project_repositories', if_exists=True)
+    op.drop_index('ix_project_repositories_project_id', 'project_repositories', if_exists=True)
     op.drop_table('project_repositories')

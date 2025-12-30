@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError
 
-from app.core.database import get_db
+from sqlalchemy.orm import Session
+from app.core.database import get_db, get_sync_db
 from app.models import Artifact, ArtifactLink, Project, Task, ConfluencePage, User
 from app.core.config import settings
 from app.api.deps import get_current_user, ensure_project_access
@@ -732,13 +733,16 @@ async def list_rule_executions(
 
 
 @router.post("/rules/{rule_id}/execute", response_model=dict)
-async def execute_rule(
+def execute_rule(
     rule_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sync_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     Execute a traceability rule.
+
+    Uses synchronous database session since rule execution engine
+    performs complex graph traversal and link creation operations.
 
     Returns execution result with links created, errors, and warnings.
     """
@@ -768,7 +772,7 @@ async def get_all_rule_executions(
     Get all traceability rule executions with pagination and filtering.
     """
     # Build query
-    query = select(TraceabilityRuleExecution).order_by(TraceabilityRuleExecution.executed_at.desc())
+    query = select(TraceabilityRuleExecution).order_by(TraceabilityRuleExecution.started_at.desc())
 
     # Apply status filter
     if status:

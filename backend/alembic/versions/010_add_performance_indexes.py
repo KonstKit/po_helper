@@ -1,6 +1,7 @@
 ﻿"""add performance indexes for analytics"""
 
 from alembic import op
+import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
@@ -8,6 +9,21 @@ revision = '010'
 down_revision = '009'
 branch_labels = None
 depends_on = None
+
+
+def _column_exists(table_name: str, column_name: str) -> bool:
+    """Check if a column exists in a table."""
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    columns = [col['name'] for col in inspector.get_columns(table_name)]
+    return column_name in columns
+
+
+def _table_exists(table_name: str) -> bool:
+    """Check if a table exists."""
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    return table_name in inspector.get_table_names()
 
 
 _TASK_INDEXES = (
@@ -32,16 +48,16 @@ _ALL_INDEXES = _TASK_INDEXES + _SPRINT_INDEXES + _PULL_REQUEST_INDEXES
 
 def upgrade() -> None:
     for name, table, columns in _ALL_INDEXES:
-        try:
-            op.create_index(name, table, columns)
-        except Exception:
-            # Index may already exist in some environments; continue gracefully.
-            pass
+        # Skip if table doesn't exist
+        if not _table_exists(table):
+            continue
+        # Skip if any column doesn't exist
+        if not all(_column_exists(table, col) for col in columns):
+            continue
+        op.create_index(name, table, columns, if_not_exists=True)
 
 
 def downgrade() -> None:
     for name, table, _ in reversed(_ALL_INDEXES):
-        try:
-            op.drop_index(name, table_name=table)
-        except Exception:
-            pass
+        if _table_exists(table):
+            op.drop_index(name, table_name=table, if_exists=True)
