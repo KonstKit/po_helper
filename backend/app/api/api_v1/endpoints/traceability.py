@@ -606,6 +606,61 @@ async def list_rules(
     )
 
 
+# NOTE: This route MUST be defined BEFORE /rules/{rule_id} and /rules/{rule_id}/executions
+# to avoid FastAPI matching "executions" as a rule_id integer
+@router.get("/rules/executions")
+async def get_all_rule_executions(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    status: Optional[str] = Query(None, description="Filter by status: success, failed"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get all traceability rule executions with pagination and filtering.
+    """
+    # Build query
+    query = select(TraceabilityRuleExecution).order_by(TraceabilityRuleExecution.started_at.desc())
+
+    # Apply status filter
+    if status:
+        query = query.where(TraceabilityRuleExecution.status == status)
+
+    # Get total count
+    filters = [TraceabilityRuleExecution.status == status] if status else None
+    total = await count_with_filters(db, TraceabilityRuleExecution, filters)
+
+    # Apply pagination
+    executions = await paginate_query(db, query, skip, limit)
+
+    # Fetch rule names and transform data for frontend
+    items = []
+    for execution in executions:
+        rule_result = await db.execute(
+            select(TraceabilityRule).where(TraceabilityRule.id == execution.rule_id)
+        )
+        rule = rule_result.scalar_one_or_none()
+
+        # Transform to format expected by frontend
+        error_details = execution.error_details or {}
+        exec_data = {
+            'id': execution.id,
+            'rule_id': execution.rule_id,
+            'rule_name': rule.name if rule else f"Rule #{execution.rule_id}",
+            'status': execution.status,
+            'links_created': execution.links_created or 0,
+            'executed_at': execution.started_at.isoformat() if execution.started_at else None,
+            'execution_log': {
+                'errors': error_details.get('errors', []) if isinstance(error_details, dict) else [],
+                'warnings': error_details.get('warnings', []) if isinstance(error_details, dict) else [],
+                'links_created': execution.links_created or 0,
+            }
+        }
+        items.append(exec_data)
+
+    return {'total': total, 'items': items}
+
+
 @router.get("/rules/{rule_id}", response_model=TraceabilityRuleResponse)
 async def get_rule(
     rule_id: int,
@@ -758,49 +813,4 @@ def execute_rule(
     ):
         result = engine.execute_rule(rule_id)
         return result
-
-
-@router.get("/rules/executions", response_model=TraceabilityRuleExecutionListResponse)
-async def get_all_rule_executions(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    status: Optional[str] = Query(None, description="Filter by status: success, failed"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Get all traceability rule executions with pagination and filtering.
-    """
-    # Build query
-    query = select(TraceabilityRuleExecution).order_by(TraceabilityRuleExecution.started_at.desc())
-
-    # Apply status filter
-    if status:
-        query = query.where(TraceabilityRuleExecution.status == status)
-
-    # Get total count
-    filters = [TraceabilityRuleExecution.status == status] if status else None
-    total = await count_with_filters(db, TraceabilityRuleExecution, filters)
-
-    # Apply pagination
-    executions = await paginate_query(db, query, skip, limit)
-
-    # Fetch rule names
-    items = []
-    for execution in executions:
-        rule_result = await db.execute(
-            select(TraceabilityRule).where(TraceabilityRule.id == execution.rule_id)
-        )
-        rule = rule_result.scalar_one_or_none()
-
-        exec_data = TraceabilityRuleExecutionResponse.from_orm(execution).dict()
-        exec_data['rule_name'] = rule.name if rule else f"Rule #{execution.rule_id}"
-        items.append(exec_data)
-
-    return TraceabilityRuleExecutionListResponse(
-        total=total,
-        items=items
-    )
-
-
 
