@@ -3,7 +3,6 @@ import {
   Box,
   Typography,
   Card,
-  CardContent,
   TextField,
   Button,
   Grid,
@@ -12,12 +11,14 @@ import {
   Avatar,
   Snackbar,
   Alert,
+  Divider,
 } from '@mui/material';
 import { Save as SaveIcon, Password as PasswordIcon } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
-import type { RootState } from '../store/store';
+import type { RootState, AppDispatch } from '../store/store';
 import { setUser } from '../store/authSlice';
 import { getCurrentUser, updateCurrentUser, changePassword } from '../services/api';
+import MFASettings from '../components/security/MFASettings';
 
 function TabPanel(props: { children?: React.ReactNode; index: number; value: number }) {
   const { children, value, index, ...other } = props;
@@ -39,12 +40,15 @@ const initials = (name?: string, email?: string) => {
 };
 
 const Profile: React.FC = () => {
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   const user = useSelector((s: RootState) => s.auth.user);
   const [tab, setTab] = useState(0);
   const [form, setForm] = useState({ full_name: '', username: '', email: '' });
   const [pwd, setPwd] = useState({ current: '', next: '', confirm: '' });
   const [toast, setToast] = useState<{ open: boolean; type: 'success' | 'error'; msg: string }>({ open: false, type: 'success', msg: '' });
+  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
+    setTab(newValue);
+  };
 
   useEffect(() => {
     (async () => {
@@ -52,7 +56,7 @@ const Profile: React.FC = () => {
         const me = await getCurrentUser();
         dispatch(setUser(me));
         setForm({ full_name: me.full_name || '', username: me.username, email: me.email });
-      } catch (e: any) {
+      } catch {
         setToast({ open: true, type: 'error', msg: 'Failed to load profile' });
       }
     })();
@@ -63,7 +67,7 @@ const Profile: React.FC = () => {
       const updated = await updateCurrentUser({ full_name: form.full_name, username: form.username });
       dispatch(setUser(updated));
       setToast({ open: true, type: 'success', msg: 'Profile updated' });
-    } catch (e: any) {
+    } catch {
       setToast({ open: true, type: 'error', msg: 'Failed to update profile' });
     }
   };
@@ -77,7 +81,7 @@ const Profile: React.FC = () => {
       await changePassword({ current_password: pwd.current, new_password: pwd.next });
       setToast({ open: true, type: 'success', msg: 'Password updated' });
       setPwd({ current: '', next: '', confirm: '' });
-    } catch (e: any) {
+    } catch {
       setToast({ open: true, type: 'error', msg: 'Failed to update password' });
     }
   };
@@ -95,7 +99,7 @@ const Profile: React.FC = () => {
       </Box>
 
       <Card>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)}>
+        <Tabs value={tab} onChange={handleTabChange}>
           <Tab label="Profile" />
           <Tab label="Security" />
           <Tab label="Preferences" />
@@ -131,6 +135,18 @@ const Profile: React.FC = () => {
         </TabPanel>
 
         <TabPanel value={tab} index={1}>
+          {/* Two-Factor Authentication Section */}
+          <MFASettings />
+
+          <Divider sx={{ my: 4 }} />
+
+          {/* Password Change Section */}
+          <Typography variant="h6" gutterBottom>
+            Change Password
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Update your password regularly to keep your account secure
+          </Typography>
           <Grid container spacing={3}>
             <Grid item xs={12} sm={6}>
               <TextField
@@ -182,4 +198,3 @@ const Profile: React.FC = () => {
 };
 
 export default Profile;
-

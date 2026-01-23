@@ -3,6 +3,7 @@ Role management endpoints.
 
 Provides CRUD operations for roles (admin only).
 """
+
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,19 +21,23 @@ router = APIRouter()
 
 @router.get("/", response_model=List[RoleSchema])
 async def get_roles(
+    skip: int = 0,
+    limit: int = 100,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.ADMIN))
+    current_user: User = Depends(require_permission(Permissions.ADMIN)),
 ) -> List[Role]:
-    """Get all roles (admin only)."""
-    result = await db.execute(select(Role))
-    return result.scalars().all()
+    """Get all roles with pagination (admin only)."""
+    # Cap limit to prevent memory issues on large datasets
+    limit = min(max(1, limit), 500)
+    result = await db.execute(select(Role).offset(skip).limit(limit).order_by(Role.id))
+    return list(result.scalars().all())
 
 
 @router.get("/{role_id}", response_model=RoleSchema)
 async def get_role(
     role_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.ADMIN))
+    current_user: User = Depends(require_permission(Permissions.ADMIN)),
 ) -> Role:
     """Get role by ID (admin only)."""
     role = await get_or_404(db, select(Role).where(Role.id == role_id), "Role")
@@ -43,7 +48,7 @@ async def get_role(
 async def create_role(
     role: RoleCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.ADMIN))
+    current_user: User = Depends(require_permission(Permissions.ADMIN)),
 ) -> Role:
     """Create a new custom role (admin only)."""
     # Check if role name already exists
@@ -68,7 +73,7 @@ async def create_role(
 async def delete_role(
     role_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.ADMIN))
+    current_user: User = Depends(require_permission(Permissions.ADMIN)),
 ) -> dict:
     """Delete a custom role (admin only). System roles cannot be deleted."""
     role = await get_or_404(db, select(Role).where(Role.id == role_id), "Role")

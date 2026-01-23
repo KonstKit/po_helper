@@ -1,4 +1,4 @@
-﻿const MODE = import.meta.env.MODE ?? 'development';
+const MODE = import.meta.env.MODE ?? 'development';
 
 export const isProduction = MODE === 'production';
 export const isDevelopment = MODE === 'development' || MODE === 'dev' || (!isProduction && MODE !== 'test');

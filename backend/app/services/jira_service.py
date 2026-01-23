@@ -28,14 +28,16 @@ from app.services.jira import (
     JiraAuthError,
     JiraUnexpectedResponse,
 )
+from app.core.metrics import metrics
 
 # Create global instance for backward compatibility
 jira_service = JiraService()
 
 # Export for easy importing
 __all__ = [
-    'JiraService',
-    'JiraAuthError',
-    'JiraUnexpectedResponse',
-    'jira_service',
+    "JiraService",
+    "JiraAuthError",
+    "JiraUnexpectedResponse",
+    "jira_service",
+    "metrics",
 ]

@@ -1,8 +1,9 @@
-﻿from typing import List, Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Header, status
+from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
@@ -22,7 +23,7 @@ async def get_users(
     db: AsyncSession = Depends(get_db),
 ) -> List[User]:
     """Return paginated list of users."""
-    query = select(User)
+    query = select(User).options(selectinload(User.roles))
     return await paginate_query(db, query, skip, limit)
 
 
@@ -32,7 +33,8 @@ async def get_user(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """Fetch a user by identifier."""
-    user = await get_or_404(db, select(User).where(User.id == user_id), "User")
+    query = select(User).options(selectinload(User.roles)).where(User.id == user_id)
+    user = await get_or_404(db, query, "User")
     return user
 
 
@@ -43,7 +45,8 @@ async def update_user(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """Update mutable fields on a user by ID."""
-    user = await get_or_404(db, select(User).where(User.id == user_id), "User")
+    query = select(User).options(selectinload(User.roles)).where(User.id == user_id)
+    user = await get_or_404(db, query, "User")
 
     update_data = user_update.dict(exclude_unset=True)
     update_data.pop("email", None)
@@ -51,9 +54,15 @@ async def update_user(
         async with db.begin():
             # Enforce username uniqueness if it is being updated
             if "username" in update_data and update_data["username"]:
-                sel = select(User).where(User.username == update_data["username"]).where(User.id != user_id)
+                sel = (
+                    select(User)
+                    .where(User.username == update_data["username"])
+                    .where(User.id != user_id)
+                )
                 if (await execute_with_lock(db, sel)).scalar_one_or_none():
-                    raise HTTPException(status_code=400, detail="User with this username already exists")
+                    raise HTTPException(
+                        status_code=400, detail="User with this username already exists"
+                    )
             for field, value in update_data.items():
                 setattr(user, field, value)
     except IntegrityError:
@@ -86,9 +95,15 @@ async def update_current_user(
     try:
         async with db.begin():
             if "username" in update_data and update_data["username"]:
-                sel = select(User).where(User.username == update_data["username"]).where(User.id != user.id)
+                sel = (
+                    select(User)
+                    .where(User.username == update_data["username"])
+                    .where(User.id != user.id)
+                )
                 if (await execute_with_lock(db, sel)).scalar_one_or_none():
-                    raise HTTPException(status_code=400, detail="User with this username already exists")
+                    raise HTTPException(
+                        status_code=400, detail="User with this username already exists"
+                    )
             for field, value in update_data.items():
                 setattr(user, field, value)
     except IntegrityError:
@@ -105,7 +120,9 @@ async def change_password(
     authorization: Optional[str] = Header(default=None, convert_underscores=False),
 ) -> dict:
     user = await get_current_user(db=db, authorization=authorization)
-    if not verify_password(payload.current_password, user.hashed_password):
+    if not user.hashed_password or not verify_password(
+        payload.current_password, user.hashed_password
+    ):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     user.hashed_password = get_password_hash(payload.new_password)
     await db.commit()
@@ -117,11 +134,12 @@ async def assign_role_to_user(
     user_id: int,
     role_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.USER_MANAGE_ROLES))
+    current_user: User = Depends(require_permission(Permissions.USER_MANAGE_ROLES)),
 ) -> dict:
     """Assign a role to a user (admin only)."""
-    # Get user
-    user = await get_or_404(db, select(User).where(User.id == user_id), "User")
+    # Get user with eager-loaded roles to avoid async lazy loading issues
+    query = select(User).options(selectinload(User.roles)).where(User.id == user_id)
+    user = await get_or_404(db, query, "User")
 
     # Get role
     role = await get_or_404(db, select(Role).where(Role.id == role_id), "Role")
@@ -142,11 +160,12 @@ async def remove_role_from_user(
     user_id: int,
     role_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.USER_MANAGE_ROLES))
+    current_user: User = Depends(require_permission(Permissions.USER_MANAGE_ROLES)),
 ) -> dict:
     """Remove a role from a user (admin only)."""
-    # Get user
-    user = await get_or_404(db, select(User).where(User.id == user_id), "User")
+    # Get user with eager-loaded roles to avoid async lazy loading issues
+    query = select(User).options(selectinload(User.roles)).where(User.id == user_id)
+    user = await get_or_404(db, query, "User")
 
     # Get role
     role = await get_or_404(db, select(Role).where(Role.id == role_id), "Role")

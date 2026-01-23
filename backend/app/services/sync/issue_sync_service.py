@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select, func
@@ -24,11 +23,7 @@ class IssueSyncResult:
     total_added: int = 0
     total_updated: int = 0
     total_saved: int = 0
-    errors: List[tuple[str, str]] = None
-
-    def __post_init__(self):
-        if self.errors is None:
-            self.errors = []
+    errors: List[tuple[str, str]] = field(default_factory=list)
 
 
 class IssueSyncService:
@@ -68,10 +63,10 @@ class IssueSyncService:
             IssueSyncResult with statistics and any errors
         """
         if not issues:
-            logger.warning('No issues provided for sync for project %s', project_key)
+            logger.warning("No issues provided for sync for project %s", project_key)
             return IssueSyncResult()
 
-        logger.info('Starting issue sync for project %s: %d issues', project_key, len(issues))
+        logger.info("Starting issue sync for project %s: %d issues", project_key, len(issues))
 
         # Build lookup cache for existing tasks
         await self._build_lookup_cache(project_id, db)
@@ -86,11 +81,11 @@ class IssueSyncService:
             # Progress logging
             if batch_start % 500 == 0 and batch_start > 0:
                 logger.info(
-                    'Saving issues for %s: %d/%d (%d%%)',
+                    "Saving issues for %s: %d/%d (%d%%)",
                     project_key,
                     batch_start,
                     len(issues),
-                    int(batch_start / len(issues) * 100)
+                    int(batch_start / len(issues) * 100),
                 )
 
             try:
@@ -110,22 +105,22 @@ class IssueSyncService:
 
             except Exception as e:
                 logger.error(
-                    'Failed to process batch %d-%d for project %s: %s',
+                    "Failed to process batch %d-%d for project %s: %s",
                     batch_start,
                     batch_end,
                     project_key,
                     e,
-                    exc_info=True
+                    exc_info=True,
                 )
                 result.errors.append((f"batch_{batch_start}_{batch_end}", str(e)))
                 raise
 
         logger.info(
-            'Completed issue sync for project %s: %d processed, %d added, %d updated',
+            "Completed issue sync for project %s: %d processed, %d added, %d updated",
             project_key,
             result.total_processed,
             result.total_added,
-            result.total_updated
+            result.total_updated,
         )
 
         return result
@@ -143,9 +138,9 @@ class IssueSyncService:
                 self._existing_task_ids_by_key[existing_key] = task_id
 
         logger.debug(
-            'Built lookup cache: %d by jira_id, %d by key',
+            "Built lookup cache: %d by jira_id, %d by key",
             len(self._existing_task_ids_by_jira),
-            len(self._existing_task_ids_by_key)
+            len(self._existing_task_ids_by_key),
         )
 
     async def _process_batch(
@@ -185,12 +180,12 @@ class IssueSyncService:
         batch_result.total_saved = len(batch)
 
         logger.info(
-            'Batch %d-%d committed: %d new, %d updated tasks for project %s',
+            "Batch %d-%d committed: %d new, %d updated tasks for project %s",
             batch_start,
             batch_end,
             batch_result.total_added,
             batch_result.total_updated,
-            project_key
+            project_key,
         )
 
         # Verify the batch was actually saved
@@ -207,17 +202,17 @@ class IssueSyncService:
         created_tasks: List[tuple[Task, Optional[str], Optional[str]]],
     ) -> None:
         """Process a single issue - create or update in database."""
-        fields = issue.get('fields', {}) if isinstance(issue, dict) else {}
+        fields = issue.get("fields", {}) if isinstance(issue, dict) else {}
 
         # Support both raw Jira shape (nested 'fields') and normalized (flat) shape
         is_raw = bool(fields)
         if not is_raw and isinstance(issue, dict):
             fields = issue  # treat as flat
 
-        key = issue.get('key') if isinstance(issue, dict) else None
+        key = issue.get("key") if isinstance(issue, dict) else None
         jira_id_value = None
         if isinstance(issue, dict):
-            jira_id_value = issue.get('id') or issue.get('jira_id')
+            jira_id_value = issue.get("id") or issue.get("jira_id")
         jira_id = str(jira_id_value) if jira_id_value is not None else None
 
         if not key and not jira_id:
@@ -259,7 +254,7 @@ class IssueSyncService:
             db_issue = await db.get(Task, task_id)
             if db_issue is None:
                 # Cache is stale, clean it up
-                if jira_id:
+                if jira_id and jira_lookup is not None:
                     self._existing_task_ids_by_jira.pop(jira_lookup, None)
                 if key:
                     self._existing_task_ids_by_key.pop(key, None)
@@ -301,25 +296,28 @@ class IssueSyncService:
         is_raw: bool,
     ) -> None:
         """Update task fields from Jira data."""
-        if not isinstance(fields, dict):
-            return
 
         # Basic fields
-        db_issue.summary = fields.get('summary')
-        db_issue.description = fields.get('description')
+        summary_val = fields.get("summary")
+        if summary_val is not None:
+            db_issue.summary = str(summary_val)
+        elif not db_issue.summary:
+            db_issue.summary = ""
+        description_val = fields.get("description")
+        db_issue.description = str(description_val) if description_val is not None else None
 
         # Type, status, priority
         if is_raw:
-            it = fields.get('issuetype')
-            st = fields.get('status')
-            pr = fields.get('priority')
+            it = fields.get("issuetype")
+            st = fields.get("status")
+            pr = fields.get("priority")
             db_issue.task_type = self._extract_name(it)
-            db_issue.status = self._extract_name(st) or db_issue.status or 'Unknown'
+            db_issue.status = self._extract_name(st) or db_issue.status or "Unknown"
             db_issue.priority = self._extract_name(pr)
         else:
-            db_issue.task_type = fields.get('task_type')
-            db_issue.status = fields.get('status') or db_issue.status or 'Unknown'
-            db_issue.priority = fields.get('priority')
+            db_issue.task_type = fields.get("task_type")
+            db_issue.status = fields.get("status") or db_issue.status or "Unknown"
+            db_issue.priority = fields.get("priority")
 
         # Assignee and reporter
         self._update_people_fields(db_issue, fields, is_raw)
@@ -331,23 +329,24 @@ class IssueSyncService:
         self._update_date_fields(db_issue, fields, is_raw)
 
         # Labels and components
-        db_issue.labels = fields.get('labels')
+        db_issue.labels = fields.get("labels")
         self._update_components(db_issue, fields)
 
         # Custom fields (only for raw Jira data)
         if is_raw:
-            db_issue.business_value = fields.get('customfield_business_value')
-            db_issue.value_delivered = fields.get('customfield_value_delivered')
-            db_issue.roi = fields.get('customfield_roi')
+            db_issue.business_value = fields.get("customfield_business_value")
+            db_issue.value_delivered = fields.get("customfield_value_delivered")
+            db_issue.roi = fields.get("customfield_roi")
             db_issue.custom_fields = {
-                k: v for k, v in fields.items()
-                if isinstance(k, str) and k.startswith('customfield_')
+                k: v
+                for k, v in fields.items()
+                if isinstance(k, str) and k.startswith("customfield_")
             }
 
     def _extract_name(self, value: Any) -> Optional[str]:
         """Extract name from dict or return string value."""
         if isinstance(value, dict):
-            return value.get('name')
+            return value.get("name")
         elif isinstance(value, str):
             return value
         return None
@@ -360,24 +359,24 @@ class IssueSyncService:
     ) -> None:
         """Update assignee and reporter fields."""
         if not is_raw:
-            db_issue.assignee_email = fields.get('assignee_email')
-            db_issue.assignee_name = fields.get('assignee_name')
-            db_issue.reporter_email = fields.get('reporter_email')
-            db_issue.reporter_name = fields.get('reporter_name')
+            db_issue.assignee_email = fields.get("assignee_email")
+            db_issue.assignee_name = fields.get("assignee_name")
+            db_issue.reporter_email = fields.get("reporter_email")
+            db_issue.reporter_name = fields.get("reporter_name")
         else:
-            asg = fields.get('assignee')
-            rep = fields.get('reporter')
+            asg = fields.get("assignee")
+            rep = fields.get("reporter")
 
             if isinstance(asg, dict):
-                db_issue.assignee_email = asg.get('emailAddress')
-                db_issue.assignee_name = asg.get('displayName')
+                db_issue.assignee_email = asg.get("emailAddress")
+                db_issue.assignee_name = asg.get("displayName")
             else:
                 db_issue.assignee_email = None
                 db_issue.assignee_name = None
 
             if isinstance(rep, dict):
-                db_issue.reporter_email = rep.get('emailAddress')
-                db_issue.reporter_name = rep.get('displayName')
+                db_issue.reporter_email = rep.get("emailAddress")
+                db_issue.reporter_name = rep.get("displayName")
             else:
                 db_issue.reporter_email = None
                 db_issue.reporter_name = None
@@ -390,18 +389,22 @@ class IssueSyncService:
     ) -> None:
         """Update time tracking fields."""
         if is_raw:
-            estimate_seconds = fields.get('timeoriginalestimate') or 0
-            db_issue.estimate_hours = round(estimate_seconds / 3600.0, 2) if estimate_seconds else None
+            estimate_seconds = fields.get("timeoriginalestimate") or 0
+            db_issue.estimate_hours = (
+                round(estimate_seconds / 3600.0, 2) if estimate_seconds else None
+            )
 
-            spent_seconds = fields.get('timespent') or 0
+            spent_seconds = fields.get("timespent") or 0
             db_issue.spent_hours = round(spent_seconds / 3600.0, 2) if spent_seconds else None
 
-            remaining_seconds = fields.get('timeestimate') or 0
-            db_issue.remaining_hours = round(remaining_seconds / 3600.0, 2) if remaining_seconds else None
+            remaining_seconds = fields.get("timeestimate") or 0
+            db_issue.remaining_hours = (
+                round(remaining_seconds / 3600.0, 2) if remaining_seconds else None
+            )
         else:
-            db_issue.estimate_hours = fields.get('estimate_hours')
-            db_issue.spent_hours = fields.get('spent_hours')
-            db_issue.remaining_hours = fields.get('remaining_hours')
+            db_issue.estimate_hours = fields.get("estimate_hours")
+            db_issue.spent_hours = fields.get("spent_hours")
+            db_issue.remaining_hours = fields.get("remaining_hours")
 
     def _update_date_fields(
         self,
@@ -411,24 +414,26 @@ class IssueSyncService:
     ) -> None:
         """Update date fields."""
         if is_raw:
-            db_issue.created_date = parse_datetime(fields.get('created'))
-            db_issue.updated_date = parse_datetime(fields.get('updated'))
-            db_issue.resolved_date = parse_datetime(fields.get('resolutiondate'))
-            db_issue.due_date = parse_datetime(fields.get('duedate'))
+            db_issue.created_date = parse_datetime(fields.get("created"))
+            db_issue.updated_date = parse_datetime(fields.get("updated"))
+            db_issue.resolved_date = parse_datetime(fields.get("resolutiondate"))
+            db_issue.due_date = parse_datetime(fields.get("duedate"))
         else:
-            db_issue.created_date = parse_datetime(fields.get('created_date'))
-            db_issue.updated_date = parse_datetime(fields.get('updated_date'))
-            db_issue.resolved_date = parse_datetime(fields.get('resolved_date'))
-            db_issue.due_date = parse_datetime(fields.get('due_date'))
+            db_issue.created_date = parse_datetime(fields.get("created_date"))
+            db_issue.updated_date = parse_datetime(fields.get("updated_date"))
+            db_issue.resolved_date = parse_datetime(fields.get("resolved_date"))
+            db_issue.due_date = parse_datetime(fields.get("due_date"))
 
     def _update_components(self, db_issue: Task, fields: Dict[str, Any]) -> None:
         """Update components field."""
-        components = fields.get('components')
+        components = fields.get("components")
         if isinstance(components, list):
-            comp_names = []
+            comp_names: List[str] = []
             for c in components:
-                if isinstance(c, dict) and c.get('name'):
-                    comp_names.append(c.get('name'))
+                if isinstance(c, dict):
+                    name = c.get("name")
+                    if isinstance(name, str):
+                        comp_names.append(name)
                 elif isinstance(c, str):
                     comp_names.append(c)
             db_issue.components = comp_names
@@ -440,20 +445,19 @@ class IssueSyncService:
         db: AsyncSession,
     ) -> None:
         """Verify that batch was successfully saved to database."""
-        keys = [i.get('key') for i in batch if i.get('key')]
+        keys = [i.get("key") for i in batch if i.get("key")]
         if not keys:
             return
 
         verify_query = select(func.count(Task.id)).where(
-            Task.project_id == project_id,
-            Task.key.in_(keys)
+            Task.project_id == project_id, Task.key.in_(keys)
         )
         verify_result = await db.execute(verify_query)
         verify_count = verify_result.scalar()
 
         if verify_count != len(batch):
             logger.warning(
-                'Verification failed: expected %d tasks, found %d in database',
+                "Verification failed: expected %d tasks, found %d in database",
                 len(batch),
-                verify_count
+                verify_count,
             )

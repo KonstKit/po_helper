@@ -35,17 +35,17 @@ rate_limit_module.RateLimitExceeded = Exception
 rate_limit_module._rate_limit_exceeded_handler = lambda *args, **kwargs: None
 sys.modules['app.core.rate_limit'] = rate_limit_module
 
-import app.api.api_v1.endpoints.traceability as traceability_module
+import app.api.api_v1.endpoints.traceability.links as links_module
+import app.api.api_v1.endpoints.traceability.common as common_module
 from app.core.config import settings
 
-traceability_matrix = traceability_module.traceability_matrix
-_would_create_cycle = traceability_module._would_create_cycle
-_matrix_cache = traceability_module._matrix_cache
+traceability_matrix = links_module.traceability_matrix
+_would_create_cycle = common_module._would_create_cycle
 
 async def _fake_ensure_project_access(project_id, _db, _current_user):
     return SimpleNamespace(id=project_id)
 
-traceability_module.ensure_project_access = _fake_ensure_project_access
+links_module.ensure_project_access = _fake_ensure_project_access
 
 
 @dataclass
@@ -129,7 +129,6 @@ async def test_would_create_cycle_skips_non_dag_types():
 
 @pytest.mark.asyncio
 async def test_traceability_matrix_includes_link_type_counts():
-    _matrix_cache.clear()
     original_cache = settings.ENABLE_MATRIX_CACHE
     settings.ENABLE_MATRIX_CACHE = False
 

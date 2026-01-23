@@ -11,7 +11,7 @@ from app.schemas.settings import IntegrationSettings, IntegrationSettingsBase
 from app.services.jira_service import jira_service
 from app.services.confluence_service import confluence_service
 from app.core.crypto import encrypt_str, decrypt_str
-from app.api.deps import require_permission, get_current_user
+from app.api.deps import require_permission
 from app.utils import transactional_session, handle_api_error
 
 router = APIRouter()
@@ -26,12 +26,18 @@ async def _get_integration(db: AsyncSession, kind: str) -> IntegrationSetting | 
 @router.get("/jira", response_model=IntegrationSettings)
 async def get_jira_settings(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.SETTINGS_VIEW))
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_VIEW)),
 ):
     row = await _get_integration(db, "jira")
     if row:
         # Do not expose token
-        return {"kind": "jira", "base_url": row.base_url, "email": row.email, "api_token": None, "has_token": bool(row.api_token)}
+        return {
+            "kind": "jira",
+            "base_url": row.base_url,
+            "email": row.email,
+            "api_token": None,
+            "has_token": bool(row.api_token),
+        }
     # Default from env (without exposing secrets if not set)
     return {"kind": "jira", "base_url": None, "email": None, "api_token": None, "has_token": False}
 
@@ -40,7 +46,7 @@ async def get_jira_settings(
 async def put_jira_settings(
     payload: IntegrationSettingsBase,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE))
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE)),
 ):
     row = await _get_integration(db, "jira")
     if not row:
@@ -68,6 +74,7 @@ async def put_jira_settings(
             if token_plain:
                 import asyncio
                 from functools import partial
+
                 loop = asyncio.get_event_loop()
                 connect_email = None if use_pat else row.email
                 try:
@@ -88,7 +95,7 @@ async def put_jira_settings(
                     logger.info(
                         "Jira settings saved. Mode=%s base_url=%s email=%s token_len=%s",
                         mode_label,
-                        (row.base_url or "").rstrip('/'),
+                        (row.base_url or "").rstrip("/"),
                         connect_email or "<none>",
                         len(token_plain),
                     )
@@ -97,19 +104,39 @@ async def put_jira_settings(
     except Exception:
         pass
     # Do not expose token even encrypted
-    return {"kind": "jira", "base_url": row.base_url, "email": row.email, "api_token": None, "has_token": bool(row.api_token)}
+    return {
+        "kind": "jira",
+        "base_url": row.base_url,
+        "email": row.email,
+        "api_token": None,
+        "has_token": bool(row.api_token),
+    }
 
 
 @router.get("/confluence", response_model=IntegrationSettings)
 async def get_confluence_settings(db: AsyncSession = Depends(get_db)):
     row = await _get_integration(db, "confluence")
     if row:
-        return {"kind": "confluence", "base_url": row.base_url, "email": row.email, "api_token": None, "has_token": bool(row.api_token)}
-    return {"kind": "confluence", "base_url": None, "email": None, "api_token": None, "has_token": False}
+        return {
+            "kind": "confluence",
+            "base_url": row.base_url,
+            "email": row.email,
+            "api_token": None,
+            "has_token": bool(row.api_token),
+        }
+    return {
+        "kind": "confluence",
+        "base_url": None,
+        "email": None,
+        "api_token": None,
+        "has_token": False,
+    }
 
 
 @router.put("/confluence", response_model=IntegrationSettings)
-async def put_confluence_settings(payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)):
+async def put_confluence_settings(
+    payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
+):
     row = await _get_integration(db, "confluence")
     if not row:
         row = IntegrationSetting(kind="confluence")
@@ -117,7 +144,11 @@ async def put_confluence_settings(payload: IntegrationSettingsBase, db: AsyncSes
     async with transactional_session(db):
         row.base_url = (payload.base_url or None) or None
         row.email = (payload.email or None) or None
-        row.api_token = encrypt_str(payload.api_token) if (payload.api_token is not None and payload.api_token != "") else row.api_token
+        row.api_token = (
+            encrypt_str(payload.api_token)
+            if (payload.api_token is not None and payload.api_token != "")
+            else row.api_token
+        )
     await db.refresh(row)
 
     # Update in-memory Confluence client (similar to Jira)
@@ -125,6 +156,7 @@ async def put_confluence_settings(payload: IntegrationSettingsBase, db: AsyncSes
         if payload.base_url and payload.api_token:
             # Run connect in background to avoid blocking the response
             import asyncio
+
             loop = asyncio.get_event_loop()
             # Use run_in_executor with timeout to avoid blocking
             try:
@@ -136,22 +168,30 @@ async def put_confluence_settings(payload: IntegrationSettingsBase, db: AsyncSes
                         confluence_service.connect,
                         payload.base_url,
                         email_for_auth,
-                        payload.api_token
+                        payload.api_token,
                     ),
-                    timeout=10.0  # 10 second timeout for connection
+                    timeout=10.0,  # 10 second timeout for connection
                 )
-                logger.info("Confluence settings saved and connected. base_url=%s email=%s token_len=%s mode=%s",
-                            (payload.base_url or "").rstrip('/'),
-                            payload.email or "<none>",
-                            len(payload.api_token) if payload.api_token else 0,
-                            "PAT/Bearer" if not email_for_auth else "Basic")
+                logger.info(
+                    "Confluence settings saved and connected. base_url=%s email=%s token_len=%s mode=%s",
+                    (payload.base_url or "").rstrip("/"),
+                    payload.email or "<none>",
+                    len(payload.api_token) if payload.api_token else 0,
+                    "PAT/Bearer" if not email_for_auth else "Basic",
+                )
             except asyncio.TimeoutError:
                 logger.warning("Confluence connection timed out, but settings were saved")
     except Exception as e:
         logger.warning("Failed to initialize Confluence service: %s", e)
         # Continue anyway - settings are saved
 
-    return {"kind": "confluence", "base_url": row.base_url, "email": row.email, "api_token": None, "has_token": bool(row.api_token)}
+    return {
+        "kind": "confluence",
+        "base_url": row.base_url,
+        "email": row.email,
+        "api_token": None,
+        "has_token": bool(row.api_token),
+    }
 
 
 @router.post("/confluence/reload")
@@ -165,21 +205,21 @@ async def reload_confluence_settings(db: AsyncSession = Depends(get_db)):
         token = decrypt_str(row.api_token)
         # Run connect with timeout
         import asyncio
+
         loop = asyncio.get_event_loop()
         # Pass None for email if it's empty to trigger PAT auth for Data Center
         email_for_auth = row.email if row.email else None
         await asyncio.wait_for(
             loop.run_in_executor(
-                None,
-                confluence_service.connect,
-                row.base_url,
-                email_for_auth,
-                token
+                None, confluence_service.connect, row.base_url, email_for_auth, token
             ),
-            timeout=10.0
+            timeout=10.0,
         )
-        logger.info("Confluence reconnected from stored settings (base_url=%s, mode=%s)",
-                    row.base_url, "PAT/Bearer" if not email_for_auth else "Basic")
+        logger.info(
+            "Confluence reconnected from stored settings (base_url=%s, mode=%s)",
+            row.base_url,
+            "PAT/Bearer" if not email_for_auth else "Basic",
+        )
 
 
 # ---- GitHub settings ----
@@ -188,8 +228,22 @@ async def get_github_settings(db: AsyncSession = Depends(get_db)):
     row = await _get_integration(db, "github")
     if row:
         # If token stored as encrypted JSON bundle, we still mask it
-        return {"kind": "github", "base_url": row.base_url, "email": None, "api_token": None, "has_token": bool(row.api_token), "has_webhook_secret": bool(row.api_token)}
-    return {"kind": "github", "base_url": None, "email": None, "api_token": None, "has_token": False, "has_webhook_secret": False}
+        return {
+            "kind": "github",
+            "base_url": row.base_url,
+            "email": None,
+            "api_token": None,
+            "has_token": bool(row.api_token),
+            "has_webhook_secret": bool(row.api_token),
+        }
+    return {
+        "kind": "github",
+        "base_url": None,
+        "email": None,
+        "api_token": None,
+        "has_token": False,
+        "has_webhook_secret": False,
+    }
 
 
 @router.put("/github", response_model=IntegrationSettings)
@@ -206,16 +260,32 @@ async def put_github_settings(payload: IntegrationSettingsBase, db: AsyncSession
             token_bundle = None
             if payload.api_token or payload.webhook_secret:
                 import json
-                token_bundle = json.dumps({"api_token": payload.api_token, "webhook_secret": payload.webhook_secret})
-            row.api_token = encrypt_str(token_bundle) if (token_bundle is not None and token_bundle != "") else row.api_token
+
+                token_bundle = json.dumps(
+                    {"api_token": payload.api_token, "webhook_secret": payload.webhook_secret}
+                )
+            row.api_token = (
+                encrypt_str(token_bundle)
+                if (token_bundle is not None and token_bundle != "")
+                else row.api_token
+            )
         except Exception:
             pass
     await db.refresh(row)
-    return {"kind": "github", "base_url": row.base_url, "email": None, "api_token": None, "has_token": bool(row.api_token), "has_webhook_secret": bool(row.api_token)}
+    return {
+        "kind": "github",
+        "base_url": row.base_url,
+        "email": None,
+        "api_token": None,
+        "has_token": bool(row.api_token),
+        "has_webhook_secret": bool(row.api_token),
+    }
 
 
 @router.post("/github/test")
-async def test_github_connection(payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)):
+async def test_github_connection(
+    payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
+):
     row = await _get_integration(db, "github")
     base_url = payload.base_url or (row.base_url if row and row.base_url else None)
     if base_url:
@@ -330,14 +400,19 @@ async def test_github_connection(payload: IntegrationSettingsBase, db: AsyncSess
             detail = resp.json().get("message", "")
         except Exception:
             detail = resp.text[:200]
-        raise HTTPException(status_code=403, detail=f"GitHub access forbidden: {detail or 'forbidden'}")
+        raise HTTPException(
+            status_code=403, detail=f"GitHub access forbidden: {detail or 'forbidden'}"
+        )
     if resp.status_code >= 400:
         detail = ""
         try:
             detail = resp.json().get("message", "")
         except Exception:
             detail = resp.text[:200]
-        raise HTTPException(status_code=resp.status_code, detail=f"GitHub error {resp.status_code}: {detail or 'unknown'}")
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"GitHub error {resp.status_code}: {detail or 'unknown'}",
+        )
     try:
         data = resp.json()
     except ValueError:
@@ -347,20 +422,37 @@ async def test_github_connection(payload: IntegrationSettingsBase, db: AsyncSess
         "base_url": used_base,
         "login": data.get("login"),
         "name": data.get("name"),
-        "plan": (data.get("plan") or {}).get("name") if isinstance(data.get("plan"), dict) else None,
+        "plan": (data.get("plan") or {}).get("name")
+        if isinstance(data.get("plan"), dict)
+        else None,
         "scopes": resp.headers.get("X-OAuth-Scopes"),
         "rate_limit_remaining": resp.headers.get("X-RateLimit-Remaining"),
         "rate_limit_reset": resp.headers.get("X-RateLimit-Reset"),
     }
     return result
 
+
 # ---- GitLab settings ----
 @router.get("/gitlab", response_model=IntegrationSettings)
 async def get_gitlab_settings(db: AsyncSession = Depends(get_db)):
     row = await _get_integration(db, "gitlab")
     if row:
-        return {"kind": "gitlab", "base_url": row.base_url, "email": None, "api_token": None, "has_token": bool(row.api_token), "has_webhook_secret": bool(row.api_token)}
-    return {"kind": "gitlab", "base_url": None, "email": None, "api_token": None, "has_token": False, "has_webhook_secret": False}
+        return {
+            "kind": "gitlab",
+            "base_url": row.base_url,
+            "email": None,
+            "api_token": None,
+            "has_token": bool(row.api_token),
+            "has_webhook_secret": bool(row.api_token),
+        }
+    return {
+        "kind": "gitlab",
+        "base_url": None,
+        "email": None,
+        "api_token": None,
+        "has_token": False,
+        "has_webhook_secret": False,
+    }
 
 
 @router.put("/gitlab", response_model=IntegrationSettings)
@@ -376,21 +468,37 @@ async def put_gitlab_settings(payload: IntegrationSettingsBase, db: AsyncSession
             token_bundle = None
             if payload.api_token or payload.webhook_secret:
                 import json
-                token_bundle = json.dumps({"api_token": payload.api_token, "webhook_secret": payload.webhook_secret})
-            row.api_token = encrypt_str(token_bundle) if (token_bundle is not None and token_bundle != "") else row.api_token
+
+                token_bundle = json.dumps(
+                    {"api_token": payload.api_token, "webhook_secret": payload.webhook_secret}
+                )
+            row.api_token = (
+                encrypt_str(token_bundle)
+                if (token_bundle is not None and token_bundle != "")
+                else row.api_token
+            )
         except Exception:
             pass
     await db.refresh(row)
-    return {"kind": "gitlab", "base_url": row.base_url, "email": None, "api_token": None, "has_token": bool(row.api_token), "has_webhook_secret": bool(row.api_token)}
+    return {
+        "kind": "gitlab",
+        "base_url": row.base_url,
+        "email": None,
+        "api_token": None,
+        "has_token": bool(row.api_token),
+        "has_webhook_secret": bool(row.api_token),
+    }
 
 
 @router.post("/gitlab/test")
-async def test_gitlab_connection(payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)):
+async def test_gitlab_connection(
+    payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
+):
     row = await _get_integration(db, "gitlab")
     base_url = payload.base_url or (row.base_url if row and row.base_url else None)
     if not base_url:
         raise HTTPException(status_code=400, detail="GitLab base URL is required")
-    base_url = base_url.strip().rstrip('/')
+    base_url = base_url.strip().rstrip("/")
 
     stored_bundle = None
     if row and row.api_token:
@@ -438,13 +546,21 @@ async def test_gitlab_connection(payload: IntegrationSettingsBase, db: AsyncSess
 
     if resp.status_code == 401:
         detail = _resp_message(resp)
-        raise HTTPException(status_code=401, detail=f"GitLab authentication failed (401){': ' + detail if detail else ''}")
+        raise HTTPException(
+            status_code=401,
+            detail=f"GitLab authentication failed (401){': ' + detail if detail else ''}",
+        )
     if resp.status_code == 403:
         detail = _resp_message(resp)
-        raise HTTPException(status_code=403, detail=f"GitLab access forbidden{': ' + detail if detail else ''}")
+        raise HTTPException(
+            status_code=403, detail=f"GitLab access forbidden{': ' + detail if detail else ''}"
+        )
     if resp.status_code >= 400:
         detail = _resp_message(resp)
-        raise HTTPException(status_code=resp.status_code, detail=f"GitLab error {resp.status_code}: {detail or 'unknown'}")
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"GitLab error {resp.status_code}: {detail or 'unknown'}",
+        )
 
     try:
         data = resp.json()
@@ -467,12 +583,26 @@ async def test_gitlab_connection(payload: IntegrationSettingsBase, db: AsyncSess
 async def get_testrail_settings(db: AsyncSession = Depends(get_db)):
     row = await _get_integration(db, "testrail")
     if row:
-        return {"kind": "testrail", "base_url": row.base_url, "email": row.email, "api_token": None, "has_token": bool(row.api_token)}
-    return {"kind": "testrail", "base_url": None, "email": None, "api_token": None, "has_token": False}
+        return {
+            "kind": "testrail",
+            "base_url": row.base_url,
+            "email": row.email,
+            "api_token": None,
+            "has_token": bool(row.api_token),
+        }
+    return {
+        "kind": "testrail",
+        "base_url": None,
+        "email": None,
+        "api_token": None,
+        "has_token": False,
+    }
 
 
 @router.put("/testrail", response_model=IntegrationSettings)
-async def put_testrail_settings(payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)):
+async def put_testrail_settings(
+    payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
+):
     row = await _get_integration(db, "testrail")
     if not row:
         row = IntegrationSetting(kind="testrail")
@@ -480,11 +610,25 @@ async def put_testrail_settings(payload: IntegrationSettingsBase, db: AsyncSessi
     async with transactional_session(db):
         row.base_url = (payload.base_url or None) or None
         row.email = (payload.email or None) or None
-        row.api_token = encrypt_str(payload.api_token) if (payload.api_token is not None and payload.api_token != "") else row.api_token
+        row.api_token = (
+            encrypt_str(payload.api_token)
+            if (payload.api_token is not None and payload.api_token != "")
+            else row.api_token
+        )
     await db.refresh(row)
-    return {"kind": "testrail", "base_url": row.base_url, "email": row.email, "api_token": None, "has_token": bool(row.api_token)}
+    return {
+        "kind": "testrail",
+        "base_url": row.base_url,
+        "email": row.email,
+        "api_token": None,
+        "has_token": bool(row.api_token),
+    }
+
+
 @router.post("/testrail/test")
-async def test_testrail_connection(payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)):
+async def test_testrail_connection(
+    payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
+):
     row = await _get_integration(db, "testrail")
     base_url = payload.base_url or (row.base_url if row and row.base_url else None)
     email = payload.email or (row.email if row and row.email else None)
@@ -501,7 +645,7 @@ async def test_testrail_connection(payload: IntegrationSettingsBase, db: AsyncSe
     if not token:
         raise HTTPException(status_code=400, detail="TestRail API key not configured")
 
-    base_url = base_url.strip().rstrip('/')
+    base_url = base_url.strip().rstrip("/")
     endpoint = f"{base_url}/index.php?/api/v2/get_statuses"
 
     try:
@@ -517,7 +661,10 @@ async def test_testrail_connection(payload: IntegrationSettingsBase, db: AsyncSe
         raise HTTPException(status_code=403, detail="TestRail access forbidden")
     if resp.status_code >= 400:
         snippet = (resp.text or "")[:200]
-        raise HTTPException(status_code=resp.status_code, detail=f"TestRail error {resp.status_code}: {snippet or 'unknown'}")
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"TestRail error {resp.status_code}: {snippet or 'unknown'}",
+        )
 
     statuses = []
     try:
@@ -533,3 +680,139 @@ async def test_testrail_connection(payload: IntegrationSettingsBase, db: AsyncSe
         "user": email,
         "status_count": len(statuses),
     }
+
+
+# ---- Bitbucket settings ----
+@router.get("/bitbucket", response_model=IntegrationSettings)
+async def get_bitbucket_settings(db: AsyncSession = Depends(get_db)):
+    """Get Bitbucket integration settings."""
+    row = await _get_integration(db, "bitbucket")
+    if row:
+        return {
+            "kind": "bitbucket",
+            "base_url": row.base_url,
+            "email": row.email,  # username for Cloud
+            "api_token": None,
+            "has_token": bool(row.api_token),
+            "has_webhook_secret": bool(row.api_token),
+        }
+    return {
+        "kind": "bitbucket",
+        "base_url": None,
+        "email": None,
+        "api_token": None,
+        "has_token": False,
+        "has_webhook_secret": False,
+    }
+
+
+@router.put("/bitbucket", response_model=IntegrationSettings)
+async def put_bitbucket_settings(
+    payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
+):
+    """Save Bitbucket integration settings.
+
+    For Bitbucket Cloud:
+      - base_url: https://bitbucket.org or leave empty
+      - email: Bitbucket username (for App Password auth)
+      - api_token: App Password or OAuth access token
+
+    For Bitbucket Server/Data Center:
+      - base_url: Your server URL (e.g., https://bitbucket.company.com)
+      - email: Not required (can be left empty)
+      - api_token: Personal Access Token (PAT)
+    """
+    row = await _get_integration(db, "bitbucket")
+    if not row:
+        row = IntegrationSetting(kind="bitbucket")
+        db.add(row)
+
+    async with transactional_session(db):
+        row.base_url = (payload.base_url or None) or None
+        row.email = (payload.email or None) or None  # Username for Cloud
+
+        # Pack token + webhook_secret into encrypted JSON
+        try:
+            token_bundle = None
+            if payload.api_token or payload.webhook_secret:
+                token_bundle = json.dumps(
+                    {
+                        "api_token": payload.api_token,
+                        "webhook_secret": payload.webhook_secret,
+                    }
+                )
+            if token_bundle:
+                row.api_token = encrypt_str(token_bundle)
+        except Exception:
+            pass
+
+    await db.refresh(row)
+    return {
+        "kind": "bitbucket",
+        "base_url": row.base_url,
+        "email": row.email,
+        "api_token": None,
+        "has_token": bool(row.api_token),
+        "has_webhook_secret": bool(row.api_token),
+    }
+
+
+@router.post("/bitbucket/test")
+async def test_bitbucket_connection(
+    payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
+):
+    """Test Bitbucket connection with provided or stored credentials.
+
+    For Bitbucket Cloud, use username + app_password (via email + api_token).
+    For Bitbucket Server, use personal access token (via api_token only).
+    """
+    from app.services.bitbucket_client import test_connection, BitbucketAPIError
+
+    row = await _get_integration(db, "bitbucket")
+    base_url = payload.base_url or (row.base_url if row and row.base_url else None)
+
+    # Default to Bitbucket Cloud if no URL provided
+    if not base_url:
+        base_url = "https://bitbucket.org"
+
+    base_url = base_url.strip()
+
+    # Get stored credentials
+    stored_bundle = None
+    if row and row.api_token:
+        try:
+            decrypted = decrypt_str(row.api_token)
+            if decrypted:
+                try:
+                    stored_bundle = json.loads(decrypted)
+                except Exception:
+                    stored_bundle = {"api_token": decrypted}
+        except Exception:
+            stored_bundle = None
+
+    stored_token = (stored_bundle or {}).get("api_token") if stored_bundle else None
+
+    # Use provided values or fall back to stored
+    username = payload.email or (row.email if row else None)
+    token = payload.api_token or stored_token
+
+    if not token:
+        raise HTTPException(
+            status_code=400, detail="Bitbucket API token or App Password not configured"
+        )
+
+    try:
+        # Test connection using the client
+
+        result = await test_connection(
+            base_url=base_url,
+            username=username,
+            app_password=token if username else None,  # Cloud with username
+            access_token=token if not username else None,  # Server with PAT
+            timeout=15.0,
+        )
+        return result
+
+    except BitbucketAPIError as exc:
+        status_code = exc.status_code or 400
+        raise HTTPException(status_code=status_code, detail=exc.message)

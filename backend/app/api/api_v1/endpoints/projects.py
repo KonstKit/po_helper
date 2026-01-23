@@ -1,17 +1,21 @@
-
 from typing import List
 import logging
 from time import perf_counter
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, cast, Integer
+from sqlalchemy import select, func, cast, Integer, delete
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.models import Project, Task, Sprint, User, Permissions
-from app.schemas.project import Project as ProjectSchema, ProjectCreate, ProjectUpdate, ProjectWithStats
-from app.api.deps import require_permission, get_current_user
+from app.schemas.project import (
+    Project as ProjectSchema,
+    ProjectCreate,
+    ProjectUpdate,
+    ProjectWithStats,
+)
+from app.api.deps import require_permission
 from app.utils import transactional_session, paginate_query, get_or_404, execute_with_lock
 
 
@@ -25,7 +29,7 @@ async def get_projects(
     skip: int = 0,
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.PROJECT_VIEW))
+    current_user: User = Depends(require_permission(Permissions.PROJECT_VIEW)),
 ):
     """Get list of projects"""
     start = perf_counter()
@@ -53,17 +57,13 @@ async def get_projects(
 async def get_project(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.PROJECT_VIEW))
+    current_user: User = Depends(require_permission(Permissions.PROJECT_VIEW)),
 ):
     """Get project with statistics"""
     start = perf_counter()
     logger.info("projects.detail.start project_id=%s", project_id)
     try:
-        project = await get_or_404(
-            db,
-            select(Project).where(Project.id == project_id),
-            "Project"
-        )
+        project = await get_or_404(db, select(Project).where(Project.id == project_id), "Project")
 
         result = await db.execute(
             select(
@@ -115,7 +115,7 @@ async def get_project(
 async def create_project(
     project: ProjectCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.PROJECT_CREATE))
+    current_user: User = Depends(require_permission(Permissions.PROJECT_CREATE)),
 ):
     """Create new project"""
     start = perf_counter()
@@ -162,17 +162,13 @@ async def update_project(
     project_id: int,
     project_update: ProjectUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.PROJECT_UPDATE))
+    current_user: User = Depends(require_permission(Permissions.PROJECT_UPDATE)),
 ):
     """Update project"""
     start = perf_counter()
     logger.info("projects.update.start project_id=%s", project_id)
     try:
-        project = await get_or_404(
-            db,
-            select(Project).where(Project.id == project_id),
-            "Project"
-        )
+        project = await get_or_404(db, select(Project).where(Project.id == project_id), "Project")
 
         update_data = project_update.dict(exclude_unset=True)
         try:
@@ -191,7 +187,9 @@ async def update_project(
                             update_data["jira_key"],
                             perf_counter() - start,
                         )
-                        raise HTTPException(status_code=400, detail="Project with this key already exists")
+                        raise HTTPException(
+                            status_code=400, detail="Project with this key already exists"
+                        )
 
                 for field, value in update_data.items():
                     setattr(project, field, value)
@@ -224,17 +222,13 @@ async def update_project(
 async def delete_project(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.PROJECT_DELETE))
+    current_user: User = Depends(require_permission(Permissions.PROJECT_DELETE)),
 ):
     """Delete project"""
     start = perf_counter()
     logger.info("projects.delete.start project_id=%s", project_id)
     try:
-        project = await get_or_404(
-            db,
-            select(Project).where(Project.id == project_id),
-            "Project"
-        )
+        project = await get_or_404(db, select(Project).where(Project.id == project_id), "Project")
 
         async with transactional_session(db):
             await db.delete(project)
@@ -260,31 +254,38 @@ async def delete_project(
 async def purge_project_data(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.PROJECT_DELETE))
+    current_user: User = Depends(require_permission(Permissions.PROJECT_DELETE)),
 ):
     """Delete all tasks and sprints for a project (keeps project)."""
     start = perf_counter()
     logger.info("projects.purge.start project_id=%s", project_id)
     try:
         async with transactional_session(db):
-            result = await db.execute(select(Task).where(Task.project_id == project_id))
-            tasks = result.scalars().all()
-            for task in tasks:
-                await db.delete(task)
+            # Bulk delete tasks - O(1) instead of O(n) queries
+            tasks_result = await db.execute(
+                delete(Task).where(Task.project_id == project_id).returning(Task.id)
+            )
+            deleted_task_ids = tasks_result.scalars().all()
 
-            result = await db.execute(select(Sprint).where(Sprint.project_id == project_id))
-            sprints = result.scalars().all()
-            for sprint in sprints:
-                await db.delete(sprint)
+            # Bulk delete sprints - O(1) instead of O(n) queries
+            sprints_result = await db.execute(
+                delete(Sprint).where(Sprint.project_id == project_id).returning(Sprint.id)
+            )
+            deleted_sprint_ids = sprints_result.scalars().all()
 
         logger.info(
             "projects.purge.success project_id=%s tasks=%s sprints=%s duration=%.3f",
             project_id,
-            len(tasks),
-            len(sprints),
+            len(deleted_task_ids),
+            len(deleted_sprint_ids),
             perf_counter() - start,
         )
-        return {"message": "Purged tasks and sprints", "project_id": project_id}
+        return {
+            "message": "Purged tasks and sprints",
+            "project_id": project_id,
+            "tasks_deleted": len(deleted_task_ids),
+            "sprints_deleted": len(deleted_sprint_ids),
+        }
     except Exception:
         logger.exception(
             "projects.purge.error project_id=%s duration=%.3f",

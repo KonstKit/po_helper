@@ -2,6 +2,7 @@
 Cache service for storing and retrieving expensive operation results.
 Supports both in-memory and Redis caching with TTL.
 """
+
 from typing import Any, Optional, Dict
 import json
 import time
@@ -12,6 +13,7 @@ import hashlib
 
 logger = logging.getLogger(__name__)
 
+
 class CacheService:
     def __init__(self):
         self._memory_cache: Dict[str, tuple[Any, float]] = {}
@@ -21,14 +23,15 @@ class CacheService:
     def _init_redis(self):
         """Initialize Redis connection if available."""
         try:
-            if hasattr(settings, 'REDIS_URL') and settings.REDIS_URL:
+            if hasattr(settings, "REDIS_URL") and settings.REDIS_URL:
                 try:
                     import redis
+
                     self._redis_client = redis.from_url(
                         settings.REDIS_URL,
                         decode_responses=True,
                         socket_connect_timeout=2,
-                        socket_timeout=2
+                        socket_timeout=2,
                     )
                     # Test connection
                     self._redis_client.ping()
@@ -49,7 +52,7 @@ class CacheService:
 
     def get(self, key: str) -> Optional[Any]:
         """Get value from cache."""
-        if not hasattr(settings, 'JIRA_CACHE_ENABLED') or not settings.JIRA_CACHE_ENABLED:
+        if not hasattr(settings, "JIRA_CACHE_ENABLED") or not settings.JIRA_CACHE_ENABLED:
             return None
 
         # Try Redis first
@@ -74,21 +77,21 @@ class CacheService:
 
     def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
         """Set value in cache with optional TTL."""
-        if not hasattr(settings, 'JIRA_CACHE_ENABLED') or not settings.JIRA_CACHE_ENABLED:
+        if not hasattr(settings, "JIRA_CACHE_ENABLED") or not settings.JIRA_CACHE_ENABLED:
             return False
 
-        ttl = ttl or getattr(settings, 'JIRA_CACHE_TTL', 300)
+        ttl_seconds: int = ttl if ttl is not None else int(getattr(settings, "JIRA_CACHE_TTL", 300))
 
         # Try Redis first
         if self._redis_client:
             try:
-                self._redis_client.setex(key, ttl, json.dumps(value))
+                self._redis_client.setex(key, ttl_seconds, json.dumps(value))
                 return True
             except Exception as e:
                 logger.debug(f"Redis set failed for {key}: {e}")
 
         # Fallback to memory cache
-        expiry = time.time() + ttl
+        expiry = time.time() + ttl_seconds
         self._memory_cache[key] = (value, expiry)
 
         # Clean up old entries (keep max 1000 entries)
@@ -129,7 +132,9 @@ class CacheService:
                 logger.debug(f"Redis clear pattern failed for {pattern}: {e}")
 
         # Clear from memory cache
-        keys_to_delete = [k for k in self._memory_cache.keys() if k.startswith(f"po_helper:{pattern}")]
+        keys_to_delete = [
+            k for k in self._memory_cache.keys() if k.startswith(f"po_helper:{pattern}")
+        ]
         for key in keys_to_delete:
             del self._memory_cache[key]
             count += 1
@@ -139,7 +144,9 @@ class CacheService:
     def _cleanup_memory_cache(self):
         """Remove expired entries from memory cache."""
         current_time = time.time()
-        expired_keys = [k for k, (_, expiry) in self._memory_cache.items() if expiry <= current_time]
+        expired_keys = [
+            k for k, (_, expiry) in self._memory_cache.items() if expiry <= current_time
+        ]
         for key in expired_keys:
             del self._memory_cache[key]
 
@@ -156,6 +163,7 @@ cache_service = CacheService()
 
 def cached(prefix: str, ttl: Optional[int] = None):
     """Decorator to cache function results."""
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -194,7 +202,7 @@ def cached(prefix: str, ttl: Optional[int] = None):
             return result
 
         # Return appropriate wrapper based on function type
-        if hasattr(func, '__aiter__') or hasattr(func, '__await__'):
+        if hasattr(func, "__aiter__") or hasattr(func, "__await__"):
             return async_wrapper
         else:
             return wrapper

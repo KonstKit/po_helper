@@ -15,11 +15,9 @@ redis_client: Optional[object] = None
 try:
     if settings.REDIS_URL:
         import redis
+
         redis_client = redis.from_url(
-            settings.REDIS_URL,
-            decode_responses=True,
-            socket_connect_timeout=5,
-            socket_timeout=5
+            settings.REDIS_URL, decode_responses=True, socket_connect_timeout=5, socket_timeout=5
         )
         # Test connection
         redis_client.ping()

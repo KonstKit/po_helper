@@ -2,17 +2,18 @@
 Pull Request metrics and analytics module.
 Provides comprehensive metrics for code review process optimization.
 """
+
 from __future__ import annotations
 import time
 import copy
 import logging
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Sequence, Tuple
 from datetime import datetime, timezone, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models import PullRequest, Artifact, ProjectRepository, Repository
+from app.models import PullRequest, Artifact, Repository
 from app.services.repository_resolver import repository_resolver
 
 logger = logging.getLogger(__name__)
@@ -26,12 +27,11 @@ PR_METRICS_SAMPLE_LIMIT = 20
 
 # Simple in-memory cache with TTL
 _metrics_cache: Dict[
-    Tuple[Optional[int], Optional[str], Optional[int], Optional[int]],
-    Dict[str, Any]
+    Tuple[Optional[int], Optional[str], Optional[int], Optional[int]], Dict[str, Any]
 ] = {}
 
 
-def histogram_counts(values: List[Optional[float]], thresholds: List[float]) -> List[int]:
+def histogram_counts(values: Sequence[Optional[float]], thresholds: Sequence[float]) -> List[int]:
     """Calculate histogram distribution of values against thresholds."""
     counts = [0] * (len(thresholds) + 1)
 
@@ -62,7 +62,7 @@ def parse_iso_datetime(dt_val) -> Optional[datetime]:
     try:
         if isinstance(dt_val, str):
             # Handle 'Z' timezone
-            dt_obj = datetime.fromisoformat(dt_val.replace('Z', '+00:00'))
+            dt_obj = datetime.fromisoformat(dt_val.replace("Z", "+00:00"))
         elif isinstance(dt_val, datetime):
             dt_obj = dt_val
         else:
@@ -88,9 +88,6 @@ def datetime_to_iso(dt_val) -> Optional[str]:
     if dt_obj is None:
         return None
 
-    if isinstance(dt_obj, str):
-        return dt_obj
-
     try:
         return dt_obj.isoformat()
     except Exception:
@@ -98,9 +95,7 @@ def datetime_to_iso(dt_val) -> Optional[str]:
 
 
 async def get_pull_requests_for_project(
-    db: AsyncSession,
-    project_id: Optional[int] = None,
-    provider: Optional[str] = None
+    db: AsyncSession, project_id: Optional[int] = None, provider: Optional[str] = None
 ) -> List[PullRequest]:
     """Get pull requests filtered by project and provider."""
     # If project_id is provided, use project's repositories
@@ -125,13 +120,12 @@ async def get_pull_requests_for_project(
             # Filter by provider if specified
             if provider:
                 provider_lower = provider.lower()
-                prs = [pr for pr in prs if (pr.provider or '').lower() == provider_lower]
+                prs = [pr for pr in prs if (pr.provider or "").lower() == provider_lower]
 
             # Filter by project through JIRA keys
             res_issues = await db.execute(
                 select(Artifact.external_id).where(
-                    Artifact.type == 'jira_issue',
-                    Artifact.project_id == project_id
+                    Artifact.type == "jira_issue", Artifact.project_id == project_id
                 )
             )
             issue_keys = {row[0] for row in res_issues.all()}
@@ -167,7 +161,7 @@ async def calculate_pr_metrics(
     provider: Optional[str] = None,
     limit: Optional[int] = None,
     since_days: Optional[int] = None,
-    disable_cache: bool = False
+    disable_cache: bool = False,
 ) -> Dict[str, Any]:
     """Calculate comprehensive PR metrics with optional caching."""
 
@@ -183,9 +177,9 @@ async def calculate_pr_metrics(
 
     if not disable_cache and ttl and cache_key in _metrics_cache:
         entry = _metrics_cache[cache_key]
-        if now_ts - entry['ts'] <= ttl:
-            cached = copy.deepcopy(entry['data'])
-            cached['cache_hit'] = True
+        if now_ts - entry["ts"] <= ttl:
+            cached = copy.deepcopy(entry["data"])
+            cached["cache_hit"] = True
             return cached
 
     # Get PRs
@@ -205,10 +199,10 @@ async def calculate_pr_metrics(
         for pr in prs:
             # Use merged_at, closed_at, created_at, or opened_at
             ts = (
-                getattr(pr, "merged_at", None) or
-                getattr(pr, "closed_at", None) or
-                getattr(pr, "created_at", None) or
-                getattr(pr, "opened_at", None)
+                getattr(pr, "merged_at", None)
+                or getattr(pr, "closed_at", None)
+                or getattr(pr, "created_at", None)
+                or getattr(pr, "opened_at", None)
             )
 
             dt_obj = parse_iso_datetime(ts)
@@ -225,17 +219,9 @@ async def calculate_pr_metrics(
     total = len(prs)
 
     # Extract metric values
-    cycle_values = [
-        float(pr.cycle_time_hours)
-        for pr in prs
-        if pr.cycle_time_hours is not None
-    ]
+    cycle_values = [float(pr.cycle_time_hours) for pr in prs if pr.cycle_time_hours is not None]
 
-    lead_values = [
-        float(pr.lead_time_hours)
-        for pr in prs
-        if pr.lead_time_hours is not None
-    ]
+    lead_values = [float(pr.lead_time_hours) for pr in prs if pr.lead_time_hours is not None]
 
     review_values = [
         float(pr.time_to_first_review_hours)
@@ -275,19 +261,21 @@ async def calculate_pr_metrics(
     # Get sample PRs for detailed view
     samples: List[Dict[str, Any]] = []
     for pr in prs[:PR_METRICS_SAMPLE_LIMIT]:
-        samples.append({
-            "id": pr.id,
-            "number": pr.number,
-            "title": pr.title,
-            "state": pr.state,
-            "cycle_time_hours": getattr(pr, "cycle_time_hours", None),
-            "lead_time_hours": getattr(pr, "lead_time_hours", None),
-            "time_to_first_review_hours": getattr(pr, "time_to_first_review_hours", None),
-            "rework_count": getattr(pr, "rework_count", None),
-            "opened_at": datetime_to_iso(getattr(pr, "opened_at", None)),
-            "merged_at": datetime_to_iso(getattr(pr, "merged_at", None)),
-            "closed_at": datetime_to_iso(getattr(pr, "closed_at", None)),
-        })
+        samples.append(
+            {
+                "id": pr.id,
+                "number": pr.number,
+                "title": pr.title,
+                "state": pr.state,
+                "cycle_time_hours": getattr(pr, "cycle_time_hours", None),
+                "lead_time_hours": getattr(pr, "lead_time_hours", None),
+                "time_to_first_review_hours": getattr(pr, "time_to_first_review_hours", None),
+                "rework_count": getattr(pr, "rework_count", None),
+                "opened_at": datetime_to_iso(getattr(pr, "opened_at", None)),
+                "merged_at": datetime_to_iso(getattr(pr, "merged_at", None)),
+                "closed_at": datetime_to_iso(getattr(pr, "closed_at", None)),
+            }
+        )
 
     # Prepare result
     base_result = {
@@ -308,15 +296,17 @@ async def calculate_pr_metrics(
         "recent_throughput": {
             "days": RECENT_THROUGHPUT_DAYS,
             "merged": merged_recent,
-            "per_day": round(merged_recent / RECENT_THROUGHPUT_DAYS, 2) if RECENT_THROUGHPUT_DAYS else 0
+            "per_day": round(merged_recent / RECENT_THROUGHPUT_DAYS, 2)
+            if RECENT_THROUGHPUT_DAYS
+            else 0,
         },
         "sample_prs": samples,
         "filters": {
             "project_id": project_id,
             "provider": normalized_provider,
             "since_days": normalized_since,
-            "limit": normalized_limit
-        }
+            "limit": normalized_limit,
+        },
     }
 
     # Cache the result
@@ -331,7 +321,7 @@ async def calculate_pr_metrics(
         if len(_metrics_cache) > 100:  # Prevent unbounded growth
             keys_to_remove = []
             for k, v in _metrics_cache.items():
-                if now_ts - v['ts'] > ttl * 2:
+                if now_ts - v["ts"] > ttl * 2:
                     keys_to_remove.append(k)
             for k in keys_to_remove:
                 del _metrics_cache[k]
@@ -343,7 +333,7 @@ async def get_pr_list(
     db: AsyncSession,
     project_id: Optional[int] = None,
     provider: Optional[str] = None,
-    limit: int = 50
+    limit: int = 50,
 ) -> Dict[str, Any]:
     """Get list of pull requests with details."""
 
@@ -352,53 +342,49 @@ async def get_pr_list(
 
     # Sort by newest first
     def pr_time(p):
-        return getattr(p, 'opened_at', None) or getattr(p, 'created_at', None)
+        return getattr(p, "opened_at", None) or getattr(p, "created_at", None)
 
     prs = sorted(prs, key=pr_time, reverse=True)
 
     # Apply limit
-    prs = prs[:max(1, min(limit, 200))]
+    prs = prs[: max(1, min(limit, 200))]
 
     # Format output
     out = []
     for pr in prs:
-        out.append({
-            'id': pr.id,
-            'provider': pr.provider,
-            'repository_id': pr.repository_id,
-            'number': pr.number,
-            'title': pr.title,
-            'state': pr.state,
-            'author_login': pr.author_login,
-            'jira_keys': pr.jira_keys,
-            'opened_at': datetime_to_iso(pr.opened_at),
-            'merged_at': datetime_to_iso(pr.merged_at),
-            'closed_at': datetime_to_iso(pr.closed_at),
-            'first_review_at': datetime_to_iso(getattr(pr, 'first_review_at', None)),
-            'cycle_time_hours': getattr(pr, 'cycle_time_hours', None),
-            'lead_time_hours': getattr(pr, 'lead_time_hours', None),
-            'time_to_first_review_hours': getattr(pr, 'time_to_first_review_hours', None),
-            'rework_count': getattr(pr, 'rework_count', None),
-            'files_changed': getattr(pr, 'files_changed', None),
-            'lines_added': getattr(pr, 'lines_added', None),
-            'lines_deleted': getattr(pr, 'lines_deleted', None),
-        })
+        out.append(
+            {
+                "id": pr.id,
+                "provider": pr.provider,
+                "repository_id": pr.repository_id,
+                "number": pr.number,
+                "title": pr.title,
+                "state": pr.state,
+                "author_login": pr.author_login,
+                "jira_keys": pr.jira_keys,
+                "opened_at": datetime_to_iso(pr.opened_at),
+                "merged_at": datetime_to_iso(pr.merged_at),
+                "closed_at": datetime_to_iso(pr.closed_at),
+                "first_review_at": datetime_to_iso(getattr(pr, "first_review_at", None)),
+                "cycle_time_hours": getattr(pr, "cycle_time_hours", None),
+                "lead_time_hours": getattr(pr, "lead_time_hours", None),
+                "time_to_first_review_hours": getattr(pr, "time_to_first_review_hours", None),
+                "rework_count": getattr(pr, "rework_count", None),
+                "files_changed": getattr(pr, "files_changed", None),
+                "lines_added": getattr(pr, "lines_added", None),
+                "lines_deleted": getattr(pr, "lines_deleted", None),
+            }
+        )
 
-    return {'total': len(out), 'pull_requests': out}
+    return {"total": len(out), "pull_requests": out}
 
 
-async def get_commits_for_issue(
-    db: AsyncSession,
-    jira_key: str
-) -> Dict[str, Any]:
+async def get_commits_for_issue(db: AsyncSession, jira_key: str) -> Dict[str, Any]:
     """Get commits linked to a JIRA issue."""
 
     # Find issue artifact
     res_issue = await db.execute(
-        select(Artifact).where(
-            Artifact.type == "jira_issue",
-            Artifact.external_id == jira_key
-        )
+        select(Artifact).where(Artifact.type == "jira_issue", Artifact.external_id == jira_key)
     )
     issue = res_issue.scalar_one_or_none()
 
@@ -406,7 +392,7 @@ async def get_commits_for_issue(
         return {"total": 0, "commits": [], "error": "Issue not found"}
 
     # Find commit artifacts linked to the issue
-    from app.models import ArtifactLink, Repository, Commit as CommitModel
+    from app.models import ArtifactLink, Commit as CommitModel
 
     res_links = await db.execute(
         select(Artifact)
@@ -425,9 +411,7 @@ async def get_commits_for_issue(
         # Get commit details
         commit_model = None
         try:
-            res_cm = await db.execute(
-                select(CommitModel).where(CommitModel.sha == sha)
-            )
+            res_cm = await db.execute(select(CommitModel).where(CommitModel.sha == sha))
             commit_model = res_cm.scalars().first()
         except Exception as e:
             logger.warning(f"Failed to get commit model for {sha}: {e}")
@@ -444,32 +428,30 @@ async def get_commits_for_issue(
                     repo_info = {
                         "provider": repo.provider,
                         "slug": repo.repo_slug,
-                        "default_branch": repo.default_branch
+                        "default_branch": repo.default_branch,
                     }
             except Exception as e:
                 logger.warning(f"Failed to get repository info: {e}")
 
-        commits.append({
-            "sha": sha,
-            "short_sha": sha[:8],
-            "message": (
-                getattr(commit_model, 'message', None) or
-                getattr(artifact, 'title', None) or
-                ""
-            ),
-            "author_email": getattr(commit_model, 'author_email', None),
-            "author_name": getattr(commit_model, 'author_name', None),
-            "repo": repo_info,
-            "artifact": {
-                "id": artifact.id,
-                "title": artifact.title,
-                "url": artifact.url,
-                "created_at": datetime_to_iso(artifact.created_at) if artifact.created_at else None
-            },
-        })
+        commits.append(
+            {
+                "sha": sha,
+                "short_sha": sha[:8],
+                "message": (
+                    getattr(commit_model, "message", None) or getattr(artifact, "title", None) or ""
+                ),
+                "author_email": getattr(commit_model, "author_email", None),
+                "author_name": getattr(commit_model, "author_name", None),
+                "repo": repo_info,
+                "artifact": {
+                    "id": artifact.id,
+                    "title": artifact.title,
+                    "url": artifact.url,
+                    "created_at": datetime_to_iso(artifact.created_at)
+                    if artifact.created_at
+                    else None,
+                },
+            }
+        )
 
-    return {
-        "total": len(commits),
-        "jira_key": jira_key,
-        "commits": commits
-    }
+    return {"total": len(commits), "jira_key": jira_key, "commits": commits}

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import BackfillProgressDialog, { BackfillStep } from './BackfillProgressDialog';
 
 describe('BackfillProgressDialog Component', () => {
@@ -100,26 +100,26 @@ describe('BackfillProgressDialog Component', () => {
     expect(screen.getByText('0s')).toBeInTheDocument();
 
     // Advance time by 1 second
-    vi.advanceTimersByTime(1000);
-    await waitFor(() => {
-      expect(screen.getByText('1s')).toBeInTheDocument();
-    }, { timeout: 10000 });
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.getByText('1s')).toBeInTheDocument();
 
     // Advance time by 1 minute
-    vi.advanceTimersByTime(60000);
-    await waitFor(() => {
-      expect(screen.getByText('1m 1s')).toBeInTheDocument();
-    }, { timeout: 10000 });
+    await act(async () => {
+      vi.advanceTimersByTime(60000);
+    });
+    expect(screen.getByText('1m 1s')).toBeInTheDocument();
   });
 
   it('resets timer when dialog closes and reopens', async () => {
     const { rerender } = render(<BackfillProgressDialog open={true} steps={mockSteps} />);
 
     // Advance time
-    vi.advanceTimersByTime(5000);
-    await waitFor(() => {
-      expect(screen.getByText('5s')).toBeInTheDocument();
-    }, { timeout: 10000 });
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(screen.getByText('5s')).toBeInTheDocument();
 
     // Close dialog
     rerender(<BackfillProgressDialog open={false} steps={mockSteps} />);
@@ -128,9 +128,10 @@ describe('BackfillProgressDialog Component', () => {
     rerender(<BackfillProgressDialog open={true} steps={mockSteps} />);
 
     // Timer should be reset
-    await waitFor(() => {
-      expect(screen.getByText('0s')).toBeInTheDocument();
-    }, { timeout: 10000 });
+    await act(async () => {
+      vi.advanceTimersByTime(0);
+    });
+    expect(screen.getByText('0s')).toBeInTheDocument();
   });
 
   it('shows help text in footer', () => {
@@ -178,10 +179,10 @@ describe('BackfillProgressDialog Component', () => {
       { id: 'step1', label: 'Analyzing', status: 'in_progress', count: 75, total: 100 },
     ];
 
-    const { container } = render(<BackfillProgressDialog open={true} steps={stepWithProgress} />);
+    render(<BackfillProgressDialog open={true} steps={stepWithProgress} />);
 
     // Find step-level progress bar (second one)
-    const progressBars = container.querySelectorAll('[role="progressbar"]');
+    const progressBars = screen.getAllByRole('progressbar');
     if (progressBars.length > 1) {
       const stepProgressBar = progressBars[1]; // First is overall, second is step
       expect(stepProgressBar).toHaveAttribute('aria-valuenow', '75');

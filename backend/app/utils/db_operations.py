@@ -2,14 +2,17 @@
 
 import logging
 from contextlib import asynccontextmanager
-from typing import Optional, Type
+from typing import Optional, Type, TypeVar
 
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 from sqlalchemy.engine import Result
 from app.core.db_utils import supports_for_update
 
 logger = logging.getLogger(__name__)
+
+ExceptionT = TypeVar("ExceptionT", bound=BaseException)
 
 
 @asynccontextmanager
@@ -20,7 +23,7 @@ async def transactional_session(
     reraise: bool = True,
     log_errors: bool = True,
     error_message: Optional[str] = None,
-    exception_type: Optional[Type[Exception]] = None
+    exception_type: Optional[Type[ExceptionT]] = None,
 ):
     """
     Context manager for database transactions with automatic commit/rollback.
@@ -92,12 +95,9 @@ async def transactional_session(
         # Re-raise if requested
         if reraise:
             if exception_type:
-                # Convert to different exception type
-                if exception_type.__name__ == 'HTTPException':
-                    # Special handling for FastAPI HTTPException
+                if issubclass(exception_type, HTTPException):
                     raise exception_type(status_code=400, detail=str(e))
-                else:
-                    raise exception_type(str(e))
+                raise exception_type(str(e))
             else:
                 # Re-raise original exception
                 raise

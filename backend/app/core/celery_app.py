@@ -17,12 +17,12 @@ celery_app = Celery(
 
 # Determine the appropriate worker pool based on the platform
 # Windows doesn't support fork(), so we use 'solo' or 'threads'
-if platform.system() == 'Windows':
-    worker_pool = 'solo'  # Use 'solo' for single-threaded execution
+if platform.system() == "Windows":
+    worker_pool = "solo"  # Use 'solo' for single-threaded execution
     # Alternative: use 'threads' for multi-threaded execution
     # worker_pool = 'threads'
 else:
-    worker_pool = 'prefork'  # Default for Unix-like systems
+    worker_pool = "prefork"  # Default for Unix-like systems
 
 celery_app.conf.update(
     task_serializer="json",

@@ -13,19 +13,27 @@ Design:
 - UserRole: Association table linking users to roles
 """
 
-from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, DateTime, Table
-from sqlalchemy.orm import relationship
+from __future__ import annotations
+
+from datetime import datetime
+from typing import TYPE_CHECKING
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Table
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
+
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 
 # Association table for many-to-many User-Role relationship
 user_roles = Table(
-    'user_roles',
+    "user_roles",
     Base.metadata,
-    Column('user_id', Integer, ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
-    Column('role_id', Integer, ForeignKey('roles.id', ondelete='CASCADE'), primary_key=True),
-    Column('assigned_at', DateTime(timezone=True), server_default=func.now()),
+    Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("role_id", Integer, ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True),
+    Column("assigned_at", DateTime(timezone=True), server_default=func.now()),
 )
 
 
@@ -50,24 +58,31 @@ class Role(Base):
         created_at: Timestamp when role was created
         updated_at: Timestamp when role was last updated
     """
+
     __tablename__ = "roles"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True, nullable=False)  # e.g., 'admin', 'po'
-    display_name = Column(String, nullable=False)  # e.g., 'Administrator'
-    description = Column(String, nullable=True)
-    is_system = Column(Boolean, default=False, nullable=False)  # System roles cannot be deleted
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(
+        String, unique=True, index=True, nullable=False
+    )  # e.g., 'admin', 'po'
+    display_name: Mapped[str] = mapped_column(String, nullable=False)  # e.g., 'Administrator'
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_system: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )  # System roles cannot be deleted
 
     # JSON array of permission strings, e.g., ['project:create', 'project:update', 'project:delete']
     # Using String column to store JSON for SQLite compatibility
     # Format: "permission1,permission2,permission3" or JSON string "['perm1', 'perm2']"
-    permissions_str = Column('permissions', String, nullable=True)
+    permissions_str: Mapped[str | None] = mapped_column("permissions", String, nullable=True)
 
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now()
+    )
 
     # Relationship to users
-    users = relationship("User", secondary=user_roles, back_populates="roles")
+    users: Mapped[list[User]] = relationship("User", secondary=user_roles, back_populates="roles")
 
     @property
     def permissions(self) -> list[str]:
@@ -76,17 +91,19 @@ class Role(Base):
             return []
         # Handle both comma-separated and JSON formats
         import json
+
         try:
             # Try JSON first
             return json.loads(self.permissions_str)
         except (json.JSONDecodeError, TypeError):
             # Fall back to comma-separated
-            return [p.strip() for p in self.permissions_str.split(',') if p.strip()]
+            return [p.strip() for p in self.permissions_str.split(",") if p.strip()]
 
     @permissions.setter
     def permissions(self, value: list[str]):
         """Set permissions from a list."""
         import json
+
         self.permissions_str = json.dumps(value) if value else None
 
     def has_permission(self, permission: str) -> bool:

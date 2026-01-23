@@ -41,22 +41,20 @@ class CircuitBreaker:
             sleep_seconds: How long to sleep when circuit opens
             enabled: Whether circuit breaker is enabled (default from settings)
         """
-        self.threshold = threshold or getattr(
-            settings,
-            'JIRA_CB_THRESHOLD',
-            self.DEFAULT_THRESHOLD
-        ) or self.DEFAULT_THRESHOLD
+        self.threshold = (
+            threshold
+            or getattr(settings, "JIRA_CB_THRESHOLD", self.DEFAULT_THRESHOLD)
+            or self.DEFAULT_THRESHOLD
+        )
 
-        self.sleep_seconds = sleep_seconds or getattr(
-            settings,
-            'JIRA_CB_SLEEP_SECONDS',
-            self.DEFAULT_SLEEP_SECONDS
-        ) or self.DEFAULT_SLEEP_SECONDS
+        self.sleep_seconds = (
+            sleep_seconds
+            or getattr(settings, "JIRA_CB_SLEEP_SECONDS", self.DEFAULT_SLEEP_SECONDS)
+            or self.DEFAULT_SLEEP_SECONDS
+        )
 
-        self.enabled = enabled if enabled is not None else getattr(
-            settings,
-            'JIRA_CB_ENABLED',
-            False
+        self.enabled = (
+            enabled if enabled is not None else getattr(settings, "JIRA_CB_ENABLED", False)
         )
 
         # State
@@ -65,10 +63,10 @@ class CircuitBreaker:
         self._open_count = 0
 
         logger.debug(
-            'CircuitBreaker initialized: enabled=%s threshold=%d sleep=%.1fs',
+            "CircuitBreaker initialized: enabled=%s threshold=%d sleep=%.1fs",
             self.enabled,
             self.threshold,
-            self.sleep_seconds
+            self.sleep_seconds,
         )
 
     def is_open(self) -> bool:
@@ -90,7 +88,7 @@ class CircuitBreaker:
         if self._disabled_until > 0:
             logger.info(
                 "Circuit breaker recovered (was open for %.1fs)",
-                now - (self._disabled_until - self.sleep_seconds)
+                now - (self._disabled_until - self.sleep_seconds),
             )
             self._failures = 0
             self._disabled_until = 0.0
@@ -117,11 +115,7 @@ class CircuitBreaker:
 
         self._failures += 1
 
-        logger.debug(
-            "Circuit breaker: failure recorded (%d/%d)",
-            self._failures,
-            self.threshold
-        )
+        logger.debug("Circuit breaker: failure recorded (%d/%d)", self._failures, self.threshold)
 
         if self._failures >= self.threshold:
             self._open()
@@ -135,7 +129,7 @@ class CircuitBreaker:
             "Circuit breaker OPEN: failures=%d sleep=%.1fs (total_opens=%d)",
             self._failures,
             self.sleep_seconds,
-            self._open_count
+            self._open_count,
         )
 
         self._failures = 0
@@ -144,16 +138,16 @@ class CircuitBreaker:
     def _update_metrics_open(self) -> None:
         """Update metrics to reflect open state."""
         try:
-            metrics.inc('jira_cb_open_total')
-            metrics.set_gauge('jira_cb_open', 1)
-            metrics.set_gauge('jira_cb_sleep_seconds', self.sleep_seconds)
+            metrics.inc("jira_cb_open_total")
+            metrics.set_gauge("jira_cb_open", 1)
+            metrics.set_gauge("jira_cb_sleep_seconds", self.sleep_seconds)
         except Exception as e:
             logger.debug("Failed to update circuit breaker metrics: %s", e)
 
     def _update_metrics_closed(self) -> None:
         """Update metrics to reflect closed state."""
         try:
-            metrics.set_gauge('jira_cb_open', 0)
+            metrics.set_gauge("jira_cb_open", 0)
         except Exception as e:
             logger.debug("Failed to update circuit breaker metrics: %s", e)
 
@@ -166,11 +160,11 @@ class CircuitBreaker:
             Dict with current state and statistics
         """
         return {
-            'enabled': self.enabled,
-            'is_open': self.is_open(),
-            'failures': self._failures,
-            'threshold': self.threshold,
-            'total_opens': self._open_count,
-            'disabled_until': self._disabled_until,
-            'sleep_seconds': self.sleep_seconds,
+            "enabled": self.enabled,
+            "is_open": self.is_open(),
+            "failures": self._failures,
+            "threshold": self.threshold,
+            "total_opens": self._open_count,
+            "disabled_until": self._disabled_until,
+            "sleep_seconds": self.sleep_seconds,
         }

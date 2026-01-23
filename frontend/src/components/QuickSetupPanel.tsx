@@ -18,7 +18,6 @@ import {
 import {
   CheckCircle as CheckIcon,
   Cancel as CancelIcon,
-  ExpandMore as ExpandMoreIcon,
   AutoFixHigh as AutoFixIcon,
   Settings as ManualIcon,
   Help as HelpIcon,
@@ -38,7 +37,14 @@ interface QuickSetupPanelProps {
   isCalibrating: boolean;
 }
 
-const ESSENTIAL_FIELDS = [
+type MappedFieldKey = keyof QuickSetupPanelProps['mappedFields'];
+
+const ESSENTIAL_FIELDS: Array<{
+  key: MappedFieldKey;
+  label: string;
+  description: string;
+  required: boolean;
+}> = [
   {
     key: 'sprint',
     label: 'Sprint',
@@ -131,7 +137,7 @@ export const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
         </Typography>
         <List dense sx={{ bgcolor: 'background.paper', borderRadius: 1 }}>
           {ESSENTIAL_FIELDS.map((field) => {
-            const isMapped = mappedFields[field.key as keyof typeof mappedFields];
+            const isMapped = mappedFields[field.key];
             return (
               <ListItem key={field.key}>
                 <ListItemIcon>
@@ -216,8 +222,8 @@ export const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
       {!requiredFieldsMapped && !isCalibrating && (
         <Alert severity="warning" sx={{ mt: 2 }}>
           <Typography variant="body2">
-            <strong>Required fields not mapped.</strong> Enter a project key and click "Auto-Map"
-            to get started, or use "Manual Setup" to configure fields yourself.
+            <strong>Required fields not mapped.</strong> Enter a project key and click &quot;Auto-Map&quot;
+            to get started, or use &quot;Manual Setup&quot; to configure fields yourself.
           </Typography>
         </Alert>
       )}

@@ -103,8 +103,12 @@ const ImportExportDialog: React.FC<ImportExportDialogProps> = ({
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      const content = e.target?.result as string;
-      setJsonText(content);
+      const content = e.target?.result;
+      if (typeof content === 'string') {
+        setJsonText(content);
+      } else {
+        setError('Unable to read file contents');
+      }
     };
     reader.readAsText(file);
   };
@@ -181,7 +185,7 @@ const ImportExportDialog: React.FC<ImportExportDialogProps> = ({
             </>
           ) : (
             <Alert severity="info">
-              Click "Export Current Rule" to generate JSON
+              Click &quot;Export Current Rule&quot; to generate JSON
             </Alert>
           )}
         </TabPanel>

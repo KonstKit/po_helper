@@ -1,5 +1,5 @@
-
 """GitLab projects discovery endpoint."""
+
 from __future__ import annotations
 
 import asyncio
@@ -60,7 +60,9 @@ async def _load_gitlab_config(db: AsyncSession) -> tuple[str, str]:
     return api_base, token
 
 
-async def _request_json(url: str, token: str, params: Dict[str, Any]) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+async def _request_json(
+    url: str, token: str, params: Dict[str, Any]
+) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
     def _do_request() -> requests.Response:
         headers = {"PRIVATE-TOKEN": token}
         return requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
@@ -116,7 +118,9 @@ async def list_gitlab_projects(
     api_base, token = await _load_gitlab_config(db)
 
     if group_id is not None and group_path is not None:
-        raise HTTPException(status_code=400, detail="Specify either group_id or group_path, not both")
+        raise HTTPException(
+            status_code=400, detail="Specify either group_id or group_path, not both"
+        )
 
     params: Dict[str, Any] = {"per_page": per_page}
     if page is not None:

@@ -1,4 +1,4 @@
-﻿# Deployment Guide
+# Deployment Guide
 
 This guide describes how to promote PO Helper from a local workstation to staging or production environments.
 

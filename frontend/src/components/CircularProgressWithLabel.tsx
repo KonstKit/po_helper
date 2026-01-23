@@ -9,7 +9,7 @@ type Props = {
 
 const CircularProgressWithLabel: React.FC<Props> = ({ value, label, size = 64 }) => {
   const determinate = typeof value === 'number' && !Number.isNaN(value);
-  const clamped = determinate ? Math.max(0, Math.min(100, value as number)) : undefined;
+  const clamped = determinate ? Math.max(0, Math.min(100, value)) : undefined;
   return (
     <Box display="inline-flex" flexDirection="column" alignItems="center" justifyContent="center">
       <Box position="relative" display="inline-flex">
@@ -41,4 +41,3 @@ const CircularProgressWithLabel: React.FC<Props> = ({ value, label, size = 64 })
 };
 
 export default CircularProgressWithLabel;
-

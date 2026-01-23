@@ -26,12 +26,18 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SyncIcon from '@mui/icons-material/Sync';
 import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import AltRouteIcon from '@mui/icons-material/AltRoute';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import BubbleChartIcon from '@mui/icons-material/BubbleChart';
+import HistoryIcon from '@mui/icons-material/History';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
+import { Link as RouterLink } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
 import BackfillProgressDialog, { BackfillStep } from '../components/BackfillProgressDialog';
 
@@ -48,6 +54,7 @@ import {
   listProjects,
   runTraceabilityBackfill,
 } from '../services/api';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface BackfillState {
   running: boolean;
@@ -56,8 +63,17 @@ interface BackfillState {
   lastResult?: TraceabilityBackfillResult | null;
 }
 
-const CORE_LINK_TYPES = ['implements', 'tests', 'deploys', 'derives_from'] as const;
+type CoreLinkType = 'implements' | 'tests' | 'deploys' | 'derives_from';
+const CORE_LINK_TYPES: CoreLinkType[] = ['implements', 'tests', 'deploys', 'derives_from'];
 const CORE_LINK_TYPES_SET = new Set<string>(CORE_LINK_TYPES);
+
+const parseProjectId = (value: string): number | 'all' => {
+  if (value === 'all') {
+    return 'all';
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 'all';
+};
 
 interface LinkTypeBreakdown {
   key: string;
@@ -79,11 +95,6 @@ interface TypeRow {
   linkTypes: LinkTypeBreakdown[];
   hasCoverageGap: boolean;
   coreMissingCount: number;
-}
-
-interface FlowColumn {
-  depth: number;
-  nodes: TraceabilityFlowNode[];
 }
 
 const Traceability: React.FC = () => {
@@ -108,6 +119,10 @@ const Traceability: React.FC = () => {
   const [flowRootId, setFlowRootId] = useState<number | null>(null);
   const [flowLoading, setFlowLoading] = useState(false);
   const [flowError, setFlowError] = useState<string | null>(null);
+
+  const handleProjectChange = (event: SelectChangeEvent<string>) => {
+    setProjectId(parseProjectId(event.target.value));
+  };
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -116,7 +131,8 @@ const Traceability: React.FC = () => {
       setProjectsLoading(true);
       setProjectsError(null);
       try {
-        const data = await listProjects({ timeout: 45000 });
+        const res = await listProjects();
+        const data = res.data;
         if (cancelled) return;
         setProjects(data);
         setProjectId(prev => {
@@ -128,10 +144,10 @@ const Traceability: React.FC = () => {
           }
           return data[0].id;
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (cancelled) return;
         console.error('Failed to load projects', err);
-        setProjectsError(err?.message ?? 'Failed to load projects');
+        setProjectsError(getErrorMessage(err, 'Failed to load projects'));
       } finally {
         if (!cancelled) {
           setProjectsLoading(false);
@@ -154,10 +170,9 @@ const Traceability: React.FC = () => {
         force: opts?.force,
       });
       setMatrix(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load traceability matrix', err);
-      const detail = err?.response?.data?.detail ?? err?.message ?? 'Failed to load traceability data';
-      setMatrixError(detail);
+      setMatrixError(getErrorMessage(err, 'Failed to load traceability data'));
     } finally {
       setMatrixLoading(false);
     }
@@ -336,10 +351,9 @@ const Traceability: React.FC = () => {
       });
       setBackfillSteps([]);
       await fetchMatrix({ force: true });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Traceability backfill failed', err);
-      const detail = err?.response?.data?.detail ?? err?.message ?? 'Traceability backfill failed';
-      setBackfillState({ running: false, error: detail });
+      setBackfillState({ running: false, error: getErrorMessage(err, 'Traceability backfill failed') });
       setBackfillSteps([]);
     }
   }, [fetchMatrix, includeConfluence, includeGit, projectId]);
@@ -358,16 +372,6 @@ const Traceability: React.FC = () => {
       const list = map.get(edge.from) ?? [];
       list.push(edge);
       map.set(edge.from, list);
-    });
-    return map;
-  }, [flowData]);
-
-  const incomingEdgesMap = useMemo(() => {
-    const map = new Map<number, TraceabilityFlowEdge[]>();
-    flowData?.edges.forEach(edge => {
-      const list = map.get(edge.to) ?? [];
-      list.push(edge);
-      map.set(edge.to, list);
     });
     return map;
   }, [flowData]);
@@ -431,10 +435,9 @@ const Traceability: React.FC = () => {
         setFlowData(data);
         setFlowRootId(artifactId);
         setSelectedNodeId(artifactId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Failed to load requirement flow', err);
-        const detail = err?.response?.data?.detail ?? err?.message ?? 'Failed to load requirement flow';
-        setFlowError(detail);
+        setFlowError(getErrorMessage(err, 'Failed to load requirement flow'));
       } finally {
         setFlowLoading(false);
       }
@@ -472,10 +475,9 @@ const Traceability: React.FC = () => {
       setFlowData(data);
       setFlowRootId(artifactId);
       setSelectedNodeId(artifactId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to resolve Jira key', err);
-      const detail = err?.response?.data?.detail ?? err?.message ?? 'Failed to resolve Jira key';
-      setFlowError(detail);
+      setFlowError(getErrorMessage(err, 'Failed to resolve Jira key'));
     } finally {
       setFlowLoading(false);
     }
@@ -485,8 +487,7 @@ const Traceability: React.FC = () => {
     if (flowRootId !== null) {
       loadFlowByArtifactId(flowRootId);
     }
-    // eslint-disable-next-line react-hooks-exhaustive-deps
-  }, [flowDepth]);
+  }, [flowDepth, flowRootId, loadFlowByArtifactId]);
 
   const selectedNode = useMemo(() => {
     if (!flowData || selectedNodeId === null) return null;
@@ -527,6 +528,55 @@ const Traceability: React.FC = () => {
         Monitor end-to-end linkage between requirements, delivery work, and validations. Run a backfill to populate artifacts, then track coverage and gaps by artifact type.
       </Typography>
 
+      {/* Quick navigation to related pages */}
+      <Stack direction="row" spacing={1} sx={{ mt: 2 }} flexWrap="wrap" useFlexGap>
+        <Button
+          component={RouterLink}
+          to="/traceability/visualization"
+          variant="outlined"
+          startIcon={<BubbleChartIcon />}
+          size="small"
+        >
+          D3 Visualization
+        </Button>
+        <Button
+          component={RouterLink}
+          to="/traceability/flow-builder"
+          variant="outlined"
+          startIcon={<AccountTreeIcon />}
+          size="small"
+        >
+          Flow Builder
+        </Button>
+        <Button
+          component={RouterLink}
+          to="/traceability/history"
+          variant="outlined"
+          startIcon={<HistoryIcon />}
+          size="small"
+        >
+          Execution History
+        </Button>
+        <Button
+          component={RouterLink}
+          to="/traceability/visualization?tab=4"
+          variant="outlined"
+          startIcon={<AutoAwesomeIcon />}
+          size="small"
+        >
+          Suggested Links
+        </Button>
+        <Button
+          component={RouterLink}
+          to="/traceability/visualization?tab=5"
+          variant="outlined"
+          startIcon={<MonitorHeartIcon />}
+          size="small"
+        >
+          Sync Health
+        </Button>
+      </Stack>
+
       {hasAlerts && (
         <Stack spacing={1} sx={{ mt: 2 }}>
           {projectsError && <Alert severity="error">{projectsError}</Alert>}
@@ -549,7 +599,7 @@ const Traceability: React.FC = () => {
                   labelId="traceability-project-label"
                   label="Project"
                   value={projects.length === 0 ? 'all' : projectId}
-                  onChange={event => setProjectId(event.target.value as number | 'all')}
+                  onChange={handleProjectChange}
                 >
                   <MenuItem value="all">All projects</MenuItem>
                   {projects.map(project => (
@@ -668,7 +718,7 @@ const Traceability: React.FC = () => {
                           You have {matrix?.total || 0} artifacts but no links detected yet.
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          Click "Run Backfill" to analyze smart-commit parsing, Confluence references, and Git relationships.
+                          Click &quot;Run Backfill&quot; to analyze smart-commit parsing, Confluence references, and Git relationships.
                         </Typography>
                       </Box>
                     }

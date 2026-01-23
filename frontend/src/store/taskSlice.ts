@@ -1,18 +1,21 @@
-﻿import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { logout } from './authSlice';
 
-interface Task {
+export interface Task {
   id: number;
   key: string;
   summary: string;
   status: string;
   priority?: string;
   assignee_name?: string;
-  project_id: number;
+  project_id?: number | null;
   estimate_hours?: number;
   spent_hours?: number;
-  due_date?: string;
-  business_value?: number;
+  due_date?: string | null;
+  created_date?: string | null;
+  updated_date?: string | null;
+  is_blocker?: boolean;
+  business_value?: number | null;
 }
 
 interface TaskState {
@@ -53,7 +56,8 @@ const taskSlice = createSlice({
       } else {
         state.lastLoadedAllAt = now;
         state.tasksByProject = {};
-        tasks.forEach(task => {
+        tasks.forEach((task: Task) => {
+          if (typeof task.project_id !== 'number') return;
           if (!state.tasksByProject[task.project_id]) {
             state.tasksByProject[task.project_id] = [];
           }
@@ -63,13 +67,17 @@ const taskSlice = createSlice({
       }
     },
     updateTask: (state, action: PayloadAction<Task>) => {
-      const index = state.tasks.findIndex(t => t.id === action.payload.id);
+      const index = state.tasks.findIndex((task: Task) => task.id === action.payload.id);
       if (index !== -1) {
         state.tasks[index] = action.payload;
       }
-      const projectTasks = state.tasksByProject[action.payload.project_id];
+      const projectId = action.payload.project_id;
+      if (typeof projectId !== 'number') {
+        return;
+      }
+      const projectTasks = state.tasksByProject[projectId];
       if (projectTasks) {
-        const projectIndex = projectTasks.findIndex(t => t.id === action.payload.id);
+        const projectIndex = projectTasks.findIndex((task: Task) => task.id === action.payload.id);
         if (projectIndex !== -1) {
           projectTasks[projectIndex] = action.payload;
         }

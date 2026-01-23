@@ -44,16 +44,17 @@ const BackfillProgressDialog: React.FC<BackfillProgressDialogProps> = ({
 
   // Track elapsed time
   useEffect(() => {
-    if (!open) {
-      setElapsedSeconds(0);
-      return;
-    }
-
+    if (!open) return;
+    const startedAt = Date.now();
+    const resetId = setTimeout(() => setElapsedSeconds(0), 0);
     const interval = setInterval(() => {
-      setElapsedSeconds((prev) => prev + 1);
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(resetId);
+      clearInterval(interval);
+    };
   }, [open]);
 
   // Calculate overall progress

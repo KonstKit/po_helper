@@ -3,7 +3,7 @@ Celery tasks for Jira synchronization.
 Provides robust background processing with retry logic and progress tracking.
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, cast
 from datetime import datetime
 import logging
 from celery import Task, states
@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.core.celery_app import celery_app
 from app.core.database import AsyncSessionLocal
 from app.services.jira_sync import perform_project_sync
-from app.core.cache import redis_client
+from app.core.cache import redis_client as _redis_client
 from app.models import IntegrationSetting
 from app.core.crypto import decrypt_str
 from app.core.config import settings
@@ -33,22 +33,25 @@ class JiraSyncTask(Task):
         self.updated_count = 0
         self.channel_id = None
 
-    def update_progress(self, message: str, percent: int = None):
+    def update_progress(self, message: str, percent: Optional[int] = None):
         """Update task progress and send SSE update if channel is configured."""
-        if percent is None:
-            percent = int((self.processed_issues / max(self.total_issues, 1)) * 100)
+        effective_percent = (
+            percent
+            if percent is not None
+            else int((self.processed_issues / max(self.total_issues, 1)) * 100)
+        )
 
         # Update Celery task state
         self.update_state(
-            state='PROGRESS',
+            state="PROGRESS",
             meta={
-                'current': self.processed_issues,
-                'total': self.total_issues,
-                'percent': percent,
-                'message': message,
-                'created': self.created_count,
-                'updated': self.updated_count
-            }
+                "current": self.processed_issues,
+                "total": self.total_issues,
+                "percent": effective_percent,
+                "message": message,
+                "created": self.created_count,
+                "updated": self.updated_count,
+            },
         )
 
         # Send SSE update if channel is configured
@@ -56,15 +59,17 @@ class JiraSyncTask(Task):
             try:
                 redis_client.publish(
                     f"jira_sync_{self.channel_id}",
-                    json.dumps({
-                        'type': 'progress',
-                        'percent': percent,
-                        'message': message,
-                        'synced': self.processed_issues,
-                        'created': self.created_count,
-                        'updated': self.updated_count,
-                        'task_id': self.request.id
-                    })
+                    json.dumps(
+                        {
+                            "type": "progress",
+                            "percent": effective_percent,
+                            "message": message,
+                            "synced": self.processed_issues,
+                            "created": self.created_count,
+                            "updated": self.updated_count,
+                            "task_id": self.request.id,
+                        }
+                    ),
                 )
             except Exception as e:
                 logger.warning(f"Failed to send SSE update: {e}")
@@ -73,18 +78,15 @@ class JiraSyncTask(Task):
 @celery_app.task(
     bind=True,
     base=JiraSyncTask,
-    name='jira.sync_project',
+    name="jira.sync_project",
     max_retries=3,
     soft_time_limit=1800,  # 30 minutes soft limit
     time_limit=2400,  # 40 minutes hard limit
     acks_late=True,
-    reject_on_worker_lost=True
+    reject_on_worker_lost=True,
 )
 def sync_jira_project(
-    self,
-    project_key: str,
-    project_id: int,
-    channel_id: Optional[str] = None
+    self, project_key: str, project_id: int, channel_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Sync Jira project with robust error handling and progress tracking.
@@ -110,22 +112,26 @@ def sync_jira_project(
 
         # Ensure Jira service is connected (Celery doesn't run FastAPI startup)
         async def _ensure_jira_connected():
-            if not getattr(jira_service, 'base_url', None) or (
+            if not getattr(jira_service, "base_url", None) or (
                 jira_service.auth is None and jira_service.bearer_token is None
             ):
                 async with AsyncSessionLocal() as db:
                     res = await db.execute(
-                        select(IntegrationSetting).where(IntegrationSetting.kind == 'jira')
+                        select(IntegrationSetting).where(IntegrationSetting.kind == "jira")
                     )
                     row = res.scalar_one_or_none()
                     if row and row.base_url and row.api_token:
                         token = decrypt_str(row.api_token)
-                        email = None if getattr(settings, 'JIRA_FORCE_PAT', True) else (row.email or None)
+                        email = (
+                            None
+                            if getattr(settings, "JIRA_FORCE_PAT", True)
+                            else (row.email or None)
+                        )
                         jira_service.connect(row.base_url, email, token)
                         logger.info(
-                            'Jira connected in Celery worker (base_url=%s, mode=%s)',
+                            "Jira connected in Celery worker (base_url=%s, mode=%s)",
                             row.base_url,
-                            'PAT' if email is None else 'Basic'
+                            "PAT" if email is None else "Basic",
                         )
 
         loop.run_until_complete(_ensure_jira_connected())
@@ -140,14 +146,14 @@ def sync_jira_project(
         self.update_progress(f"Sync completed for {project_key}", 100)
 
         result = {
-            'status': 'success',
-            'project_key': project_key,
-            'project_id': project_id,
-            'duration': duration,
-            'synced': self.processed_issues,
-            'created': self.created_count,
-            'updated': self.updated_count,
-            'timestamp': datetime.utcnow().isoformat()
+            "status": "success",
+            "project_key": project_key,
+            "project_id": project_id,
+            "duration": duration,
+            "synced": self.processed_issues,
+            "created": self.created_count,
+            "updated": self.updated_count,
+            "timestamp": datetime.utcnow().isoformat(),
         }
 
         logger.info(
@@ -161,21 +167,20 @@ def sync_jira_project(
         duration = (datetime.utcnow() - start_time).total_seconds()
         error_msg = str(exc)
 
-        logger.error(
-            f"Jira sync failed for {project_key}: {error_msg}",
-            exc_info=True
-        )
+        logger.error(f"Jira sync failed for {project_key}: {error_msg}", exc_info=True)
 
         # Send error notification
         if self.channel_id and redis_client:
             try:
                 redis_client.publish(
                     f"jira_sync_{self.channel_id}",
-                    json.dumps({
-                        'type': 'error',
-                        'message': f"Sync failed: {error_msg}",
-                        'task_id': self.request.id
-                    })
+                    json.dumps(
+                        {
+                            "type": "error",
+                            "message": f"Sync failed: {error_msg}",
+                            "task_id": self.request.id,
+                        }
+                    ),
                 )
             except Exception as e:
                 logger.warning(f"Failed to send error notification: {e}")
@@ -183,11 +188,7 @@ def sync_jira_project(
         # Update task state
         self.update_state(
             state=states.FAILURE,
-            meta={
-                'error': error_msg,
-                'project_key': project_key,
-                'duration': duration
-            }
+            meta={"error": error_msg, "project_key": project_key, "duration": duration},
         )
 
         # Re-raise for Celery retry logic
@@ -197,5 +198,8 @@ def sync_jira_project(
         # Clean up event loop
         try:
             loop.close()
-        except:
+        except Exception:
             pass
+
+
+redis_client: Any = cast(Any, _redis_client)

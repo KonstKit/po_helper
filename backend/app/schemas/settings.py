@@ -6,7 +6,9 @@ class IntegrationSettingsBase(BaseModel):
     base_url: Optional[str] = None
     email: Optional[str] = None  # accept empty string; validate upstream if needed
     api_token: Optional[str] = None
-    webhook_secret: Optional[str] = None  # for GitHub/GitLab (stored encrypted as part of token bundle)
+    webhook_secret: Optional[str] = (
+        None  # for GitHub/GitLab (stored encrypted as part of token bundle)
+    )
     use_pat: Optional[bool] = None  # prefer PAT vs Basic when applicable
 
 

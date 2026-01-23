@@ -22,6 +22,20 @@ export interface SmartDefaults {
   preferredMetrics: string[];
 }
 
+type SprintLike = {
+  start_date?: string;
+  end_date?: string;
+};
+
+type TaskLike = Record<string, unknown>;
+
+type SettingsDefaults = {
+  sprintDuration: number;
+  workingHoursPerDay: number;
+  currency: string;
+  timezone: string;
+};
+
 /**
  * Detect timezone from browser
  */
@@ -81,7 +95,7 @@ export function detectCurrency(): string {
  * Analyze sprint durations from project data
  * Returns average sprint length in days
  */
-export function analyzeSprintDuration(sprints: any[]): number {
+export function analyzeSprintDuration(sprints: SprintLike[]): number {
   if (!sprints || sprints.length === 0) {
     return 14; // Default 2-week sprints
   }
@@ -126,7 +140,8 @@ export function analyzeSprintDuration(sprints: any[]): number {
  * Detect working hours per day from task completion patterns
  * Analyzes time spent on tasks to infer typical work day
  */
-export function analyzeWorkingHours(tasks: any[]): number {
+export function analyzeWorkingHours(tasks: TaskLike[]): number {
+  void tasks;
   // For now, return standard 8-hour workday
   // In future, could analyze:
   // - Time spent on tasks
@@ -140,17 +155,6 @@ export function analyzeWorkingHours(tasks: any[]): number {
  * Determine preferred metrics based on user role/use case
  */
 export function determinePreferredMetrics(useCase?: string): string[] {
-  const allMetrics = [
-    'velocity',
-    'burndown',
-    'cycleTime',
-    'leadTime',
-    'throughput',
-    'defectRate',
-    'codeReview',
-    'testCoverage',
-  ];
-
   // Map use cases to relevant metrics
   switch (useCase) {
     case 'velocity':
@@ -195,8 +199,8 @@ export function determineDefaultTimeRange(projectCreatedAt?: string): '1month' |
  * Generate complete smart defaults
  */
 export async function generateSmartDefaults(
-  sprints?: any[],
-  tasks?: any[],
+  sprints?: SprintLike[],
+  tasks?: TaskLike[],
   projectCreatedAt?: string,
   useCase?: string
 ): Promise<SmartDefaults> {
@@ -240,7 +244,7 @@ export function loadSmartDefaults(): SmartDefaults | null {
 /**
  * Apply smart defaults to settings form
  */
-export function applyDefaultsToSettings(defaults: SmartDefaults): Record<string, any> {
+export function applyDefaultsToSettings(defaults: SmartDefaults): SettingsDefaults {
   return {
     sprintDuration: defaults.sprintDuration,
     workingHoursPerDay: defaults.workingHoursPerDay,
@@ -252,16 +256,19 @@ export function applyDefaultsToSettings(defaults: SmartDefaults): Record<string,
 /**
  * Get default explanation for user
  */
-export function explainDefault(field: keyof SmartDefaults, value: any): string {
+export function explainDefault(field: keyof SmartDefaults, value: unknown): string {
+  const displayValue = typeof value === 'string' || typeof value === 'number'
+    ? value
+    : String(value);
   const explanations: Record<string, string> = {
-    sprintDuration: `Detected from your project's sprint history (${value} days)`,
-    workingHoursPerDay: `Standard workday (${value} hours)`,
-    currency: `Detected from your browser locale (${value})`,
-    timezone: `Detected from your browser (${value})`,
-    defaultTimeRange: `Based on project age (${value})`,
+    sprintDuration: `Detected from your project's sprint history (${displayValue} days)`,
+    workingHoursPerDay: `Standard workday (${displayValue} hours)`,
+    currency: `Detected from your browser locale (${displayValue})`,
+    timezone: `Detected from your browser (${displayValue})`,
+    defaultTimeRange: `Based on project age (${displayValue})`,
     defaultChartView: `Recommended view for balanced insights`,
     preferredMetrics: `Relevant metrics for your use case`,
   };
 
-  return explanations[field] || `Auto-detected: ${value}`;
+  return explanations[field] || `Auto-detected: ${displayValue}`;
 }

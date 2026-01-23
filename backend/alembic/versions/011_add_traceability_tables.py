@@ -1,4 +1,4 @@
-﻿"""add traceability tables"""
+"""add traceability tables"""
 
 import sqlalchemy as sa
 from alembic import op

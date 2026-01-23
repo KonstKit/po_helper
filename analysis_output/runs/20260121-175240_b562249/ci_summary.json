@@ -1,0 +1,171 @@
+{
+  "run_id": "20260121-175240_b562249",
+  "schema_version": "4.0.0-ci-strict",
+  "timestamp": "20260121-175240",
+  "git_sha": "b562249",
+  "ci_status": "PASS",
+  "fail_reasons": [],
+  "languages_detected": [
+    {
+      "language": "JSON",
+      "files_count": 80,
+      "loc_total": 2126132
+    },
+    {
+      "language": "Unknown",
+      "files_count": 173,
+      "loc_total": 191483
+    },
+    {
+      "language": "YAML",
+      "files_count": 4,
+      "loc_total": 305
+    },
+    {
+      "language": "Markdown",
+      "files_count": 79,
+      "loc_total": 27997
+    },
+    {
+      "language": "INI",
+      "files_count": 2,
+      "loc_total": 96
+    },
+    {
+      "language": "Python",
+      "files_count": 201,
+      "loc_total": 41162
+    },
+    {
+      "language": "SQL",
+      "files_count": 1,
+      "loc_total": 214
+    },
+    {
+      "language": "Text",
+      "files_count": 7,
+      "loc_total": 670
+    },
+    {
+      "language": "TypeScript",
+      "files_count": 129,
+      "loc_total": 38220
+    },
+    {
+      "language": "JavaScript",
+      "files_count": 5,
+      "loc_total": 430
+    },
+    {
+      "language": "HTML",
+      "files_count": 4,
+      "loc_total": 606
+    },
+    {
+      "language": "CSS",
+      "files_count": 2,
+      "loc_total": 420
+    },
+    {
+      "language": "XML",
+      "files_count": 1,
+      "loc_total": 208
+    }
+  ],
+  "analysis_modes": {
+    "TypeScript": "ast",
+    "JavaScript": "ast",
+    "Python": "ast"
+  },
+  "semantic_reliability": {
+    "TypeScript": "MEDIUM",
+    "JavaScript": "MEDIUM",
+    "Python": "HIGH"
+  },
+  "issue_counts": {
+    "BLOCKER": 0,
+    "CRITICAL": 0,
+    "MAJOR": 0,
+    "MINOR": 0,
+    "INFO": 0
+  },
+  "issue_counts_prod": {
+    "BLOCKER": 0,
+    "CRITICAL": 0,
+    "MAJOR": 0,
+    "MINOR": 0,
+    "INFO": 0
+  },
+  "gates": [
+    {
+      "gate": "method_id_unique",
+      "status": "PASS",
+      "details": "unique method_id"
+    },
+    {
+      "gate": "signatures_one_line",
+      "status": "PASS",
+      "details": "final_multiline_count=0"
+    },
+    {
+      "gate": "signatures_max_len",
+      "status": "PASS",
+      "details": "final_max_len=146"
+    },
+    {
+      "gate": "edges_consistent",
+      "status": "PASS",
+      "details": "internal edges resolved"
+    },
+    {
+      "gate": "stoplist_filter",
+      "status": "PASS",
+      "details": "no stoplist symbols in external edges"
+    },
+    {
+      "gate": "matrices_differ",
+      "status": "PASS",
+      "details": "reverse_full differs from reverse_internal"
+    },
+    {
+      "gate": "files_csv_complete",
+      "status": "PASS",
+      "details": "tree files present in files.csv"
+    },
+    {
+      "gate": "no_duplicate_rows",
+      "status": "PASS",
+      "details": "no duplicate rows"
+    },
+    {
+      "gate": "stable_sorting_applied",
+      "status": "PASS",
+      "details": "sorted outputs by stable keys"
+    },
+    {
+      "gate": "toolchain_ran_for_language",
+      "status": "PASS",
+      "details": "tsc executed"
+    },
+    {
+      "gate": "dependency_inventory_present",
+      "status": "PASS",
+      "details": "dependency inventory generated"
+    },
+    {
+      "gate": "required_artifacts_present",
+      "status": "PASS",
+      "details": "all required artifacts present"
+    },
+    {
+      "gate": "manifest_complete",
+      "status": "PASS",
+      "details": "manifest covers required artifacts"
+    }
+  ],
+  "artifact_paths": {
+    "output_root": "analysis_output/runs/20260121-175240_b562249",
+    "zip_path": "analysis_output/exports/artifacts_20260121-175240_b562249.zip",
+    "latest_zip": "analysis_output/exports/LATEST.zip"
+  }
+}

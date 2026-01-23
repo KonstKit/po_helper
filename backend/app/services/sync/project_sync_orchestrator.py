@@ -8,7 +8,6 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.config import settings
@@ -92,7 +91,9 @@ class ProjectSyncOrchestrator:
         )
 
         try:
-            logger.info('sync_project_issues started for %s (project_id=%s)', project_key, project_id)
+            logger.info(
+                "sync_project_issues started for %s (project_id=%s)", project_key, project_id
+            )
 
             # Ensure Jira connection
             await self._ensure_jira_connection()
@@ -101,9 +102,13 @@ class ProjectSyncOrchestrator:
             issues = await self._fetch_issues(project_key)
 
             if not issues:
-                result.failure_reason = 'empty'
-                await self._notify_failure(project_key, project_id, 'empty',
-                    'No issues returned from Jira - project may be empty or check API permissions')
+                result.failure_reason = "empty"
+                await self._notify_failure(
+                    project_key,
+                    project_id,
+                    "empty",
+                    "No issues returned from Jira - project may be empty or check API permissions",
+                )
                 return result
 
             result.total_issues = len(issues)
@@ -124,66 +129,78 @@ class ProjectSyncOrchestrator:
             result.sync_duration_seconds = (datetime.utcnow() - start_time).total_seconds()
 
             logger.info(
-                'Sync complete project=%s saved_issues=%d duration=%.2fs',
+                "Sync complete project=%s saved_issues=%d duration=%.2fs",
                 project_key,
                 result.total_issues,
-                result.sync_duration_seconds
+                result.sync_duration_seconds,
             )
 
             await self._notify_success(project_key, project_id)
 
         except JiraAuthError as exc:
-            logger.error('Jira auth error during sync for %s: %s', project_key, exc)
-            result.failure_reason = 'auth'
-            result.errors.append(('auth', str(exc)))
-            await self._notify_failure(project_key, project_id, 'auth', str(exc))
+            logger.error("Jira auth error during sync for %s: %s", project_key, exc)
+            result.failure_reason = "auth"
+            result.errors.append(("auth", str(exc)))
+            await self._notify_failure(project_key, project_id, "auth", str(exc))
 
         except JiraUnexpectedResponse as exc:
-            logger.error('Unexpected Jira response during sync for %s: %s', project_key, exc)
-            result.failure_reason = 'unexpected'
-            result.errors.append(('unexpected', str(exc)))
-            await self._notify_failure(project_key, project_id, 'unexpected', str(exc))
+            logger.error("Unexpected Jira response during sync for %s: %s", project_key, exc)
+            result.failure_reason = "unexpected"
+            result.errors.append(("unexpected", str(exc)))
+            await self._notify_failure(project_key, project_id, "unexpected", str(exc))
 
         except Exception as exc:
-            logger.error('Error syncing issues for %s: %s', project_key, exc, exc_info=True)
-            result.failure_reason = 'error'
-            result.errors.append(('sync', str(exc)))
-            await self._notify_failure(project_key, project_id, 'error', str(exc))
+            logger.error("Error syncing issues for %s: %s", project_key, exc, exc_info=True)
+            result.failure_reason = "error"
+            result.errors.append(("sync", str(exc)))
+            await self._notify_failure(project_key, project_id, "error", str(exc))
 
         return result
 
     async def _ensure_jira_connection(self) -> None:
         """Ensure Jira service is connected (for Celery workers)."""
-        logger.info('Jira service state: base_url=%s, has_auth=%s',
-                   jira_service.base_url,
-                   bool(jira_service.auth or jira_service.bearer_token))
+        logger.info(
+            "Jira service state: base_url=%s, has_auth=%s",
+            jira_service.base_url,
+            bool(jira_service.auth or jira_service.bearer_token),
+        )
 
-        if not getattr(jira_service, 'base_url', None) or (
+        if not getattr(jira_service, "base_url", None) or (
             jira_service.auth is None and jira_service.bearer_token is None
         ):
             try:
                 async with AsyncSessionLocal() as db:
                     res = await db.execute(
-                        select(IntegrationSetting).where(IntegrationSetting.kind == 'jira')
+                        select(IntegrationSetting).where(IntegrationSetting.kind == "jira")
                     )
                     row = res.scalar_one_or_none()
 
                     if row and row.base_url and row.api_token:
                         token = decrypt_str(row.api_token)
-                        email = None if getattr(settings, 'JIRA_FORCE_PAT', True) else (row.email or None)
+                        email = (
+                            None
+                            if getattr(settings, "JIRA_FORCE_PAT", True)
+                            else (row.email or None)
+                        )
                         jira_service.connect(row.base_url, email, token)
-                        logger.info('Jira connected in worker using stored settings (base_url=%s, mode=%s)',
-                                  row.base_url, 'PAT' if email is None else 'Basic')
+                        logger.info(
+                            "Jira connected in worker using stored settings (base_url=%s, mode=%s)",
+                            row.base_url,
+                            "PAT" if email is None else "Basic",
+                        )
             except Exception as e:
-                logger.warning('Worker Jira bootstrap failed: %s', e)
+                logger.warning("Worker Jira bootstrap failed: %s", e)
 
     async def _fetch_issues(self, project_key: str) -> List[Dict[str, Any]]:
         """Fetch issues from Jira."""
         issues = await jira_service.async_get_project_issues(project_key)
-        logger.info('Fetched %d issues for project %s', len(issues) if issues else 0, project_key)
+        logger.info("Fetched %d issues for project %s", len(issues) if issues else 0, project_key)
 
         if not issues:
-            logger.warning('No issues fetched for project %s - this could mean the project is empty or there is a permission issue', project_key)
+            logger.warning(
+                "No issues fetched for project %s - this could mean the project is empty or there is a permission issue",
+                project_key,
+            )
 
         return issues
 
@@ -204,7 +221,7 @@ class ProjectSyncOrchestrator:
                 )
                 return result
         except Exception as e:
-            logger.error('Issue sync failed for %s: %s', project_key, e, exc_info=True)
+            logger.error("Issue sync failed for %s: %s", project_key, e, exc_info=True)
             return None
 
     async def _sync_worklogs(
@@ -224,7 +241,7 @@ class ProjectSyncOrchestrator:
                 )
                 return result
         except Exception as e:
-            logger.error('Worklog sync failed for %s: %s', project_key, e, exc_info=True)
+            logger.error("Worklog sync failed for %s: %s", project_key, e, exc_info=True)
             return None
 
     async def _sync_snapshots(self, project_id: int) -> Optional[SnapshotResult]:
@@ -237,7 +254,7 @@ class ProjectSyncOrchestrator:
                 )
                 return result
         except Exception as e:
-            logger.error('Sprint snapshots failed for project %d: %s', project_id, e, exc_info=True)
+            logger.error("Sprint snapshots failed for project %d: %s", project_id, e, exc_info=True)
             return None
 
     async def _sync_boards(
@@ -255,7 +272,7 @@ class ProjectSyncOrchestrator:
                 )
                 return result
         except Exception as e:
-            logger.error('Board sync failed for %s: %s', project_key, e, exc_info=True)
+            logger.error("Board sync failed for %s: %s", project_key, e, exc_info=True)
             return None
 
     async def _update_project_metadata(
@@ -270,14 +287,14 @@ class ProjectSyncOrchestrator:
                 project = project_row.scalar_one_or_none()
 
                 if project:
-                    existing_meta = getattr(project, 'meta', None) or {}
+                    existing_meta = getattr(project, "meta", None) or {}
                     metadata = dict(existing_meta) if isinstance(existing_meta, dict) else {}
-                    metadata['last_sync_at'] = datetime.utcnow().isoformat()
-                    metadata['issues_count'] = len(issues)
+                    metadata["last_sync_at"] = datetime.utcnow().isoformat()
+                    metadata["issues_count"] = len(issues)
                     project.meta = metadata
                     await db.commit()
         except Exception as e:
-            logger.error('Failed to update project metadata: %s', e)
+            logger.error("Failed to update project metadata: %s", e)
 
     async def _update_project_dates(self, project_key: str, project_id: int) -> None:
         """Calculate project dates from sprint data if not already set."""
@@ -303,26 +320,36 @@ class ProjectSyncOrchestrator:
                 # Set project start date to earliest sprint start
                 if not project.start_date and sprints[0].start_date:
                     project.start_date = sprints[0].start_date
-                    logger.info('Set project %s start_date from sprints: %s', project_key, project.start_date)
+                    logger.info(
+                        "Set project %s start_date from sprints: %s",
+                        project_key,
+                        project.start_date,
+                    )
 
                 # Set project end date to latest sprint end/complete date
-                latest_end = None
+                latest_end: Optional[datetime] = None
                 for sprint in sprints:
                     sprint_end = sprint.complete_date or sprint.end_date
-                    if sprint_end and (not latest_end or sprint_end > latest_end):
+                    if sprint_end is None:
+                        continue
+                    if latest_end is None:
+                        latest_end = sprint_end
+                    elif sprint_end > latest_end:
                         latest_end = sprint_end
 
                 if not project.end_date and latest_end:
                     project.end_date = latest_end
-                    logger.info('Set project %s end_date from sprints: %s', project_key, project.end_date)
+                    logger.info(
+                        "Set project %s end_date from sprints: %s", project_key, project.end_date
+                    )
 
                 await db.commit()
         except Exception as e:
-            logger.error('Failed to update project dates: %s', e)
+            logger.error("Failed to update project dates: %s", e)
 
     async def _notify_success(self, project_key: str, project_id: int) -> None:
         """Send success notification."""
-        await self._notify('jira_sync_complete', project_key=project_key, project_id=project_id)
+        await self._notify("jira_sync_complete", project_key=project_key, project_id=project_id)
 
     async def _notify_failure(
         self,
@@ -333,7 +360,7 @@ class ProjectSyncOrchestrator:
     ) -> None:
         """Send failure notification."""
         await self._notify(
-            'jira_sync_failed',
+            "jira_sync_failed",
             project_key=project_key,
             project_id=project_id,
             reason=reason,
@@ -344,6 +371,7 @@ class ProjectSyncOrchestrator:
         """Send notification via WebSocket."""
         try:
             from app.core.notifications import connections
-            await connections.broadcast_json({'type': event_type, **payload})
+
+            await connections.broadcast_json({"type": event_type, **payload})
         except Exception:
             pass

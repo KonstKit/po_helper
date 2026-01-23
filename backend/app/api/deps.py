@@ -1,21 +1,21 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from fastapi import Depends, Header, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-import logging
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import decode_token, get_password_hash
-from sqlalchemy.exc import IntegrityError
-logger = logging.getLogger(__name__)
-
-from app.models import User, Project, Role, Permissions
-from app.core.config import settings
-from sqlalchemy.orm import selectinload
+from app.models import Project, Role, User
 from app.utils import handle_api_error
+
+logger = logging.getLogger(__name__)
 
 
 async def _get_or_create_demo_user(db: AsyncSession) -> User:
@@ -56,7 +56,7 @@ async def _get_or_create_demo_user(db: AsyncSession) -> User:
         demo = result.scalar_one()
 
         # Assign admin role to demo user
-        admin_role_result = await db.execute(select(Role).where(Role.name == 'admin'))
+        admin_role_result = await db.execute(select(Role).where(Role.name == "admin"))
         admin_role = admin_role_result.scalar_one_or_none()
 
         if admin_role and admin_role not in demo.roles:
@@ -93,10 +93,7 @@ async def get_current_user(
     """
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization.split(" ", 1)[1]
-        with handle_api_error(
-            operation="decode_token",
-            status_code=status.HTTP_401_UNAUTHORIZED
-        ):
+        with handle_api_error(operation="decode_token", status_code=status.HTTP_401_UNAUTHORIZED):
             payload = decode_token(token)
         email = payload.get("sub")
         if not email:
@@ -118,7 +115,7 @@ async def get_current_user(
         )
         user = result.scalar_one()
         return user
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Not authenticated')
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
 
 async def ensure_project_access(
@@ -159,81 +156,19 @@ def require_permission(permission: str):
     Raises:
         HTTPException 403: If user doesn't have the required permission
     """
-    async def _check_permission(
-        current_user: User = Depends(get_current_user)
-    ) -> User:
+
+    async def _check_permission(current_user: User = Depends(get_current_user)) -> User:
         if not current_user.has_permission(permission):
             logger.warning(
                 "Permission denied: user=%s (id=%s) attempted %s",
                 current_user.email,
                 current_user.id,
-                permission
+                permission,
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Permission denied. Required: {permission}"
+                detail=f"Permission denied. Required: {permission}",
             )
         return current_user
 
     return _check_permission
-
-
-def require_role(role_name: str):
-    """
-    Dependency that checks if the current user has a specific role.
-
-    Usage:
-        @router.get("/admin/users")
-        async def list_all_users(
-            user: User = Depends(require_role("admin"))
-        ):
-            ...
-
-    Args:
-        role_name: Role name (e.g., 'admin', 'po')
-
-    Returns:
-        Dependency function that returns the current user if they have the role
-
-    Raises:
-        HTTPException 403: If user doesn't have the required role
-    """
-    async def _check_role(
-        current_user: User = Depends(get_current_user)
-    ) -> User:
-        if not current_user.has_role(role_name):
-            logger.warning(
-                "Role check failed: user=%s (id=%s) attempted role=%s",
-                current_user.email,
-                current_user.id,
-                role_name
-            )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Requires role: {role_name}"
-            )
-        return current_user
-
-    return _check_role
-
-
-def get_current_active_user(
-    current_user: User = Depends(get_current_user)
-) -> User:
-    """
-    Dependency that ensures the user is active.
-
-    This is a simpler alternative to get_current_user for endpoints that don't need
-    permission checking but want to ensure the user is active.
-
-    Usage:
-        @router.get("/me")
-        async def get_me(user: User = Depends(get_current_active_user)):
-            ...
-    """
-    if not current_user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Inactive user"
-        )
-    return current_user

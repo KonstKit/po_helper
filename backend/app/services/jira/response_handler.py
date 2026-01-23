@@ -12,11 +12,13 @@ logger = logging.getLogger(__name__)
 
 class JiraAuthError(Exception):
     """Raised when Jira returns an authentication or authorization failure."""
+
     pass
 
 
 class JiraUnexpectedResponse(Exception):
     """Raised when Jira returns a non-JSON or otherwise unexpected payload."""
+
     pass
 
 
@@ -64,10 +66,10 @@ class JiraResponseHandler:
             raise
 
         # Validate content type
-        ctype = (response.headers.get('content-type') or '').lower()
-        if 'application/json' not in ctype:
+        ctype = (response.headers.get("content-type") or "").lower()
+        if "application/json" not in ctype:
             self._record_non_json_metric(endpoint)
-            body = (response.text or '')[:500]
+            body = (response.text or "")[:500]
             logger.error("Non-JSON response from Jira (%s): %s", endpoint, ctype)
             logger.debug("Response body sample (%s): %s", endpoint, body)
             raise JiraUnexpectedResponse(f"Expected JSON, got {ctype}")
@@ -77,12 +79,10 @@ class JiraResponseHandler:
             return response.json()
         except ValueError as exc:
             self._record_json_parse_error(endpoint)
-            body = (response.text or '')[:500]
+            body = (response.text or "")[:500]
             logger.error("Failed to decode Jira JSON (%s): %s", endpoint, exc)
             logger.debug("Response body sample (%s): %s", endpoint, body)
-            raise JiraUnexpectedResponse(
-                f"Invalid JSON payload from Jira ({endpoint})"
-            ) from exc
+            raise JiraUnexpectedResponse(f"Invalid JSON payload from Jira ({endpoint})") from exc
 
     def _is_auth_error(self, response: requests.Response) -> bool:
         """
@@ -107,29 +107,29 @@ class JiraResponseHandler:
 
         # Redirects to login endpoints imply auth failure
         if status in (301, 302, 303, 307, 308):
-            location = (response.headers.get('location') or '').lower()
-            if any(term in location for term in (
-                'login', 'logon', 'auth', 'signin', 'session-expired'
-            )):
+            location = (response.headers.get("location") or "").lower()
+            if any(
+                term in location for term in ("login", "logon", "auth", "signin", "session-expired")
+            ):
                 return True
 
         # HTML responses with login markers
-        ctype = (response.headers.get('content-type') or '').lower()
-        if 'text/html' in ctype and status >= 400:
+        ctype = (response.headers.get("content-type") or "").lower()
+        if "text/html" in ctype and status >= 400:
             try:
-                snippet = (response.text or '').lower()[:1024]
+                snippet = (response.text or "").lower()[:1024]
             except Exception:
-                snippet = ''
+                snippet = ""
 
             login_markers = (
-                'login',
-                'log in',
-                'atlassian-account',
-                'atlassian login',
-                'sso',
-                'session expired',
-                'sign in',
-                'authenticate',
+                "login",
+                "log in",
+                "atlassian-account",
+                "atlassian login",
+                "sso",
+                "session expired",
+                "sign in",
+                "authenticate",
             )
 
             if any(marker in snippet for marker in login_markers):
@@ -140,14 +140,14 @@ class JiraResponseHandler:
     def _record_non_json_metric(self, endpoint: str) -> None:
         """Record metric for non-JSON response."""
         try:
-            metrics.inc('jira_non_json_total', labels={'ep': endpoint})
+            metrics.inc("jira_non_json_total", labels={"ep": endpoint})
         except Exception as e:
             logger.debug("Failed to record non-JSON metric: %s", e)
 
     def _record_json_parse_error(self, endpoint: str) -> None:
         """Record metric for JSON parse error."""
         try:
-            metrics.inc('jira_json_parse_error_total', labels={'ep': endpoint})
+            metrics.inc("jira_json_parse_error_total", labels={"ep": endpoint})
         except Exception as e:
             logger.debug("Failed to record JSON parse error metric: %s", e)
 
@@ -161,5 +161,5 @@ class JiraResponseHandler:
         Returns:
             True if response appears to be valid JSON
         """
-        ctype = (response.headers.get('content-type') or '').lower()
-        return 'application/json' in ctype and response.status_code == 200
+        ctype = (response.headers.get("content-type") or "").lower()
+        return "application/json" in ctype and response.status_code == 200

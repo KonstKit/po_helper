@@ -8,11 +8,7 @@ from sqlalchemy.sql import Select
 T = TypeVar("T")
 
 
-async def get_or_404(
-    db: AsyncSession,
-    query: Select[tuple[T]],
-    entity_name: str = "Entity"
-) -> T:
+async def get_or_404(db: AsyncSession, query: Select[tuple[T]], entity_name: str = "Entity") -> T:
     """
     Execute a query and return the entity or raise 404 if not found.
 
@@ -54,10 +50,7 @@ async def get_or_404(
 
 
 async def get_by_id_or_404(
-    db: AsyncSession,
-    model: Type[T],
-    entity_id: int,
-    entity_name: Optional[str] = None
+    db: AsyncSession, model: Type[T], entity_id: int, entity_name: Optional[str] = None
 ) -> T:
     """
     Get entity by ID using db.get() or raise 404 if not found.

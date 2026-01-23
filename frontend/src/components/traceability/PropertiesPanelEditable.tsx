@@ -19,10 +19,69 @@ import {
 import { Close as CloseIcon, Save as SaveIcon } from '@mui/icons-material';
 import { Node } from 'reactflow';
 
+/** Node data structure for traceability flow nodes */
+interface NodeFilters {
+  branch?: string;
+  author?: string;
+  space?: string;
+  labels?: string[];
+  after_date?: string;
+  before_date?: string;
+  path_pattern?: string;
+  project?: string;
+  issue_type?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+interface NodeConfig {
+  condition_type?: string;
+  threshold?: number;
+  link_type?: string;
+  bidirectional?: boolean;
+  reverse_link_type?: string;
+  search_in?: string[];
+  pattern?: string;
+  case_sensitive?: boolean;
+  must_be_uppercase?: boolean;
+  extract_multiple?: boolean;
+  field?: string;
+  operator?: string;
+  value?: string;
+  [key: string]: unknown;
+}
+
+interface NodeData {
+  label?: string;
+  filters?: NodeFilters;
+  config?: NodeConfig;
+  [key: string]: unknown;
+}
+
+
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === 'string');
+
+const getStringArray = (value: unknown): string[] =>
+  isStringArray(value) ? value : [];
+
+const toStringArray = (value: unknown): string[] => {
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  if (isStringArray(value)) {
+    return value;
+  }
+  return [];
+};
+
 interface PropertiesPanelEditableProps {
   selectedNode: Node | null;
   onClose: () => void;
-  onUpdateNode: (nodeId: string, newData: any) => void;
+  onUpdateNode: (nodeId: string, newData: NodeData) => void;
 }
 
 const PropertiesPanelEditable: React.FC<PropertiesPanelEditableProps> = ({
@@ -30,12 +89,14 @@ const PropertiesPanelEditable: React.FC<PropertiesPanelEditableProps> = ({
   onClose,
   onUpdateNode,
 }) => {
-  const [editedData, setEditedData] = useState<any>(null);
+  const [editedData, setEditedData] = useState<NodeData | null>(null);
 
   useEffect(() => {
-    if (selectedNode) {
+    if (!selectedNode) return;
+    const timeoutId = setTimeout(() => {
       setEditedData({ ...selectedNode.data });
-    }
+    }, 0);
+    return () => clearTimeout(timeoutId);
   }, [selectedNode]);
 
   if (!selectedNode || !editedData) return null;
@@ -44,7 +105,7 @@ const PropertiesPanelEditable: React.FC<PropertiesPanelEditableProps> = ({
     onUpdateNode(selectedNode.id, editedData);
   };
 
-  const updateFilter = (key: string, value: any) => {
+  const updateFilter = (key: string, value: unknown) => {
     setEditedData({
       ...editedData,
       filters: {
@@ -54,7 +115,7 @@ const PropertiesPanelEditable: React.FC<PropertiesPanelEditableProps> = ({
     });
   };
 
-  const updateConfig = (key: string, value: any) => {
+  const updateConfig = (key: string, value: unknown) => {
     setEditedData({
       ...editedData,
       config: {
@@ -65,7 +126,7 @@ const PropertiesPanelEditable: React.FC<PropertiesPanelEditableProps> = ({
   };
 
   const toggleConfigArray = (key: string, value: string) => {
-    const currentArray = editedData.config?.[key] || [];
+    const currentArray = getStringArray(editedData.config?.[key]);
     const newArray = currentArray.includes(value)
       ? currentArray.filter((item: string) => item !== value)
       : [...currentArray, value];
@@ -120,7 +181,7 @@ const PropertiesPanelEditable: React.FC<PropertiesPanelEditableProps> = ({
           onChange={(e) => updateFilter('issue_type', e.target.value)}
           renderValue={(selected) => (
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-              {(selected as string[]).map((value) => (
+              {getStringArray(selected).map((value) => (
                 <Chip key={value} label={value} size="small" />
               ))}
             </Box>
@@ -141,7 +202,7 @@ const PropertiesPanelEditable: React.FC<PropertiesPanelEditableProps> = ({
           onChange={(e) => updateFilter('status', e.target.value)}
           renderValue={(selected) => (
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-              {(selected as string[]).map((value) => (
+              {getStringArray(selected).map((value) => (
                 <Chip key={value} label={value} size="small" />
               ))}
             </Box>
@@ -171,7 +232,7 @@ const PropertiesPanelEditable: React.FC<PropertiesPanelEditableProps> = ({
         fullWidth
         label="Labels (comma-separated)"
         value={editedData.filters?.labels?.join(', ') || ''}
-        onChange={(e) => updateFilter('labels', e.target.value.split(',').map((s: string) => s.trim()))}
+        onChange={(e) => updateFilter('labels', toStringArray(e.target.value))}
         placeholder="e.g., requirements, design"
         sx={{ mb: 2 }}
       />

@@ -1,5 +1,9 @@
+import os
+
 import pytest
 from httpx import AsyncClient
+
+os.environ["SKIP_SERVICE_AUTOCONNECT"] = "1"
 
 from app.main import app
 
@@ -22,4 +26,3 @@ async def test_jira_project_check_unconfigured():
     data = resp.json()
     assert data.get("exists") is False
     assert "detail" in data
-

@@ -33,7 +33,7 @@ export class SafeStorage {
     try {
       let totalSize = 0;
       for (const key in localStorage) {
-        if (localStorage.hasOwnProperty(key)) {
+        if (Object.prototype.hasOwnProperty.call(localStorage, key)) {
           const item = localStorage.getItem(key);
           if (item) {
             totalSize += key.length + item.length;
@@ -84,7 +84,6 @@ export class SafeStorage {
       if (value) {
         freedSpace += this.getItemSize(item.key, value);
         localStorage.removeItem(item.key);
-        console.log(`[Cache] Evicted ${item.key} to free space`);
       }
     }
 
@@ -112,7 +111,6 @@ export class SafeStorage {
 
       // Check if we need to evict items
       if (this.storageUsage + itemSize > MAX_STORAGE_SIZE) {
-        console.log(`[Cache] Storage full, evicting old items...`);
         this.evictOldestItems(itemSize);
       }
 
@@ -120,7 +118,6 @@ export class SafeStorage {
       try {
         localStorage.setItem(cacheKey, serialized);
         this.storageUsage += itemSize;
-        console.log(`[Cache] Stored ${key} (${itemSize} bytes)`);
         return true;
       } catch (error) {
         // QuotaExceededError - clear some space and retry
@@ -147,7 +144,7 @@ export class SafeStorage {
     }
   }
 
-  get<T>(key: string): T | null {
+  get<T>(key: string, options?: { ignoreExpiry?: boolean }): T | null {
     const cacheKey = `cache_${key}`;
 
     try {
@@ -156,11 +153,10 @@ export class SafeStorage {
 
       const entry: CacheEntry<T> = JSON.parse(item);
 
-      // Check if expired
-      if (Date.now() > entry.timestamp) {
+      // Check if expired (unless ignoreExpiry is set for stale-while-revalidate)
+      if (!options?.ignoreExpiry && Date.now() > entry.timestamp) {
         localStorage.removeItem(cacheKey);
         this.calculateStorageUsage();
-        console.log(`[Cache] Expired ${key}`);
         return null;
       }
 
@@ -207,7 +203,6 @@ export class SafeStorage {
 
     if (keysToRemove.length > 0) {
       this.calculateStorageUsage();
-      console.log(`[Cache] Cleared ${keysToRemove.length} expired items`);
     }
   }
 
@@ -225,7 +220,6 @@ export class SafeStorage {
     }
 
     this.storageUsage = 0;
-    console.log(`[Cache] Cleared all cache (${keysToRemove.length} items)`);
   }
 
   getUsageInfo(): { used: number; max: number; percentage: number } {

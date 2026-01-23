@@ -3,7 +3,7 @@ import { Box, Typography, Grid, TextField, Button, Divider, Alert, Switch, FormC
 import CircularProgressWithLabel from '../components/CircularProgressWithLabel';
 import EmptyState from '../components/EmptyState';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
-import { ExpandMore as ExpandMoreIcon, ChevronRight as ChevronRightIcon, ExpandLess as ExpandLessIcon, MenuBook as MenuBookIcon } from '@mui/icons-material';
+import { ChevronRight as ChevronRightIcon, ExpandLess as ExpandLessIcon, MenuBook as MenuBookIcon } from '@mui/icons-material';
 import {
   listConfluenceSpaces,
   listConfluencePages,
@@ -14,25 +14,53 @@ import {
   getResearch,
   getSpaceTree,
   syncSubtree,
+  type SpaceTreeNode,
 } from '../services/api';
+import { getErrorMessage } from '../utils/errorUtils';
+
+/** Confluence space from API */
+interface ConfluenceSpace {
+  key: string;
+  name?: string;
+}
+
+/** Confluence page with source tracking */
+interface ConfluencePage {
+  id: string;
+  title: string;
+  space?: string;
+  version?: number;
+  last_updated?: string;
+  url?: string;
+  _src?: 'remote' | 'db';
+}
+
+/** Parsed requirement row */
+interface RequirementRow {
+  id: string;
+  description: string;
+  priority: string;
+}
+
 
 const Knowledge = () => {
   const [spaceQuery, setSpaceQuery] = useState('');
-  const [spaces, setSpaces] = useState<any[]>([]);
+  const [spaces, setSpaces] = useState<ConfluenceSpace[]>([]);
   const [spaceKey, setSpaceKey] = useState('');
   const [pageQuery, setPageQuery] = useState('PRD');
-  const [pages, setPages] = useState<any[]>([]);
+  const [pages, setPages] = useState<ConfluencePage[]>([]);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [requirements, setRequirements] = useState<any[] | null>(null);
+  const [requirements, setRequirements] = useState<RequirementRow[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<{ loading: boolean; percent?: number; step?: string }>({ loading: false });
   const [lastSync, setLastSync] = useState<{synced: number; created: number; updated: number} | null>(null);
   const [autoSync, setAutoSync] = useState<boolean>(false);
-  const [source, setSource] = useState<'remote'|'db'|'both'>('remote');
+  type KnowledgeSource = 'remote' | 'db' | 'both';
+  const [source, setSource] = useState<KnowledgeSource>('remote');
   const [remoteStart, setRemoteStart] = useState(0);
   const [dbOffset, setDbOffset] = useState(0);
   const pageSize = 50;
-  const [tree, setTree] = useState<any[] | null>(null);
+  const [tree, setTree] = useState<SpaceTreeNode[] | null>(null);
   const [expanded, setExpanded] = useState<string[]>([]);
   const [plainView, setPlainView] = useState<boolean>(false);
 
@@ -60,7 +88,9 @@ const Knowledge = () => {
         if (Array.isArray(s.expanded)) setExpanded(s.expanded);
         if (Array.isArray(s.tree)) setTree(s.tree);
       }
-    } catch {}
+    } catch (err) {
+      console.warn('Failed to restore knowledge state', err);
+    }
   }, []);
 
   // Persist state on change
@@ -84,7 +114,9 @@ const Knowledge = () => {
       const s = JSON.stringify(snapshot);
       sessionStorage.setItem('knowledge_state', s);
       localStorage.setItem('knowledge_state', s);
-    } catch {}
+    } catch (err) {
+      console.warn('Failed to persist knowledge state', err);
+    }
   }, [spaceQuery, spaces, spaceKey, pageQuery, pages, requirements, lastSync, autoSync, source, remoteStart, dbOffset, expanded, tree]);
 
   const loadSpaces = async () => {
@@ -94,8 +126,8 @@ const Knowledge = () => {
       const res = await listConfluenceSpaces(spaceQuery || undefined, 50);
       setSpaces(res.results || []);
       setMessage(null);
-    } catch (e: any) {
-      const detail = e?.response?.data?.detail || e.message || 'Failed to load spaces';
+    } catch (e) {
+      const detail = getErrorMessage(e, 'Failed to load spaces');
       setMessage({ type: 'error', text: detail });
     } finally {
       setLoading(false);
@@ -103,32 +135,51 @@ const Knowledge = () => {
     }
   };
 
+  const handleAutoSyncChange = (_: React.ChangeEvent<HTMLInputElement>, checked: boolean) => {
+    setAutoSync(checked);
+  };
+  const handleSourceChange = (_: React.MouseEvent<HTMLElement>, value: string | null) => {
+    if (value === 'remote' || value === 'db' || value === 'both') {
+      setSource(value);
+    }
+  };
+
   const loadPages = async () => {
     try {
       setLoading(true);
       setProgress({ loading: true, percent: 5, step: 'Fetching remote pages...' });
-      const results: any[] = [];
+      const results: ConfluencePage[] = [];
       if (source === 'remote' || source === 'both') {
         const r = await listConfluencePages({ space: spaceKey || undefined, q: pageQuery || undefined, limit: pageSize, start: 0 });
-        results.push(...(r.results || []).map((it: any) => ({...it, _src: 'remote'})));
+        results.push(...(r.results || []).map((it): ConfluencePage => ({...it, _src: 'remote'})));
         setRemoteStart(pageSize);
         if (autoSync) {
-          try { setProgress({ loading: true, percent: 35, step: 'Syncing remote pages...' }); await syncConfluence({ space: spaceKey || undefined, q: pageQuery || undefined, limit: pageSize, full: true }); } catch {}
+          try {
+            setProgress({ loading: true, percent: 35, step: 'Syncing remote pages...' });
+            await syncConfluence({
+              space: spaceKey || undefined,
+              q: pageQuery || undefined,
+              limit: pageSize,
+              full: true,
+            });
+          } catch (err) {
+            console.warn('Auto-sync failed for remote pages', err);
+          }
         }
       }
       if (source === 'db' || source === 'both') {
         setProgress({ loading: true, percent: 65, step: 'Loading local pages...' });
         const d = await listConfluencePagesLocal({ space: spaceKey || undefined, q: pageQuery || undefined, limit: pageSize, offset: 0 });
-        results.push(...(d.results || []).map((it: any) => ({...it, _src: 'db'})));
+        results.push(...(d.results || []).map((it): ConfluencePage => ({...it, _src: 'db'})));
         setDbOffset(pageSize);
       }
-      const seen = new Set();
+      const seen = new Set<string>();
       const combined = results.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
       setPages(combined);
       setRequirements(null);
       setMessage(null);
-    } catch (e: any) {
-      const detail = e?.response?.data?.detail || e.message || 'Failed to load pages';
+    } catch (e) {
+      const detail = getErrorMessage(e, 'Failed to load pages');
       setMessage({ type: 'error', text: detail });
     } finally {
       setLoading(false);
@@ -151,7 +202,7 @@ const Knowledge = () => {
       const eventSource = new EventSource(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/v1/confluence/sync-sse?${params.toString()}`);
 
       // Set timeout for SSE connection
-      let sseTimeout: NodeJS.Timeout;
+      let sseTimeout: ReturnType<typeof setTimeout>;
       const resetTimeout = () => {
         clearTimeout(sseTimeout);
         sseTimeout = setTimeout(() => {
@@ -219,7 +270,7 @@ const Knowledge = () => {
             setMessage({ type: 'success', text: `Synced ${res.synced} pages (created ${res.created}, updated ${res.updated}).` });
           })
           .catch(e => {
-            const detail = e?.response?.data?.detail || e.message || 'Sync failed';
+            const detail = getErrorMessage(e, 'Sync failed');
             setMessage({ type: 'error', text: detail });
           })
           .finally(() => {
@@ -228,8 +279,8 @@ const Knowledge = () => {
           });
       };
 
-    } catch (e: any) {
-      const detail = e?.response?.data?.detail || e.message || 'Sync failed';
+    } catch (e) {
+      const detail = getErrorMessage(e, 'Sync failed');
       setMessage({ type: 'error', text: detail });
       setLoading(false);
       setProgress({ loading: false, percent: 0, step: 'Error' });
@@ -241,10 +292,10 @@ const Knowledge = () => {
       setLoading(true);
       const res = await listConfluencePagesLocal({ space: spaceKey || undefined, q: pageQuery || undefined, limit: pageSize, offset: 0 });
       setDbOffset(pageSize);
-      setPages((res.results || []).map((it: any) => ({...it, _src: 'db'})));
+      setPages((res.results || []).map((it): ConfluencePage => ({...it, _src: 'db'})));
       setMessage({ type: 'success', text: `Loaded ${res.count} pages from DB.` });
-    } catch (e: any) {
-      const detail = e?.response?.data?.detail || e.message || 'Failed to load from DB';
+    } catch (e) {
+      const detail = getErrorMessage(e, 'Failed to load from DB');
       setMessage({ type: 'error', text: detail });
     } finally {
       setLoading(false);
@@ -258,8 +309,8 @@ const Knowledge = () => {
       const res = await getPrdRequirements(pageId);
       setRequirements(res.requirements || []);
       setMessage(null);
-    } catch (e: any) {
-      const detail = e?.response?.data?.detail || e.message || 'Failed to extract PRD requirements';
+    } catch (e) {
+      const detail = getErrorMessage(e, 'Failed to extract PRD requirements');
       setMessage({ type: 'error', text: detail });
     } finally {
       setLoading(false);
@@ -281,8 +332,8 @@ const Knowledge = () => {
       ];
       setRequirements(rows);
       setMessage(null);
-    } catch (e: any) {
-      const detail = e?.response?.data?.detail || e.message || 'Failed to parse ADR';
+    } catch (e) {
+      const detail = getErrorMessage(e, 'Failed to parse ADR');
       setMessage({ type: 'error', text: detail });
     } finally {
       setLoading(false);
@@ -304,8 +355,8 @@ const Knowledge = () => {
       ];
       setRequirements(rows);
       setMessage(null);
-    } catch (e: any) {
-      const detail = e?.response?.data?.detail || e.message || 'Failed to parse Research';
+    } catch (e) {
+      const detail = getErrorMessage(e, 'Failed to parse Research');
       setMessage({ type: 'error', text: detail });
     } finally {
       setLoading(false);
@@ -318,14 +369,14 @@ const Knowledge = () => {
   const loadMore = async () => {
     try {
       setLoading(true);
-      const results: any[] = [];
+      const results: ConfluencePage[] = [];
       if (source === 'remote' || source === 'both') {
         const r = await listConfluencePages({ space: spaceKey || undefined, q: pageQuery || undefined, limit: pageSize, start: remoteStart });
-        results.push(...(r.results || []).map((it: any) => ({...it, _src: 'remote'})));
+        results.push(...(r.results || []).map((it): ConfluencePage => ({...it, _src: 'remote'})));
       }
       if (source === 'db' || source === 'both') {
         const d = await listConfluencePagesLocal({ space: spaceKey || undefined, q: pageQuery || undefined, limit: pageSize, offset: dbOffset });
-        results.push(...(d.results || []).map((it: any) => ({...it, _src: 'db'})));
+        results.push(...(d.results || []).map((it): ConfluencePage => ({...it, _src: 'db'})));
       }
       const seen = new Set(pages.map((p) => p.id));
       const merged = [...pages, ...results.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)))];
@@ -333,10 +384,19 @@ const Knowledge = () => {
       if (source === 'remote' || source === 'both') setRemoteStart(remoteStart + pageSize);
       if (source === 'db' || source === 'both') setDbOffset(dbOffset + pageSize);
       if (autoSync && (source === 'remote' || source === 'both')) {
-        try { await syncConfluence({ space: spaceKey || undefined, q: pageQuery || undefined, limit: pageSize, start: remoteStart }); } catch {}
+        try {
+          await syncConfluence({
+            space: spaceKey || undefined,
+            q: pageQuery || undefined,
+            limit: pageSize,
+            start: remoteStart,
+          });
+        } catch (err) {
+          console.warn('Auto-sync failed for additional pages', err);
+        }
       }
-    } catch (e: any) {
-      const detail = e?.response?.data?.detail || e.message || 'Load more failed';
+    } catch (e) {
+      const detail = getErrorMessage(e, 'Load more failed');
       setMessage({ type: 'error', text: detail });
     } finally {
       setLoading(false);
@@ -355,10 +415,10 @@ const Knowledge = () => {
       const t = res.tree || [];
       setTree(t);
       // Expand roots by default so user sees content right away
-      setExpanded(Array.isArray(t) ? t.map((n: any) => String(n.id)) : []);
+      setExpanded(Array.isArray(t) ? t.map((n) => String(n.id)) : []);
       setMessage({ type: 'success', text: `Tree loaded: roots=${Array.isArray(t)?t.length:0}, total=${Array.isArray(t)?collectIds(t).length:0}` });
-    } catch (e: any) {
-      const detail = e?.response?.data?.detail || e.message || 'Failed to load space tree';
+    } catch (e) {
+      const detail = getErrorMessage(e, 'Failed to load space tree');
       setMessage({ type: 'error', text: detail });
     } finally {
       setLoading(false);
@@ -370,17 +430,17 @@ const Knowledge = () => {
       setLoading(true);
       const res = await syncSubtree(pageId, 50);
       setMessage({ type: 'success', text: `Synced subtree: ${res.synced} pages (created ${res.created}, updated ${res.updated}).` });
-    } catch (e: any) {
-      const detail = e?.response?.data?.detail || e.message || 'Failed to sync subtree';
+    } catch (e) {
+      const detail = getErrorMessage(e, 'Failed to sync subtree');
       setMessage({ type: 'error', text: detail });
     } finally {
       setLoading(false);
     }
   };
 
-  const collectIds = (nodes: any[]): string[] => {
+  const collectIds = (nodes: SpaceTreeNode[]): string[] => {
     const out: string[] = [];
-    const dfs = (arr: any[]) => {
+    const dfs = (arr: SpaceTreeNode[]) => {
       for (const n of arr) {
         if (n.id) out.push(String(n.id));
         if (Array.isArray(n.children) && n.children.length) dfs(n.children);
@@ -394,7 +454,7 @@ const Knowledge = () => {
     setExpanded((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
-  const renderCustomTree = (nodes: any[], depth = 0): React.ReactNode => (
+  const renderCustomTree = (nodes: SpaceTreeNode[], depth = 0): React.ReactNode => (
     <Box>
       {nodes.map((n) => {
         const id = String(n.id);
@@ -415,7 +475,7 @@ const Knowledge = () => {
             </Box>
             {hasChildren && isOpen && (
               <Box sx={{ ml: 1.5, pl: 1.5, borderLeft: '1px dashed rgba(0,0,0,0.2)' }}>
-                {renderCustomTree(n.children, depth + 1)}
+                {renderCustomTree(n.children || [], depth + 1)}
               </Box>
             )}
           </Box>
@@ -424,7 +484,7 @@ const Knowledge = () => {
     </Box>
   );
 
-  const renderPlainList = (nodes: any[]): React.ReactNode => (
+  const renderPlainList = (nodes: SpaceTreeNode[]): React.ReactNode => (
     <ul style={{ marginTop: 0 }}>
       {nodes.map((n) => (
         <li key={n.id}>
@@ -444,7 +504,9 @@ const Knowledge = () => {
     { field: '_src', headerName: 'Src', width: 80 },
     {
       field: 'url', headerName: 'Open', width: 100, renderCell: (params) => (
-        params.value ? <a href={params.value as string} target="_blank" rel="noreferrer">Link</a> : null
+        typeof params.value === 'string'
+          ? <a href={params.value} target="_blank" rel="noreferrer">Link</a>
+          : null
       )
     },
     {
@@ -542,7 +604,7 @@ const Knowledge = () => {
         </Grid>
         <Grid item xs={12} md={4}>
           <FormControlLabel
-            control={<Switch checked={autoSync} onChange={(_, v) => setAutoSync(v)} />}
+            control={<Switch checked={autoSync} onChange={handleAutoSyncChange} />}
             label="Auto-sync after search"
           />
         </Grid>
@@ -551,7 +613,7 @@ const Knowledge = () => {
             size="small"
             exclusive
             value={source}
-            onChange={(_, val) => { if (val) setSource(val); }}
+            onChange={handleSourceChange}
           >
             <ToggleButton value="remote">Remote</ToggleButton>
             <ToggleButton value="db">DB</ToggleButton>

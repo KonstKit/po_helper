@@ -1,60 +1,81 @@
-from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey, Float
-from sqlalchemy.orm import relationship
+from __future__ import annotations
+
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
+
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
+
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.project_repository import ProjectRepository
 
 
 class Repository(Base):
     __tablename__ = "repositories"
 
-    id = Column(Integer, primary_key=True, index=True)
-    provider = Column(String, nullable=False)  # github|gitlab
-    repo_slug = Column(String, nullable=False, index=True)  # org/repo or group/project
-    default_branch = Column(String, nullable=True)
-    settings = Column(JSON, nullable=True)  # tokens/installation ids (stored encrypted elsewhere ideally)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    provider: Mapped[str] = mapped_column(String, nullable=False)  # github|gitlab
+    repo_slug: Mapped[str] = mapped_column(
+        String, nullable=False, index=True
+    )  # org/repo or group/project
+    default_branch: Mapped[str | None] = mapped_column(String, nullable=True)
+    settings: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON, nullable=True
+    )  # tokens/installation ids (stored encrypted elsewhere ideally)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now()
+    )
 
     # Relationships
-    project_repositories = relationship("ProjectRepository", back_populates="repository", cascade="all, delete-orphan")
+    project_repositories: Mapped[list[ProjectRepository]] = relationship(
+        "ProjectRepository", back_populates="repository", cascade="all, delete-orphan"
+    )
 
 
 class Commit(Base):
     __tablename__ = "commits"
 
-    id = Column(Integer, primary_key=True, index=True)
-    repository_id = Column(Integer, ForeignKey("repositories.id"), index=True)
-    sha = Column(String, nullable=False, index=True)
-    message = Column(String, nullable=True)
-    author_email = Column(String, nullable=True)
-    author_name = Column(String, nullable=True)
-    jira_keys = Column(JSON, nullable=True)  # list of keys
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    repository_id: Mapped[int] = mapped_column(ForeignKey("repositories.id"), index=True)
+    sha: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    message: Mapped[str | None] = mapped_column(String, nullable=True)
+    author_email: Mapped[str | None] = mapped_column(String, nullable=True)
+    author_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    jira_keys: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)  # list of keys
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class PullRequest(Base):
     __tablename__ = "pull_requests"
 
-    id = Column(Integer, primary_key=True, index=True)
-    provider = Column(String, nullable=False)  # github|gitlab
-    repository_id = Column(Integer, ForeignKey("repositories.id"), index=True)
-    number = Column(Integer, nullable=False, index=True)
-    title = Column(String, nullable=True)
-    state = Column(String, nullable=True)  # open|closed|merged
-    author_login = Column(String, nullable=True)
-    head_sha = Column(String, nullable=True)
-    review_count = Column(Integer, nullable=True)
-    approvals_count = Column(Integer, nullable=True)
-    opened_at = Column(DateTime(timezone=True), nullable=True)
-    merged_at = Column(DateTime(timezone=True), nullable=True)
-    closed_at = Column(DateTime(timezone=True), nullable=True)
-    jira_keys = Column(JSON, nullable=True)
-    first_review_at = Column(DateTime(timezone=True), nullable=True)
-    cycle_time_hours = Column(Float, nullable=True)
-    lead_time_hours = Column(Float, nullable=True)
-    time_to_first_review_hours = Column(Float, nullable=True)
-    rework_count = Column(Integer, nullable=True)
-    files_changed = Column(Integer, nullable=True)
-    lines_added = Column(Integer, nullable=True)
-    lines_deleted = Column(Integer, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    provider: Mapped[str] = mapped_column(String, nullable=False)  # github|gitlab
+    repository_id: Mapped[int] = mapped_column(ForeignKey("repositories.id"), index=True)
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id"), index=True, nullable=True
+    )
+    number: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    title: Mapped[str | None] = mapped_column(String, nullable=True)
+    state: Mapped[str | None] = mapped_column(String, nullable=True)  # open|closed|merged
+    merged: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    author_login: Mapped[str | None] = mapped_column(String, nullable=True)
+    head_sha: Mapped[str | None] = mapped_column(String, nullable=True)
+    review_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    approvals_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    merged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    jira_keys: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    first_review_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cycle_time_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lead_time_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    time_to_first_review_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rework_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    files_changed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    lines_added: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    lines_deleted: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

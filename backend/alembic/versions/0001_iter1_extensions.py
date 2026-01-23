@@ -1,4 +1,4 @@
-﻿"""iter1 extensions: PR metrics, business value fields
+"""iter1 extensions: PR metrics, business value fields
 
 Revision ID: 0001
 Revises: 

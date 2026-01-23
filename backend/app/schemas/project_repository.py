@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class ProjectRepositoryBase(BaseModel):
@@ -22,8 +22,7 @@ class ProjectRepository(ProjectRepositoryBase):
     created_at: datetime
     updated_at: Optional[datetime]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RepositoryInfo(BaseModel):
@@ -32,8 +31,7 @@ class RepositoryInfo(BaseModel):
     repo_slug: str  # org/repo or group/project
     default_branch: Optional[str]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProjectRepositoryWithDetails(ProjectRepository):
@@ -42,8 +40,13 @@ class ProjectRepositoryWithDetails(ProjectRepository):
 
 class ProjectRepositoryBinding(BaseModel):
     """Schema for binding repository to project via URL or slug"""
+
     project_id: int
-    repository_url: Optional[str] = Field(None, description="Full repository URL (e.g., https://github.com/org/repo)")
+    repository_url: Optional[str] = Field(
+        None, description="Full repository URL (e.g., https://github.com/org/repo)"
+    )
     repo_slug: Optional[str] = Field(None, description="Repository slug (e.g., org/repo)")
     provider: Optional[str] = Field(None, description="Provider: github or gitlab")
-    is_primary: bool = Field(True, description="Whether this is the primary repository for the project")
+    is_primary: bool = Field(
+        True, description="Whether this is the primary repository for the project"
+    )

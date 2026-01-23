@@ -1,0 +1,14 @@
+{
+  "confidence_counts": {
+    "HIGH": 0,
+    "LOW": 0,
+    "MEDIUM": 16526
+  },
+  "dynamic_edges": 505,
+  "external_edges": 15415,
+  "internal_edges": 1111,
+  "static_edges": 1111,
+  "total_edges": 16526,
+  "unknown_edges": 0,
+  "unresolved_internal_targets_count": 0
+}

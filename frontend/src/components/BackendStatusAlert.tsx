@@ -2,22 +2,35 @@ import React, { useState, useEffect } from 'react';
 import { Alert, AlertTitle, Snackbar, Button, Box, CircularProgress } from '@mui/material';
 import { backendHealthMonitor, BackendHealthStatus } from '../utils/backendHealth';
 
+type HealthChangeDetail = { isHealthy: boolean; status: BackendHealthStatus };
+type BackendErrorDetail = { message: string };
+
+const isCustomEvent = <T,>(event: Event): event is CustomEvent<T> =>
+  'detail' in event;
+
 const BackendStatusAlert: React.FC = () => {
-  const [status, setStatus] = useState<BackendHealthStatus | null>(null);
-  const [showAlert, setShowAlert] = useState(false);
+  const initialStatus = backendHealthMonitor.getStatus();
+  const [status, setStatus] = useState<BackendHealthStatus | null>(initialStatus);
+  const [showAlert, setShowAlert] = useState(!initialStatus.isHealthy);
   const [isRetrying, setIsRetrying] = useState(false);
 
   useEffect(() => {
     // Listen for backend health changes
-    const handleHealthChange = (event: CustomEvent) => {
+    const handleHealthChange = (event: Event) => {
+      if (!isCustomEvent<HealthChangeDetail>(event)) {
+        return;
+      }
       const { isHealthy, status: newStatus } = event.detail;
       setStatus(newStatus);
       setShowAlert(!isHealthy);
     };
 
     // Listen for backend errors from API interceptor
-    const handleBackendError = (event: CustomEvent) => {
-      const { type, message } = event.detail;
+    const handleBackendError = (event: Event) => {
+      if (!isCustomEvent<BackendErrorDetail>(event)) {
+        return;
+      }
+      const { message } = event.detail;
       setStatus({
         isHealthy: false,
         lastChecked: new Date(),
@@ -27,17 +40,12 @@ const BackendStatusAlert: React.FC = () => {
       setShowAlert(true);
     };
 
-    window.addEventListener('backend-health-change', handleHealthChange as EventListener);
-    window.addEventListener('backend-error', handleBackendError as EventListener);
-
-    // Check initial status
-    const initialStatus = backendHealthMonitor.getStatus();
-    setStatus(initialStatus);
-    setShowAlert(!initialStatus.isHealthy);
+    window.addEventListener('backend-health-change', handleHealthChange);
+    window.addEventListener('backend-error', handleBackendError);
 
     return () => {
-      window.removeEventListener('backend-health-change', handleHealthChange as EventListener);
-      window.removeEventListener('backend-error', handleBackendError as EventListener);
+      window.removeEventListener('backend-health-change', handleHealthChange);
+      window.removeEventListener('backend-error', handleBackendError);
     };
   }, []);
 

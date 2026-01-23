@@ -1,12 +1,19 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
+import type { ReactElement } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import EmptyState from './EmptyState';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 
 // Helper to wrap component with Router
-const renderWithRouter = (component: React.ReactElement) => {
-  return render(<BrowserRouter>{component}</BrowserRouter>);
+const renderWithRouter = (component: ReactElement) => {
+  return render(
+    <MemoryRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
+      {component}
+    </MemoryRouter>
+  );
 };
 
 describe('EmptyState Component', () => {
@@ -24,7 +31,7 @@ describe('EmptyState Component', () => {
   });
 
   it('renders icon correctly', () => {
-    const { container } = renderWithRouter(
+    renderWithRouter(
       <EmptyState
         icon={<DashboardIcon data-testid="dashboard-icon" />}
         title="Test Title"

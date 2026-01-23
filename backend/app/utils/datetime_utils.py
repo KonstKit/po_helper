@@ -62,7 +62,7 @@ def parse_datetime(value: Any) -> Optional[datetime]:
             return None
 
         # Replace 'Z' timezone indicator with explicit UTC offset
-        text = text.replace('Z', '+00:00')
+        text = text.replace("Z", "+00:00")
 
         return datetime.fromisoformat(text)
     except Exception:

@@ -1,6 +1,7 @@
-﻿"""
+"""
 Main Git API router combining webhooks, metrics, and CI/CD endpoints.
 """
+
 from __future__ import annotations
 from typing import Optional, Dict, Any
 
@@ -16,7 +17,7 @@ from app.models import IntegrationSetting, ProjectRepository, Repository
 from app.services.github_client import fetch_pull_requests, GitHubAPIError
 
 # Import submodules
-from .git.webhooks import handle_github_webhook, handle_gitlab_webhook
+from .git.webhooks import handle_github_webhook, handle_gitlab_webhook, handle_bitbucket_webhook
 from .git.metrics import calculate_pr_metrics, get_pr_list, get_commits_for_issue
 from .git.ci import process_ci_results
 
@@ -27,11 +28,9 @@ router = APIRouter()
 # Webhook Endpoints
 # ============================================================================
 
+
 @router.post("/webhooks/github")
-async def github_webhook(
-    request: Request,
-    db: AsyncSession = Depends(get_db)
-) -> Dict[str, Any]:
+async def github_webhook(request: Request, db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
     """
     Handle GitHub webhook events.
 
@@ -47,10 +46,7 @@ async def github_webhook(
 
 
 @router.post("/webhooks/gitlab")
-async def gitlab_webhook(
-    request: Request,
-    db: AsyncSession = Depends(get_db)
-) -> Dict[str, Any]:
+async def gitlab_webhook(request: Request, db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
     """
     Handle GitLab webhook events.
 
@@ -63,9 +59,30 @@ async def gitlab_webhook(
     return await handle_gitlab_webhook(request, db)
 
 
+@router.post("/webhooks/bitbucket")
+async def bitbucket_webhook(request: Request, db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
+    """
+    Handle Bitbucket webhook events.
+
+    Supports both Bitbucket Cloud and Bitbucket Server/Data Center:
+
+    Cloud events (X-Event-Key header):
+    - repo:push
+    - pullrequest:created, pullrequest:updated, pullrequest:fulfilled, pullrequest:rejected
+
+    Server events:
+    - repo:refs_changed
+    - pr:opened, pr:modified, pr:merged, pr:declined
+
+    Requires HMAC-SHA256 signature verification when webhook secret is configured.
+    """
+    return await handle_bitbucket_webhook(request, db)
+
+
 # ============================================================================
 # Metrics Endpoints
 # ============================================================================
+
 
 @router.get("/pull-requests")
 async def list_pull_requests(
@@ -73,7 +90,7 @@ async def list_pull_requests(
     provider: Optional[str] = None,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """
     List pull requests with filtering options.
@@ -100,7 +117,7 @@ async def pull_request_metrics(
     since_days: Optional[int] = None,
     disable_cache: bool = False,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """
     Calculate comprehensive pull request metrics.
@@ -127,7 +144,7 @@ async def pull_request_metrics(
         provider=provider,
         limit=limit,
         since_days=since_days,
-        disable_cache=disable_cache
+        disable_cache=disable_cache,
     )
 
 
@@ -135,7 +152,7 @@ async def pull_request_metrics(
 async def commits_for_issue(
     jira_key: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """
     Get commits linked to a JIRA issue.
@@ -153,11 +170,12 @@ async def commits_for_issue(
 # CI/CD Endpoints
 # ============================================================================
 
+
 @router.post("/ci/results")
 async def ci_results(
     payload: Dict[str, Any],
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """
     Ingest CI/CD test and coverage results.
@@ -182,10 +200,10 @@ async def ci_results(
 # Repository Management Endpoints
 # ============================================================================
 
+
 @router.get("/repositories")
 async def list_repositories(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
     List configured repositories.
@@ -207,10 +225,10 @@ async def list_repositories(
                 "provider": repo.provider,
                 "slug": repo.repo_slug,
                 "default_branch": repo.default_branch,
-                "created_at": repo.created_at.isoformat() if repo.created_at else None
+                "created_at": repo.created_at.isoformat() if repo.created_at else None,
             }
             for repo in repos
-        ]
+        ],
     }
 
 
@@ -218,8 +236,9 @@ async def list_repositories(
 # Health Check
 # ============================================================================
 
+
 @router.get("/health")
-async def health_check() -> Dict[str, str]:
+async def health_check() -> Dict[str, Any]:
     """
     Health check endpoint for Git integration.
 
@@ -229,12 +248,9 @@ async def health_check() -> Dict[str, str]:
     return {
         "status": "healthy",
         "module": "git",
-        "endpoints": {
-            "webhooks": "active",
-            "metrics": "active",
-            "ci": "active"
-        }
+        "endpoints": {"webhooks": "active", "metrics": "active", "ci": "active"},
     }
+
 
 @router.get("/github/projects/{project_id}/pulls")
 async def github_project_pull_requests(
@@ -242,12 +258,10 @@ async def github_project_pull_requests(
     state: str = "open",
     limit: int = 30,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Fetch pull requests from GitHub for the project's linked repository."""
-    result = await db.execute(
-        select(IntegrationSetting).where(IntegrationSetting.kind == "github")
-    )
+    result = await db.execute(select(IntegrationSetting).where(IntegrationSetting.kind == "github"))
     setting = result.scalar_one_or_none()
     if not setting or not setting.api_token:
         raise HTTPException(status_code=400, detail="GitHub integration is not configured")
@@ -259,10 +273,7 @@ async def github_project_pull_requests(
     repo_result = await db.execute(
         select(Repository.repo_slug)
         .join(ProjectRepository, ProjectRepository.repository_id == Repository.id)
-        .where(
-            ProjectRepository.project_id == project_id,
-            Repository.provider == "github"
-        )
+        .where(ProjectRepository.project_id == project_id, Repository.provider == "github")
         .order_by(ProjectRepository.is_primary.desc())
     )
     repo_row = repo_result.first()
@@ -285,24 +296,28 @@ async def github_project_pull_requests(
 
     simplified = []
     for pr in pulls:
-        simplified.append({
-            "number": pr.get("number"),
-            "title": pr.get("title"),
-            "state": pr.get("state"),
-            "draft": pr.get("draft"),
-            "html_url": pr.get("html_url"),
-            "user": {
-                "login": pr.get("user", {}).get("login"),
-                "avatar_url": pr.get("user", {}).get("avatar_url"),
-            },
-            "created_at": pr.get("created_at"),
-            "updated_at": pr.get("updated_at"),
-            "merged_at": pr.get("merged_at"),
-            "additions": pr.get("additions"),
-            "deletions": pr.get("deletions"),
-            "changed_files": pr.get("changed_files"),
-            "labels": [label.get("name") for label in pr.get("labels", []) if isinstance(label, dict)],
-        })
+        simplified.append(
+            {
+                "number": pr.get("number"),
+                "title": pr.get("title"),
+                "state": pr.get("state"),
+                "draft": pr.get("draft"),
+                "html_url": pr.get("html_url"),
+                "user": {
+                    "login": pr.get("user", {}).get("login"),
+                    "avatar_url": pr.get("user", {}).get("avatar_url"),
+                },
+                "created_at": pr.get("created_at"),
+                "updated_at": pr.get("updated_at"),
+                "merged_at": pr.get("merged_at"),
+                "additions": pr.get("additions"),
+                "deletions": pr.get("deletions"),
+                "changed_files": pr.get("changed_files"),
+                "labels": [
+                    label.get("name") for label in pr.get("labels", []) if isinstance(label, dict)
+                ],
+            }
+        )
 
     return {
         "repository": repo_slug,

@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { analytics } from '../services/analytics';
 
 /**
  * Tracks page views automatically via React Router
  */
-export const PageViewTracker: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const PageViewTracker = ({ children }: { children: ReactNode }) => {
   const location = useLocation();
 
   useEffect(() => {

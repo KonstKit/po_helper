@@ -14,7 +14,7 @@ class BackendHealthMonitor {
     consecutiveFailures: 0
   };
 
-  private checkInterval: NodeJS.Timer | null = null;
+  private checkInterval: ReturnType<typeof setInterval> | null = null;
   private readonly CHECK_INTERVAL_MS = 10000; // Check every 10 seconds
   private readonly MAX_CONSECUTIVE_FAILURES = 3;
 
@@ -69,13 +69,13 @@ class BackendHealthMonitor {
       } else {
         throw new Error('Unexpected health response');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.status.consecutiveFailures++;
 
       const wasHealthy = this.status.isHealthy;
       this.status.isHealthy = false;
       this.status.lastChecked = new Date();
-      this.status.error = error.message || 'Backend health check failed';
+      this.status.error = error instanceof Error ? error.message : 'Backend health check failed';
 
       // Notify unhealthy state if threshold reached
       if (wasHealthy && this.status.consecutiveFailures >= this.MAX_CONSECUTIVE_FAILURES) {

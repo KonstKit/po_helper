@@ -1,5 +1,6 @@
-﻿import { describe, beforeEach, afterEach, expect, it, vi } from 'vitest';
+import { describe, beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom';
 
 vi.mock('../../services/api', () => ({
@@ -21,20 +22,37 @@ import {
   listGitlabProjects,
 } from '../../services/api';
 
+const mockedListProjects = vi.mocked(listProjects);
+const mockedGetTraceabilityMatrix = vi.mocked(getTraceabilityMatrix);
+const mockedRunTraceabilityBackfill = vi.mocked(runTraceabilityBackfill);
+const mockedGetTraceabilityRequirementFlow = vi.mocked(getTraceabilityRequirementFlow);
+const mockedGetTraceabilityTaskArtifacts = vi.mocked(getTraceabilityTaskArtifacts);
+const mockedListGitlabProjects = vi.mocked(listGitlabProjects);
+
 describe('Traceability page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    listProjects.mockResolvedValue([
-      {
-        id: 1,
-        jira_key: 'TRACE',
-        name: 'Trace Project',
-        status: 'active',
+    mockedListProjects.mockResolvedValue({
+      data: [
+        {
+          id: 1,
+          jira_key: 'TRACE',
+          name: 'Trace Project',
+          status: 'active',
+        },
+      ],
+      meta: {
+        total: 1,
+        page: 1,
+        per_page: 50,
+        total_pages: 1,
+        has_next: false,
+        has_prev: false,
       },
-    ]);
+    });
 
-    getTraceabilityMatrix.mockResolvedValue({
+    mockedGetTraceabilityMatrix.mockResolvedValue({
       total: 2,
       by_type: {
         jira_issue: 1,
@@ -78,16 +96,16 @@ describe('Traceability page', () => {
       },
     });
 
-    runTraceabilityBackfill.mockResolvedValue({
+    mockedRunTraceabilityBackfill.mockResolvedValue({
       status: 'ok',
       created: 0,
       updated: 0,
       git: { project_id: 1, repositories: [] },
     });
 
-    listGitlabProjects.mockResolvedValue({ count: 0, projects: [], pagination: {}, source: '' });
+    mockedListGitlabProjects.mockResolvedValue({ count: 0, projects: [], pagination: {}, source: '' });
 
-    getTraceabilityRequirementFlow.mockResolvedValue({
+    mockedGetTraceabilityRequirementFlow.mockResolvedValue({
       nodes: [
         { id: 101, type: 'requirement', title: 'Feature ABC', status: 'Open' },
         { id: 201, type: 'commit', title: 'Initial commit', status: null },
@@ -97,7 +115,7 @@ describe('Traceability page', () => {
       ],
     });
 
-    getTraceabilityTaskArtifacts.mockResolvedValue({
+    mockedGetTraceabilityTaskArtifacts.mockResolvedValue({
       task_artifact: { id: 101, key: 'ABC-1' },
       outgoing: [],
       incoming: [],
@@ -109,7 +127,13 @@ describe('Traceability page', () => {
   });
 
   it('renders matrix snapshot and loads flow by artifact id', async () => {
-    render(<Traceability />);
+    render(
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <Traceability />
+      </MemoryRouter>
+    );
 
     await waitFor(() => expect(listProjects).toHaveBeenCalled());
     await waitFor(() => expect(getTraceabilityMatrix).toHaveBeenCalled());

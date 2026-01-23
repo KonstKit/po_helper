@@ -10,11 +10,21 @@ import {
   Tooltip,
   Legend,
   ChartOptions,
+  type ChartDataset,
 } from 'chart.js';
 import annotationPlugin from 'chartjs-plugin-annotation';
 
-// Register the annotation plugin
-ChartJS.register(annotationPlugin);
+// Register the annotation plugin and required chart elements
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  annotationPlugin
+);
 
 export interface VelocityDataPoint {
   label: string;
@@ -70,7 +80,7 @@ const VelocityChart: React.FC<VelocityChartProps> = ({
   const trendValues = showTrend ? calculateTrendLine(values) : [];
 
   // Build datasets
-  const datasets: any[] = [
+  const datasets: ChartDataset<'line', number[]>[] = [
     {
       label: 'Actual Velocity (h)',
       data: values,
@@ -102,7 +112,7 @@ const VelocityChart: React.FC<VelocityChartProps> = ({
   }
 
   // Build annotations
-  const annotations: any = {};
+  const annotations: Record<string, unknown> = {};
 
   // Target line annotation
   if (targetVelocity !== undefined) {
@@ -165,10 +175,10 @@ const VelocityChart: React.FC<VelocityChartProps> = ({
     plugins: {
       legend: {
         display: true,
-        position: 'top' as const,
+        position: 'top',
       },
       tooltip: {
-        mode: 'index' as const,
+        mode: 'index',
         intersect: false,
         callbacks: {
           afterLabel: (context) => {
@@ -216,8 +226,8 @@ const VelocityChart: React.FC<VelocityChartProps> = ({
       },
     },
     interaction: {
-      mode: 'nearest' as const,
-      axis: 'x' as const,
+      mode: 'nearest',
+      axis: 'x',
       intersect: false,
     },
   };

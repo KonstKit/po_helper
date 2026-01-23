@@ -1,4 +1,4 @@
-﻿"""add indexes for common foreign keys"""
+"""add indexes for common foreign keys"""
 
 from alembic import op
 import sqlalchemy as sa

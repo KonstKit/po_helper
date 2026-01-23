@@ -25,7 +25,7 @@ import { storage } from './storage';
  * Keys to preserve across logout (non-sensitive, user-preference data)
  * These are typically UI preferences that can persist between sessions
  */
-const PRESERVED_KEYS = [
+const PRESERVED_KEYS: string[] = [
   // None for now - clear everything for security
   // Add keys here if needed in the future, e.g.:
   // 'theme_preference',
@@ -98,10 +98,6 @@ function clearLocalStorage(): string[] {
       }
     }
 
-    console.log(`[Logout] Cleared ${clearedKeys.length} localStorage keys`);
-    if (clearedKeys.length > 0) {
-      console.log('[Logout] Cleared keys:', clearedKeys);
-    }
   } catch (error) {
     console.error('[Logout] Error clearing localStorage:', error);
   }
@@ -115,7 +111,6 @@ function clearLocalStorage(): string[] {
 function clearSessionStorage(): void {
   try {
     sessionStorage.clear();
-    console.log('[Logout] Cleared sessionStorage');
   } catch (error) {
     console.error('[Logout] Error clearing sessionStorage:', error);
   }
@@ -141,15 +136,12 @@ export function performLogout(
   navigate: NavigateFunction,
   redirectPath: string = '/login'
 ): void {
-  console.log('[Logout] Starting complete logout...');
-
   try {
     // Step 1: Clear cache storage
     storage.clearAll();
-    console.log('[Logout] Cache cleared');
 
     // Step 2: Clear localStorage
-    const clearedKeys = clearLocalStorage();
+    clearLocalStorage();
 
     // Step 3: Clear sessionStorage
     clearSessionStorage();
@@ -157,13 +149,9 @@ export function performLogout(
     // Step 4: Dispatch Redux logout action
     // This will clear auth state and trigger extraReducers in other slices
     dispatch(logoutAction());
-    console.log('[Logout] Redux state cleared');
 
     // Step 5: Navigate to login
     navigate(redirectPath);
-    console.log(`[Logout] Redirected to ${redirectPath}`);
-
-    console.log('[Logout] Complete logout finished successfully');
   } catch (error) {
     console.error('[Logout] Error during logout:', error);
 

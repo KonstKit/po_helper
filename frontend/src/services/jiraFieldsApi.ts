@@ -2,12 +2,39 @@ import { API_BASE_URL } from './api';
 
 const API_URL = `${API_BASE_URL}/jira-fields`;
 
+/** Jira field schema structure */
+export interface JiraFieldSchema {
+  type?: string;
+  system?: string;
+  custom?: string;
+  customId?: number;
+  items?: string;
+}
+
+/** Sprint data from Jira */
+export interface JiraSprint {
+  id: number;
+  name: string;
+  state?: 'active' | 'future' | 'closed' | string;
+  startDate?: string;
+  endDate?: string;
+  completeDate?: string;
+  goal?: string;
+}
+
+/** Exported configuration structure */
+export interface JiraFieldConfiguration {
+  mappings: FieldMapping[];
+  version?: string;
+  exported_at?: string;
+}
+
 export interface JiraField {
   id: string;
   name: string;
   type?: string;
   custom: boolean;
-  schema?: any;
+  schema?: JiraFieldSchema;
 }
 
 export interface FieldMapping {
@@ -15,6 +42,9 @@ export interface FieldMapping {
   field_type: string;
   field_id: string;
   field_name?: string;
+  jira_field_id?: string;
+  jira_field_name?: string;
+  confidence?: number;
   project_key?: string;
   discovery_method?: string;
   confidence_score?: number;
@@ -29,6 +59,7 @@ export interface CalibrationResult {
     confidence: number;
   }>;
   auto_mapped: number;
+  warning?: string;
 }
 
 export interface FieldDiscoveryResult {
@@ -44,8 +75,8 @@ export interface FieldDiscoveryResult {
 
 export interface TestMappingResult {
   issue_key: string;
-  mapped_fields: any;
-  sprints: any[];
+  mapped_fields: Record<string, unknown>;
+  sprints: JiraSprint[];
   has_sprint_data: boolean;
 }
 
@@ -130,7 +161,7 @@ export async function testFieldMapping(issueKey: string, fieldType?: string): Pr
 }
 
 // Export current configuration
-export async function exportConfiguration(): Promise<any> {
+export async function exportConfiguration(): Promise<JiraFieldConfiguration> {
   const response = await fetch(`${API_URL}/export-config`);
   if (!response.ok) {
     throw new Error(`Failed to export configuration: ${response.statusText}`);
@@ -139,7 +170,7 @@ export async function exportConfiguration(): Promise<any> {
 }
 
 // Import configuration
-export async function importConfiguration(config: any): Promise<{ status: string; mappings_count: number }> {
+export async function importConfiguration(config: JiraFieldConfiguration): Promise<{ status: string; mappings_count: number }> {
   const response = await fetch(`${API_URL}/import-config`, {
     method: 'POST',
     headers: {
@@ -156,9 +187,9 @@ export async function importConfiguration(config: any): Promise<{ status: string
 // Get sprints for an issue using fallback strategies
 export async function getIssueSprints(issueKey: string): Promise<{
   issue_key: string;
-  sprints: any[];
+  sprints: JiraSprint[];
   sprint_count: number;
-  active_sprint: any;
+  active_sprint: JiraSprint | null;
 }> {
   const response = await fetch(`${API_URL}/sprints/${issueKey}`);
   if (!response.ok) {

@@ -1,14 +1,15 @@
-﻿import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { logout } from './authSlice';
 
 interface Sprint {
-  id: number;
-  project_id: number;
+  id?: number;
+  sprint_id?: number;
+  project_id?: number;
   jira_id?: string;
   name: string;
   start_date?: string;
   end_date?: string;
-  status: string;
+  status?: string;
   progress?: number;
   total_tasks?: number;
   completed_tasks?: number;
@@ -46,7 +47,8 @@ const sprintSlice = createSlice({
 
       // Group sprints by project
       state.sprintsByProject = {};
-      action.payload.forEach(sprint => {
+      action.payload.forEach((sprint) => {
+        if (typeof sprint.project_id !== 'number') return;
         if (!state.sprintsByProject[sprint.project_id]) {
           state.sprintsByProject[sprint.project_id] = [];
         }

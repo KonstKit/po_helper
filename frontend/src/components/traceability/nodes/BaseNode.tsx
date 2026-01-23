@@ -2,8 +2,13 @@ import React from 'react';
 import { Handle, Position } from 'reactflow';
 import { Box, Paper, Typography } from '@mui/material';
 
+interface BaseNodeData {
+  label?: string;
+  [key: string]: unknown;
+}
+
 interface BaseNodeProps {
-  data: any;
+  data: BaseNodeData;
   selected: boolean;
   icon: React.ReactNode;
   color: string; // e.g., 'primary', 'success', 'info', 'secondary', 'warning'

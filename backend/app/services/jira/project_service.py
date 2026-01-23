@@ -3,12 +3,15 @@
 import logging
 from typing import List, Dict, Any, Optional
 import httpx
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.services.jira.http_client import JiraHttpClient
 from app.services.jira.circuit_breaker import CircuitBreaker
-from app.services.jira.response_handler import JiraResponseHandler, JiraAuthError, JiraUnexpectedResponse
+from app.services.jira.response_handler import (
+    JiraResponseHandler,
+    JiraAuthError,
+    JiraUnexpectedResponse,
+)
 from app.services.jira.version_resolver import JiraApiVersionResolver
 
 logger = logging.getLogger(__name__)
@@ -70,7 +73,7 @@ class JiraProjectService:
             raise Exception("Jira temporarily disabled (circuit breaker)")
 
         last_err: Optional[Exception] = None
-        versions = self.version_resolver.get_api_versions('default')
+        versions = self.version_resolver.get_api_versions("default")
 
         for ver in versions:
             endpoint = f"/rest/api/{ver}/project/{project_key}"
@@ -106,9 +109,7 @@ class JiraProjectService:
         raise last_err or Exception(f"Failed to get project {project_key}")
 
     def get_project_issues(
-        self,
-        project_key: str,
-        max_results: Optional[int] = None
+        self, project_key: str, max_results: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
         Get issues for a Jira project with pagination.
@@ -134,13 +135,27 @@ class JiraProjectService:
         page_size = min(settings.JIRA_PAGE_SIZE, max_results)
 
         jql = f"project={project_key} ORDER BY created DESC"
-        fields = ",".join([
-            "summary", "status", "issuetype", "priority", "assignee",
-            "timetracking", "timeoriginalestimate", "timespent", "timeestimate",
-            "created", "updated", "resolutiondate", "duedate", "labels", "components",
-        ])
+        fields = ",".join(
+            [
+                "summary",
+                "status",
+                "issuetype",
+                "priority",
+                "assignee",
+                "timetracking",
+                "timeoriginalestimate",
+                "timespent",
+                "timeestimate",
+                "created",
+                "updated",
+                "resolutiondate",
+                "duedate",
+                "labels",
+                "components",
+            ]
+        )
 
-        versions = self.version_resolver.get_api_versions('default')
+        versions = self.version_resolver.get_api_versions("default")
         last_err: Optional[Exception] = None
 
         for ver in versions:
@@ -151,11 +166,11 @@ class JiraProjectService:
             try:
                 while len(all_issues) < max_results:
                     current_page_size = min(page_size, max_results - len(all_issues))
-                    params = {
+                    params: Dict[str, str | int | float | bool | None] = {
                         "jql": jql,
-                        "maxResults": current_page_size,
-                        "startAt": start_at,
-                        "fields": fields
+                        "maxResults": int(current_page_size),
+                        "startAt": int(start_at),
+                        "fields": ",".join(fields),
                     }
 
                     logger.debug("Jira search issues (v%s): GET %s", ver, endpoint)
@@ -200,7 +215,9 @@ class JiraProjectService:
 
                 logger.info(
                     "Jira search (v%s): project=%s fetched_total=%d",
-                    ver, project_key, len(all_issues)
+                    ver,
+                    project_key,
+                    len(all_issues),
                 )
                 self.circuit_breaker.record_success()
                 return all_issues
@@ -245,12 +262,11 @@ class JiraProjectService:
                 logger.debug("Jira list_projects v3: GET %s", endpoint)
 
                 response = self.http_client.get(endpoint)
-                data = self.response_handler.handle_response('project_search_v3', response)
+                data = self.response_handler.handle_response("project_search_v3", response)
 
-                values = data.get('values', []) if isinstance(data, dict) else []
+                values = data.get("values", []) if isinstance(data, dict) else []
                 items = [
-                    {'key': p.get('key'), 'name': p.get('name'), 'id': p.get('id')}
-                    for p in values
+                    {"key": p.get("key"), "name": p.get("name"), "id": p.get("id")} for p in values
                 ]
 
                 if query:
@@ -277,10 +293,10 @@ class JiraProjectService:
             logger.debug("Jira list_projects v2: GET %s", endpoint)
 
             response = self.http_client.get(endpoint)
-            data = self.response_handler.handle_response('project_list_v2', response)
+            data = self.response_handler.handle_response("project_list_v2", response)
 
             items = [
-                {'key': p.get('key'), 'name': p.get('name'), 'id': p.get('id')}
+                {"key": p.get("key"), "name": p.get("name"), "id": p.get("id")}
                 for p in (data or [])
             ]
 
@@ -305,9 +321,7 @@ class JiraProjectService:
             raise JiraUnexpectedResponse(f"Failed to fetch Jira projects: {e}") from e
 
     async def async_get_project_issues(
-        self,
-        project_key: str,
-        max_results: Optional[int] = None
+        self, project_key: str, max_results: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
         Async version of get_project_issues using httpx.
@@ -325,20 +339,35 @@ class JiraProjectService:
 
         logger.info(
             "Jira async: fetching issues for project=%s (mode=%s)",
-            project_key, self.version_resolver.get_server_type_name()
+            project_key,
+            self.version_resolver.get_server_type_name(),
         )
 
         max_results = max_results or settings.JIRA_MAX_RESULTS
         page_size = min(settings.JIRA_PAGE_SIZE, max_results)
 
         jql = f"project={project_key} ORDER BY created DESC"
-        fields = ",".join([
-            "summary", "status", "issuetype", "priority", "assignee",
-            "timetracking", "timeoriginalestimate", "timespent", "timeestimate",
-            "created", "updated", "resolutiondate", "duedate", "labels", "components",
-        ])
+        fields = ",".join(
+            [
+                "summary",
+                "status",
+                "issuetype",
+                "priority",
+                "assignee",
+                "timetracking",
+                "timeoriginalestimate",
+                "timespent",
+                "timeestimate",
+                "created",
+                "updated",
+                "resolutiondate",
+                "duedate",
+                "labels",
+                "components",
+            ]
+        )
 
-        versions = self.version_resolver.get_api_versions('default')
+        versions = self.version_resolver.get_api_versions("default")
 
         async with httpx.AsyncClient() as client:
             for ver in versions:
@@ -349,11 +378,11 @@ class JiraProjectService:
                 try:
                     while len(all_issues) < max_results:
                         current_page_size = min(page_size, max_results - len(all_issues))
-                        params = {
+                        params: Dict[str, str | int | float | bool | None] = {
                             "jql": jql,
-                            "maxResults": current_page_size,
-                            "startAt": start_at,
-                            "fields": fields
+                            "maxResults": int(current_page_size),
+                            "startAt": int(start_at),
+                            "fields": ",".join(fields),
                         }
 
                         logger.debug("Jira async search (v%s): GET %s", ver, endpoint)
@@ -368,11 +397,7 @@ class JiraProjectService:
                             auth = (self.http_client.email, self.http_client.api_token)
 
                         resp = await client.get(
-                            url,
-                            params=params,
-                            headers=headers,
-                            auth=auth,
-                            timeout=20
+                            url, params=params, headers=headers, auth=auth, timeout=20
                         )
                         resp.raise_for_status()
 
@@ -403,7 +428,9 @@ class JiraProjectService:
 
                     logger.info(
                         "Jira async search (v%s): project=%s fetched_total=%d",
-                        ver, project_key, len(all_issues)
+                        ver,
+                        project_key,
+                        len(all_issues),
                     )
                     self.circuit_breaker.record_success()
                     return all_issues
@@ -411,7 +438,9 @@ class JiraProjectService:
                 except httpx.HTTPStatusError as e:
                     logger.error(
                         "Jira async search (v%s) HTTP error for %s: status=%s",
-                        ver, project_key, e.response.status_code
+                        ver,
+                        project_key,
+                        e.response.status_code,
                     )
                     self.circuit_breaker.record_failure()
                     continue
@@ -424,7 +453,11 @@ class JiraProjectService:
                 except Exception as e:
                     logger.error(
                         "Jira async search (v%s) unexpected error for %s: %s (type=%s)",
-                        ver, project_key, e, type(e).__name__, exc_info=True
+                        ver,
+                        project_key,
+                        e,
+                        type(e).__name__,
+                        exc_info=True,
                     )
                     self.circuit_breaker.record_failure()
                     continue
@@ -475,11 +508,7 @@ class JiraProjectService:
             "blocks": [],
         }
 
-    def _filter_projects(
-        self,
-        items: List[Dict[str, Any]],
-        query: str
-    ) -> List[Dict[str, Any]]:
+    def _filter_projects(self, items: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
         """
         Filter projects by search query.
 
@@ -492,7 +521,8 @@ class JiraProjectService:
         """
         q = query.lower()
         return [
-            i for i in items
-            if (i.get('key') and q in i['key'].lower())
-            or (i.get('name') and q in i['name'].lower())
+            i
+            for i in items
+            if (i.get("key") and q in i["key"].lower())
+            or (i.get("name") and q in i["name"].lower())
         ]

@@ -14,7 +14,6 @@ import {
 import {
   Error as ErrorIcon,
   Warning as WarningIcon,
-  CheckCircle as CheckIcon,
   ExpandMore as ExpandIcon,
   ExpandLess as CollapseIcon,
 } from '@mui/icons-material';

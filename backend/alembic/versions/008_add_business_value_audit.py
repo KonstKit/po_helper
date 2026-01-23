@@ -1,4 +1,4 @@
-﻿"""add business value audit table
+"""add business value audit table
 
 Revision ID: 008
 Revises: 007

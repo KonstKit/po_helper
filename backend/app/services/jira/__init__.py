@@ -48,24 +48,24 @@ from app.services.jira.board_service import JiraBoardService
 
 __all__ = [
     # Main Facade (primary entry point)
-    'JiraService',
+    "JiraService",
     # HTTP Client
-    'JiraHttpClient',
+    "JiraHttpClient",
     # Resilience
-    'CircuitBreaker',
+    "CircuitBreaker",
     # Response Handling
-    'JiraResponseHandler',
-    'JiraAuthError',
-    'JiraUnexpectedResponse',
+    "JiraResponseHandler",
+    "JiraAuthError",
+    "JiraUnexpectedResponse",
     # Authentication
-    'JiraAuthStrategy',
-    'BasicAuthStrategy',
-    'BearerAuthStrategy',
-    'JiraAuthFactory',
+    "JiraAuthStrategy",
+    "BasicAuthStrategy",
+    "BearerAuthStrategy",
+    "JiraAuthFactory",
     # Version Resolution
-    'JiraApiVersionResolver',
+    "JiraApiVersionResolver",
     # Project Operations
-    'JiraProjectService',
+    "JiraProjectService",
     # Board Operations
-    'JiraBoardService',
+    "JiraBoardService",
 ]

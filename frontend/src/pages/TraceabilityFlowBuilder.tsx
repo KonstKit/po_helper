@@ -20,7 +20,10 @@ import PropertiesPanelEditable from '../components/traceability/PropertiesPanelE
 import ImportExportDialog from '../components/traceability/ImportExportDialog';
 import TemplateDialog from '../components/traceability/TemplateDialog';
 import ValidationPanel from '../components/traceability/ValidationPanel';
-import { validateRule, ValidationResult } from '../utils/ruleValidation';
+import { validateRule } from '../utils/ruleValidation';
+import { getErrorMessage } from '../utils/errorUtils';
+import { createRule, updateRule, executeRule } from '../services/api';
+import type { TraceabilityRuleCreate, TraceabilityRuleUpdate, FlowJSON } from '../services/api';
 
 // Import custom node components
 import CommitSourceNode from '../components/traceability/nodes/CommitSourceNode';
@@ -42,15 +45,22 @@ const nodeTypes: NodeTypes = {
   createLinkAction: CreateLinkActionNode,
 };
 
+type TraceabilityNodeData = Record<string, unknown>;
+type TraceabilityNode = Node<TraceabilityNodeData>;
+type TraceabilityEdge = Edge<TraceabilityNodeData>;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
 const TraceabilityFlowBuilder: React.FC = () => {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [nodes, setNodes, onNodesChange] = useNodesState<TraceabilityNode>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<TraceabilityEdge>([]);
+  const [selectedNode, setSelectedNode] = useState<TraceabilityNode | null>(null);
   const [importExportOpen, setImportExportOpen] = useState(false);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
   const [executing, setExecuting] = useState(false);
-  const [executionResult, setExecutionResult] = useState<any>(null);
+  const [executionResult, setExecutionResult] = useState<{ error?: string; links_created?: number; links_updated?: number } | null>(null);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [currentRuleId, setCurrentRuleId] = useState<number | null>(null);
   const [ruleName, setRuleName] = useState('Untitled Rule');
@@ -68,12 +78,12 @@ const TraceabilityFlowBuilder: React.FC = () => {
   );
 
   // Handle node selection for properties panel
-  const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+  const onNodeClick = useCallback((_event: React.MouseEvent, node: TraceabilityNode) => {
     setSelectedNode(node);
   }, []);
 
   // Handle node update from properties panel
-  const onUpdateNode = useCallback((nodeId: string, newData: any) => {
+  const onUpdateNode = useCallback((nodeId: string, newData: TraceabilityNodeData) => {
     setNodes((nds) =>
       nds.map((node) =>
         node.id === nodeId
@@ -85,43 +95,51 @@ const TraceabilityFlowBuilder: React.FC = () => {
 
   // Save or update rule
   const handleSaveRule = useCallback(async () => {
-    const flowData = {
-      nodes,
-      edges,
+    const flowData: FlowJSON = {
+      nodes: nodes.map((n) => ({
+        id: n.id,
+        type: n.type || 'default',
+        position: n.position,
+        data: n.data,
+      })),
+      edges: edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: e.sourceHandle ?? null,
+        targetHandle: e.targetHandle ?? null,
+      })),
       version: '1.0',
     };
 
     try {
-      const url = currentRuleId
-        ? `/api/v1/traceability/rules/${currentRuleId}`
-        : '/api/v1/traceability/rules';
-
-      const method = currentRuleId ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({
+      if (currentRuleId) {
+        // Update existing rule
+        const updateData: TraceabilityRuleUpdate = {
           name: ruleName,
           description: 'Auto-saved rule from flow builder',
           flow_json: flowData,
           enabled: true,
           category: 'custom',
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to save rule');
+        };
+        const savedRule = await updateRule(currentRuleId, updateData);
+        return savedRule.id;
+      } else {
+        // Create new rule
+        const createData: TraceabilityRuleCreate = {
+          name: ruleName,
+          description: 'Auto-saved rule from flow builder',
+          flow_json: flowData,
+          enabled: true,
+          category: 'custom',
+        };
+        const savedRule = await createRule(createData);
+        setCurrentRuleId(savedRule.id);
+        return savedRule.id;
       }
-
-      const savedRule = await response.json();
-      setCurrentRuleId(savedRule.id);
-      return savedRule.id;
-    } catch (error: any) {
-      throw new Error(`Save failed: ${error.message}`);
+    } catch (error: unknown) {
+      const msg = getErrorMessage(error, 'Unknown error');
+      throw new Error(`Save failed: ${msg}`);
     }
   }, [nodes, edges, ruleName, currentRuleId]);
 
@@ -140,24 +158,15 @@ const TraceabilityFlowBuilder: React.FC = () => {
       // Save rule first (or update if exists)
       const ruleId = await handleSaveRule();
 
-      // Execute the rule
-      const response = await fetch(`/api/v1/traceability/rules/${ruleId}/execute`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
+      // Execute the rule using centralized API
+      const result = await executeRule(ruleId);
+      setExecutionResult({
+        links_created: result.links_created,
+        links_updated: result.links_updated,
       });
-
-      if (!response.ok) {
-        throw new Error('Execution failed');
-      }
-
-      const result = await response.json();
-      setExecutionResult(result);
       setSnackbarOpen(true);
-    } catch (error: any) {
-      setExecutionResult({ error: error.message });
+    } catch (error: unknown) {
+      setExecutionResult({ error: getErrorMessage(error, 'Execution failed') });
       setSnackbarOpen(true);
     } finally {
       setExecuting(false);
@@ -176,7 +185,8 @@ const TraceabilityFlowBuilder: React.FC = () => {
       event.preventDefault();
 
       const type = event.dataTransfer.getData('application/reactflow');
-      const nodeData = JSON.parse(event.dataTransfer.getData('application/nodedata'));
+      const parsedData = JSON.parse(event.dataTransfer.getData('application/nodedata'));
+      const nodeData: TraceabilityNodeData = isRecord(parsedData) ? parsedData : {};
 
       if (!type) return;
 
@@ -185,7 +195,7 @@ const TraceabilityFlowBuilder: React.FC = () => {
         y: event.clientY - 50,
       };
 
-      const newNode: Node = {
+      const newNode: TraceabilityNode = {
         id: `${type}_${Date.now()}`,
         type,
         position,

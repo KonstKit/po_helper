@@ -1,32 +1,47 @@
-﻿from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import List, Optional, Dict, Any
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func, and_
 from sqlalchemy.exc import IntegrityError
 from time import perf_counter
 from app.core.database import get_db
 from app.models import Task, BusinessValueAudit, User, Permissions
 from app.schemas.task import Task as TaskSchema, TaskCreate, TaskUpdate, TaskWithRelations
+from app.schemas.pagination import paginated_response
 from app.api.deps import require_permission
-from app.utils import transactional_session, handle_api_error, paginate_query, get_or_404, execute_with_lock
+from app.utils import (
+    transactional_session,
+    handle_api_error,
+    get_or_404,
+    execute_with_lock,
+)
+from app.utils.error_handling import async_handle_api_error
+from app.utils.batch_operations import bulk_delete_by_ids, bulk_update_by_ids
+from app.core.cache_enhanced import CacheInvalidator
 import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.get("/", response_model=List[TaskSchema])
+@router.get("/")
 async def get_tasks(
-    project_id: Optional[int] = Query(None),
-    sprint_id: Optional[int] = Query(None),
-    status: Optional[str] = Query(None),
-    assignee: Optional[str] = Query(None),
-    skip: int = 0,
-    limit: int = Query(100, le=1000),  # Max limit of 1000 to prevent excessive loads
+    project_id: Optional[int] = Query(None, description="Filter by project ID"),
+    sprint_id: Optional[int] = Query(None, description="Filter by sprint ID"),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    assignee: Optional[str] = Query(None, description="Filter by assignee email"),
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(50, ge=1, le=1000, description="Max records to return"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.TASK_VIEW))
-):
-    """Get tasks with filters - optimized for performance with large datasets"""
+    current_user: User = Depends(require_permission(Permissions.TASK_VIEW)),
+) -> Dict[str, Any]:
+    """
+    Get paginated tasks with filters.
+
+    Returns paginated response with metadata:
+    - data: list of tasks
+    - meta: pagination info (total, page, per_page, total_pages, has_next, has_prev)
+    """
     start = perf_counter()
     logger.info(
         "tasks.list.start project_id=%s sprint_id=%s status=%s assignee=%s skip=%s limit=%s",
@@ -40,14 +55,15 @@ async def get_tasks(
 
     # Use caching for common queries
     from app.services.cache_service import cache_service
+
     cache_key = cache_service._make_key(
-        "tasks_list",
+        "tasks_list_paginated",
         project_id=project_id,
         sprint_id=sprint_id,
         status=status,
         assignee=assignee,
         skip=skip,
-        limit=limit
+        limit=limit,
     )
     cached_result = cache_service.get(cache_key)
     if cached_result:
@@ -55,44 +71,60 @@ async def get_tasks(
         return cached_result
 
     try:
-        # Build optimized query with only necessary columns for listing
-        # Use joinedload for related data if needed
-        query = select(Task)
-
-        # Apply filters in order of selectivity (most selective first)
-        if sprint_id:  # Most selective typically
-            query = query.where(Task.sprint_id == sprint_id)
+        # Build filter conditions
+        filters = []
+        if sprint_id:
+            filters.append(Task.sprint_id == sprint_id)
         if project_id:
-            query = query.where(Task.project_id == project_id)
+            filters.append(Task.project_id == project_id)
         if assignee:
-            query = query.where(Task.assignee_email == assignee)
+            filters.append(Task.assignee_email == assignee)
         if status:
-            query = query.where(Task.status == status)
+            filters.append(Task.status == status)
 
-        # Add ordering for consistent pagination
-        query = query.order_by(Task.id)
+        # Count query (runs in parallel with data query)
+        count_query = select(func.count(Task.id))
+        if filters:
+            count_query = count_query.where(and_(*filters))
 
-        # Execute with timeout protection
+        # Data query
+        data_query = select(Task)
+        if filters:
+            data_query = data_query.where(and_(*filters))
+        data_query = data_query.order_by(Task.id).offset(skip).limit(limit)
+
+        # Execute both queries
         import asyncio
+
         try:
-            tasks = await asyncio.wait_for(
-                paginate_query(db, query, skip, limit),
-                timeout=30.0  # 30 second timeout for large queries
+            count_result, data_result = await asyncio.wait_for(
+                asyncio.gather(db.execute(count_query), db.execute(data_query)), timeout=30.0
+            )
+
+            total = count_result.scalar() or 0
+            tasks = list(data_result.scalars().all())
+
+            # Build paginated response
+            result = paginated_response(
+                data=[TaskSchema.model_validate(t).model_dump() for t in tasks],
+                total=total,
+                skip=skip,
+                limit=limit,
             )
 
             # Cache the result for smaller queries
             if limit <= 100:
-                cache_service.set(cache_key, tasks, ttl=60)  # Cache for 1 minute
+                cache_service.set(cache_key, result, ttl=60)
             elif limit <= 500:
-                cache_service.set(cache_key, tasks, ttl=30)  # Cache for 30 seconds for medium queries
-            # Don't cache very large queries (>500)
+                cache_service.set(cache_key, result, ttl=30)
 
             logger.info(
-                "tasks.list.success count=%s duration=%.3f",
+                "tasks.list.success count=%s total=%s duration=%.3f",
                 len(tasks),
+                total,
                 perf_counter() - start,
             )
-            return tasks
+            return result
 
         except asyncio.TimeoutError:
             logger.error(
@@ -102,9 +134,10 @@ async def get_tasks(
                 limit,
                 perf_counter() - start,
             )
-            # Inform client explicitly about timeout
             raise HTTPException(status_code=504, detail="Query timeout - try with smaller limit")
 
+    except HTTPException:
+        raise
     except Exception:
         logger.exception(
             "tasks.list.error project_id=%s sprint_id=%s status=%s assignee=%s duration=%.3f",
@@ -121,7 +154,7 @@ async def get_tasks(
 async def get_task(
     task_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.TASK_VIEW))
+    current_user: User = Depends(require_permission(Permissions.TASK_VIEW)),
 ):
     """Get task with relations"""
     task = await get_or_404(db, select(Task).where(Task.id == task_id), "Task")
@@ -132,19 +165,15 @@ async def get_task(
     # Guard division by zero and missing values
     if (task.estimate_hours or 0) > 0 and (task.spent_hours or 0) >= 0:
         task_dict["deviation_hours"] = (task.spent_hours or 0) - (task.estimate_hours or 0)
-        task_dict["completion_rate"] = ((task.spent_hours or 0) / (task.estimate_hours or 1) * 100)
+        task_dict["completion_rate"] = (task.spent_hours or 0) / (task.estimate_hours or 1) * 100
 
-    if getattr(task, "project", None):
-        try:
-            task_dict["project_name"] = task.project.name
-        except Exception:
-            pass
+    project = task.project
+    if project is not None:
+        task_dict["project_name"] = project.name
 
-    if getattr(task, "sprint", None):
-        try:
-            task_dict["sprint_name"] = task.sprint.name
-        except Exception:
-            pass
+    sprint = task.sprint
+    if sprint is not None:
+        task_dict["sprint_name"] = sprint.name
 
     return task_dict
 
@@ -153,7 +182,7 @@ async def get_task(
 async def create_task(
     task: TaskCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.TASK_CREATE))
+    current_user: User = Depends(require_permission(Permissions.TASK_CREATE)),
 ):
     """Create new task"""
     # Use transaction with optional FOR UPDATE to prevent races on unique jira_id
@@ -169,7 +198,10 @@ async def create_task(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=400, detail="Task with this Jira ID already exists")
-    
+
+    # Invalidate caches affected by task creation
+    await CacheInvalidator.on_task_update(db_task.project_id, db_task.sprint_id)
+
     return db_task
 
 
@@ -178,7 +210,7 @@ async def update_task(
     task_id: int,
     task_update: TaskUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.TASK_UPDATE))
+    current_user: User = Depends(require_permission(Permissions.TASK_UPDATE)),
 ):
     """Update task"""
     task = await get_or_404(db, select(Task).where(Task.id == task_id), "Task")
@@ -186,7 +218,7 @@ async def update_task(
     update_data = task_update.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(task, field, value)
-    
+
     try:
         async with db.begin():
             for field, value in update_data.items():
@@ -195,7 +227,10 @@ async def update_task(
         await db.rollback()
         raise
     await db.refresh(task)
-    
+
+    # Invalidate caches affected by task update
+    await CacheInvalidator.on_task_update(task.project_id, task.sprint_id)
+
     return task
 
 
@@ -203,13 +238,20 @@ async def update_task(
 async def delete_task(
     task_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission(Permissions.TASK_DELETE))
+    current_user: User = Depends(require_permission(Permissions.TASK_DELETE)),
 ):
     """Delete task"""
     task = await get_or_404(db, select(Task).where(Task.id == task_id), "Task")
 
+    # Store project/sprint IDs before deletion
+    project_id = task.project_id
+    sprint_id = task.sprint_id
+
     async with transactional_session(db):
         await db.delete(task)
+
+    # Invalidate caches affected by task deletion
+    await CacheInvalidator.on_task_update(project_id, sprint_id)
 
     return {"message": "Task deleted successfully"}
 
@@ -218,74 +260,73 @@ async def delete_task(
 async def export_tasks_to_excel(
     project_id: Optional[int] = None,
     sprint_id: Optional[int] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Export tasks to Excel"""
     import pandas as pd
     from io import BytesIO
     from fastapi.responses import StreamingResponse
-    
+
     # Get tasks
     query = select(Task)
     if project_id:
         query = query.where(Task.project_id == project_id)
     if sprint_id:
         query = query.where(Task.sprint_id == sprint_id)
-    
+
     result = await db.execute(query)
     tasks = result.scalars().all()
-    
+
     # Convert to DataFrame
     data = []
     for task in tasks:
-        data.append({
-            "Key": task.key,
-            "Summary": task.summary,
-            "Type": task.task_type,
-            "Status": task.status,
-            "Priority": task.priority,
-            "Assignee": task.assignee_name,
-            "Estimate (hours)": task.estimate_hours,
-            "Spent (hours)": task.spent_hours,
-            "Remaining (hours)": task.remaining_hours,
-            "Created": task.created_date,
-            "Due Date": task.due_date
-        })
-    
+        data.append(
+            {
+                "Key": task.key,
+                "Summary": task.summary,
+                "Type": task.task_type,
+                "Status": task.status,
+                "Priority": task.priority,
+                "Assignee": task.assignee_name,
+                "Estimate (hours)": task.estimate_hours,
+                "Spent (hours)": task.spent_hours,
+                "Remaining (hours)": task.remaining_hours,
+                "Created": task.created_date,
+                "Due Date": task.due_date,
+            }
+        )
+
     df = pd.DataFrame(data)
-    
+
     # Create Excel file
     output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, sheet_name='Tasks', index=False)
-        
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(writer, sheet_name="Tasks", index=False)
+
         # Get workbook and worksheet
         workbook = writer.book
-        worksheet = writer.sheets['Tasks']
-        
+        worksheet = writer.sheets["Tasks"]
+
         # Add formatting
-        header_format = workbook.add_format({
-            'bold': True,
-            'bg_color': '#4472C4',
-            'font_color': 'white',
-            'border': 1
-        })
-        
+        header_format = workbook.add_format(
+            {"bold": True, "bg_color": "#4472C4", "font_color": "white", "border": 1}
+        )
+
         # Write headers with formatting
         for col_num, value in enumerate(df.columns.values):
             worksheet.write(0, col_num, value, header_format)
-        
+
         # Auto-adjust column widths
         for i, col in enumerate(df.columns):
             column_width = max(df[col].astype(str).map(len).max(), len(col)) + 2
             worksheet.set_column(i, i, min(column_width, 50))
-    
+
     output.seek(0)
-    
+
     return StreamingResponse(
         output,
-        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        headers={"Content-Disposition": "attachment; filename=tasks_export.xlsx"}
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=tasks_export.xlsx"},
     )
 
 
@@ -320,8 +361,11 @@ async def set_task_business_value(
 
     # Recompute ROI if we have data
     try:
-        if (task.value_delivered or False) and task.business_value is not None and task.spent_hours not in (None, 0):
-            task.roi = float(task.business_value) / float(task.spent_hours)
+        business_value_val = task.business_value
+        spent_hours_val = task.spent_hours
+        if (task.value_delivered or False) and business_value_val is not None:
+            if spent_hours_val is not None and spent_hours_val != 0:
+                task.roi = float(business_value_val) / float(spent_hours_val)
         elif task.spent_hours in (None, 0):
             if task.value_delivered and task.business_value is not None:
                 task.roi = 0.0
@@ -348,10 +392,19 @@ async def set_task_business_value(
                 pass
         await db.refresh(task)
 
+        # Invalidate caches affected by business value update
+        await CacheInvalidator.on_task_update(task.project_id, task.sprint_id)
+
     try:
         logger.info(
             "Task %s business value update: value %s->%s, delivered %s->%s, roi %s->%s",
-            task_id, old_value, task.business_value, old_delivered, task.value_delivered, old_roi, task.roi,
+            task_id,
+            old_value,
+            task.business_value,
+            old_delivered,
+            task.value_delivered,
+            old_roi,
+            task.roi,
         )
     except Exception:
         pass
@@ -375,23 +428,165 @@ async def get_task_business_value_audit(
     """Return recent business value audit records for a task."""
     with handle_api_error(operation="get_task_business_value_audit", context={"task_id": task_id}):
         from sqlalchemy import desc
+
         res = await db.execute(
-            select(BusinessValueAudit).where(BusinessValueAudit.task_id == task_id).order_by(desc(BusinessValueAudit.created_at)).limit(limit)
+            select(BusinessValueAudit)
+            .where(BusinessValueAudit.task_id == task_id)
+            .order_by(desc(BusinessValueAudit.created_at))
+            .limit(limit)
         )
         rows = res.scalars().all()
         out = []
         for r in rows:
-            out.append({
-                'id': r.id,
-                'task_id': r.task_id,
-                'old_value': r.old_value,
-                'new_value': r.new_value,
-                'old_delivered': r.old_delivered,
-                'new_delivered': r.new_delivered,
-                'old_roi': r.old_roi,
-                'new_roi': r.new_roi,
-                'changed_by': r.changed_by,
-                'reason': r.reason,
-                'created_at': r.created_at,
-            })
-        return { 'total': len(out), 'audit': out }
+            out.append(
+                {
+                    "id": r.id,
+                    "task_id": r.task_id,
+                    "old_value": r.old_value,
+                    "new_value": r.new_value,
+                    "old_delivered": r.old_delivered,
+                    "new_delivered": r.new_delivered,
+                    "old_roi": r.old_roi,
+                    "new_roi": r.new_roi,
+                    "changed_by": r.changed_by,
+                    "reason": r.reason,
+                    "created_at": r.created_at,
+                }
+            )
+        return {"total": len(out), "audit": out}
+
+
+# =============================================================================
+# Batch Operations (Performance Optimization)
+# =============================================================================
+
+
+@router.delete("/batch")
+async def batch_delete_tasks(
+    task_ids: List[int] = Body(
+        ..., description="List of task IDs to delete", min_length=1, max_length=500
+    ),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.TASK_DELETE)),
+) -> Dict[str, Any]:
+    """
+    Delete multiple tasks in a single optimized operation.
+
+    Uses bulk DELETE query instead of N individual queries.
+    Maximum 500 tasks per request.
+
+    Returns:
+        deleted: number of tasks deleted
+        requested: number of task IDs provided
+    """
+    start = perf_counter()
+    logger.info("tasks.batch_delete.start count=%s user=%s", len(task_ids), current_user.id)
+
+    if not task_ids:
+        raise HTTPException(status_code=400, detail="No task IDs provided")
+
+    if len(task_ids) > 500:
+        raise HTTPException(status_code=400, detail="Maximum 500 tasks per batch delete")
+
+    async with async_handle_api_error(
+        operation="batch_delete_tasks",
+        context={"count": len(task_ids), "user_id": current_user.id},
+        db_session=db,
+    ):
+        deleted_count = await bulk_delete_by_ids(db, Task, task_ids, chunk_size=100)
+
+        # Invalidate related caches
+        from app.services.cache_service import cache_service
+
+        if hasattr(cache_service, "invalidate_pattern"):
+            cache_service.invalidate_pattern("tasks_list*")
+
+        logger.info(
+            "tasks.batch_delete.success deleted=%s requested=%s duration=%.3f",
+            deleted_count,
+            len(task_ids),
+            perf_counter() - start,
+        )
+
+        return {"deleted": deleted_count, "requested": len(task_ids), "success": True}
+
+
+@router.patch("/batch")
+async def batch_update_tasks(
+    task_ids: List[int] = Body(
+        ..., description="List of task IDs to update", min_length=1, max_length=500
+    ),
+    updates: Dict[str, Any] = Body(..., description="Fields to update"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.TASK_UPDATE)),
+) -> Dict[str, Any]:
+    """
+    Update multiple tasks with the same values in a single optimized operation.
+
+    Uses bulk UPDATE query instead of N individual queries.
+    Maximum 500 tasks per request.
+
+    Allowed update fields:
+        - status: Task status
+        - priority: Task priority
+        - assignee_email: Assignee email
+        - assignee_name: Assignee display name
+
+    Returns:
+        updated: number of tasks updated
+        requested: number of task IDs provided
+    """
+    start = perf_counter()
+    logger.info("tasks.batch_update.start count=%s user=%s", len(task_ids), current_user.id)
+
+    if not task_ids:
+        raise HTTPException(status_code=400, detail="No task IDs provided")
+
+    if len(task_ids) > 500:
+        raise HTTPException(status_code=400, detail="Maximum 500 tasks per batch update")
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No update fields provided")
+
+    # Whitelist allowed fields for bulk update (prevent arbitrary updates)
+    allowed_fields = {"status", "priority", "assignee_email", "assignee_name"}
+    filtered_updates = {k: v for k, v in updates.items() if k in allowed_fields}
+
+    if not filtered_updates:
+        raise HTTPException(
+            status_code=400, detail=f"No valid update fields. Allowed: {', '.join(allowed_fields)}"
+        )
+
+    async with async_handle_api_error(
+        operation="batch_update_tasks",
+        context={
+            "count": len(task_ids),
+            "fields": list(filtered_updates.keys()),
+            "user_id": current_user.id,
+        },
+        db_session=db,
+    ):
+        updated_count = await bulk_update_by_ids(
+            db, Task, task_ids, filtered_updates, chunk_size=100
+        )
+
+        # Invalidate related caches
+        from app.services.cache_service import cache_service
+
+        if hasattr(cache_service, "invalidate_pattern"):
+            cache_service.invalidate_pattern("tasks_list*")
+
+        logger.info(
+            "tasks.batch_update.success updated=%s requested=%s fields=%s duration=%.3f",
+            updated_count,
+            len(task_ids),
+            list(filtered_updates.keys()),
+            perf_counter() - start,
+        )
+
+        return {
+            "updated": updated_count,
+            "requested": len(task_ids),
+            "fields": list(filtered_updates.keys()),
+            "success": True,
+        }

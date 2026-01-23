@@ -1,16 +1,17 @@
 """
 Analytics endpoints for tracking user behavior and usage metrics
 """
-from fastapi import APIRouter, HTTPException
+
+from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
-from datetime import datetime
 
 router = APIRouter()
 
 
 class AnalyticsEvent(BaseModel):
     """Analytics event model"""
+
     event_name: str
     event_data: Optional[Dict[str, Any]] = None
     timestamp: int
@@ -20,6 +21,7 @@ class AnalyticsEvent(BaseModel):
 
 class OnboardingMetrics(BaseModel):
     """Onboarding metrics model"""
+
     started: bool
     started_at: Optional[int] = None
     completed: bool
@@ -32,6 +34,7 @@ class OnboardingMetrics(BaseModel):
 
 class UsageMetrics(BaseModel):
     """Usage metrics aggregation"""
+
     onboarding_completion_rate: float
     avg_time_to_first_value: Optional[float] = None
     feature_adoption_rate: float
@@ -59,7 +62,7 @@ async def track_event(event: AnalyticsEvent) -> dict:
     return {
         "status": "success",
         "message": "Event tracked successfully",
-        "event_id": f"evt_{event.timestamp}_{event.session_id}"
+        "event_id": f"evt_{event.timestamp}_{event.session_id}",
     }
 
 
@@ -75,7 +78,7 @@ async def track_events_batch(events: List[AnalyticsEvent]) -> dict:
     return {
         "status": "success",
         "message": f"{len(events)} events tracked successfully",
-        "events_count": len(events)
+        "events_count": len(events),
     }
 
 
@@ -128,7 +131,7 @@ async def get_time_to_value_metrics() -> dict:
             "account_created_to_jira_connected": 5.2,
             "jira_connected_to_first_sync": 10.1,
             "first_sync_to_first_project_view": 2.5,
-        }
+        },
     }
 
 
@@ -156,7 +159,7 @@ async def get_feature_adoption_metrics() -> dict:
             "testing": {"adoption_rate": 0.35, "avg_visits_per_user": 1.5},
             "traceability": {"adoption_rate": 0.30, "avg_visits_per_user": 1.2},
             "jira_fields": {"adoption_rate": 0.60, "avg_visits_per_user": 3.0},
-        }
+        },
     }
 
 

@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import {
   AppBar,
@@ -33,8 +33,10 @@ import {
   Tune as JiraFieldsIcon,
   AccountTreeOutlined as RuleBuilderIcon,
   History as HistoryIcon,
+  BubbleChart as VisualizationIcon,
   ExpandLess,
   ExpandMore,
+  Speed as SprintCapacityIcon,
 } from '@mui/icons-material';
 import { Collapse } from '@mui/material';
 import { useDispatch } from 'react-redux';
@@ -62,6 +64,7 @@ const navigationGroups: NavigationGroup[] = [
       { text: 'Projects', icon: <FolderIcon />, path: '/projects' },
       { text: 'Tasks', icon: <AssignmentIcon />, path: '/tasks' },
       { text: 'Analytics', icon: <AnalyticsIcon />, path: '/analytics' },
+      { text: 'Sprint Capacity', icon: <SprintCapacityIcon />, path: '/sprint-capacity' },
     ],
   },
   {
@@ -73,6 +76,7 @@ const navigationGroups: NavigationGroup[] = [
         icon: <TraceabilityIcon />,
         path: '/traceability',
         children: [
+          { text: 'D3 Visualization', icon: <VisualizationIcon />, path: '/traceability/visualization' },
           { text: 'Rule Builder', icon: <RuleBuilderIcon />, path: '/traceability/flow-builder' },
           { text: 'Execution History', icon: <HistoryIcon />, path: '/traceability/history' },
         ],

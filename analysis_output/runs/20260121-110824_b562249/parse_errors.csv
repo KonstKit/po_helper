@@ -1,0 +1,24 @@
+error_id,language,file,line,stage,message,tool,confidence,target
+12e49a693cdc,Python,backend/alembic/versions/0001_iter1_extensions.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+9b760ad7f646,Python,backend/alembic/versions/005_add_jira_field_mappings.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+c63375115dec,Python,backend/alembic/versions/007_add_sprint_wip_limit.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+cda4e0a6d11a,Python,backend/alembic/versions/008_add_business_value_audit.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+70a080185e41,Python,backend/alembic/versions/010_add_performance_indexes.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+cb0a14deb0a6,Python,backend/alembic/versions/011_add_traceability_tables.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+87aa5ffcd518,Python,backend/alembic/versions/016_add_foreign_key_indexes.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+d593c25dfcb6,Python,backend/app/api/api_v1/endpoints/git_router.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+5fb8c163e2a7,Python,backend/app/api/api_v1/endpoints/users.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+b59187a1d127,Python,backend/app/api/deps.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+01cc9fb9cffb,Python,backend/app/core/config.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+29c551a74fd9,Python,backend/app/core/crypto.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+7bddba044ed4,Python,backend/app/models/project.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+732328acc89e,Python,backend/app/models/sprint.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+c6f5079118f2,Python,backend/app/services/github_client.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+443df4d09e4a,Python,backend/app/services/jira_sync.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+0e862231611e,Python,backend/app/tasks/jira_sync.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+9f9daf53eb8c,Python,backend/tests/conftest.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+9f7ea757f66e,Python,backend/tests/test_analytics_dora.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+5f284308d0a6,Python,backend/tests/test_crypto.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+e1f7b97b6ef2,Python,backend/tests/test_git_traceability.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+63346545f56c,Python,backend/tests/test_github_client.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod
+dc50dfd9315a,Python,backend/tests/test_jira_service.py,1,parser,"invalid non-printable character U+FEFF (<unknown>, line 1)",ast,MEDIUM,prod

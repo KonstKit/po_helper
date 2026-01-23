@@ -5,7 +5,7 @@
 
 export interface AnalyticsEvent {
   eventName: string;
-  eventData?: Record<string, any>;
+  eventData?: Record<string, unknown>;
   timestamp: number;
   userId?: string;
   sessionId?: string;
@@ -44,6 +44,12 @@ export interface FeatureAdoptionMetrics {
     jiraFields: { visited: boolean; lastVisit?: number };
   };
   adoptionRate: number; // 0-1
+}
+
+interface OnboardingActionData {
+  totalSteps?: number;
+  step?: number;
+  [key: string]: unknown;
 }
 
 class AnalyticsService {
@@ -85,7 +91,7 @@ class AnalyticsService {
   /**
    * Track a user event
    */
-  track(eventName: string, eventData?: Record<string, any>): void {
+  track(eventName: string, eventData?: Record<string, unknown>): void {
     const event: AnalyticsEvent = {
       eventName,
       eventData,
@@ -116,7 +122,10 @@ class AnalyticsService {
   /**
    * Track onboarding progress
    */
-  trackOnboarding(action: 'started' | 'step_completed' | 'completed' | 'skipped', data?: any): void {
+  trackOnboarding(
+    action: 'started' | 'step_completed' | 'completed' | 'skipped',
+    data?: OnboardingActionData
+  ): void {
     const metricsKey = 'onboarding_metrics';
     let metrics: OnboardingMetrics = this.getOnboardingMetrics();
 
@@ -316,6 +325,7 @@ class AnalyticsService {
    * Send event to backend (in production)
    */
   private async sendToBackend(event: AnalyticsEvent): Promise<void> {
+    void event;
     try {
       // In production, send to analytics backend
       // await fetch('/api/analytics/track', {
