@@ -56,6 +56,7 @@ class UserInDB(UserBase):
 
 class User(UserInDB):
     """User schema with roles for API responses."""
+
     roles: List[Role] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)

@@ -44,7 +44,7 @@ class JiraApiVersionResolver:
             logger.debug(
                 "Jira server type detected: %s (base_url=%s)",
                 "Server/DC" if self._is_server_cache else "Cloud",
-                self.base_url
+                self.base_url,
             )
         return self._is_server_cache
 
@@ -63,16 +63,13 @@ class JiraApiVersionResolver:
             return False
 
         # Jira Cloud uses *.atlassian.net domains
-        if '.atlassian.net' in self.base_url.lower():
+        if ".atlassian.net" in self.base_url.lower():
             return False
 
         # Everything else is likely Server/DC (including custom domains)
         return True
 
-    def get_api_versions(
-        self,
-        endpoint_type: str = 'default'
-    ) -> Tuple[Union[int, str], ...]:
+    def get_api_versions(self, endpoint_type: str = "default") -> Tuple[Union[int, str], ...]:
         """
         Get API versions to try for the given endpoint type.
 
@@ -98,13 +95,15 @@ class JiraApiVersionResolver:
         """
         is_server_dc = self.is_server()
 
-        if endpoint_type == 'validation':
+        if endpoint_type == "validation":
             # For validation, try all versions including 'latest'
             # Server/DC: v2, latest
             # Cloud: v3, v2, latest
-            return (2, "latest") if is_server_dc else (3, 2, "latest")
+            if is_server_dc:
+                return (2, "latest")
+            return (3, 2, "latest")
 
-        elif endpoint_type == 'discovery':
+        elif endpoint_type == "discovery":
             # For discovery, prefer v2 (more stable)
             # Server/DC: v2 only
             # Cloud: v2, then v3

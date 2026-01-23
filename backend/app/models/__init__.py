@@ -5,13 +5,21 @@ from app.models.task import Task
 from app.models.sprint import Sprint, WorkLog, SprintSnapshot
 from app.models.confluence import ConfluencePage
 from app.models.settings import IntegrationSetting
-from app.models.traceability import Artifact, ArtifactLink, Source, SyncState, LegacyMapping, AuditLog
+from app.models.traceability import (
+    Artifact,
+    ArtifactLink,
+    Source,
+    SyncState,
+    LegacyMapping,
+    AuditLog,
+)
 from app.models.git import Repository, Commit, PullRequest
 from app.models.project_repository import ProjectRepository
 from app.models.testing import TestResult, CoverageReport, FileCoverage
 from app.models.quality import QualityGateHistory
 from app.models.jira_field_mapping import JiraFieldMapping
 from app.models.audit import BusinessValueAudit
+from app.models.capacity import CapacitySettings, TeamHealthCheck, CFDSnapshot
 
 __all__ = [
     "User",
@@ -42,4 +50,7 @@ __all__ = [
     "QualityGateHistory",
     "JiraFieldMapping",
     "BusinessValueAudit",
+    "CapacitySettings",
+    "TeamHealthCheck",
+    "CFDSnapshot",
 ]

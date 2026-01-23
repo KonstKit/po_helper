@@ -1,4 +1,5 @@
 """Service for resolving which repository to use for a project"""
+
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -10,18 +11,12 @@ class RepositoryResolver:
     """Resolver for determining which repository to use for a project"""
 
     @staticmethod
-    async def get_primary_repository(
-        project_id: int,
-        db: AsyncSession
-    ) -> Optional[Repository]:
+    async def get_primary_repository(project_id: int, db: AsyncSession) -> Optional[Repository]:
         """Get the primary repository for a project"""
         result = await db.execute(
             select(ProjectRepository)
             .options(selectinload(ProjectRepository.repository))
-            .where(
-                ProjectRepository.project_id == project_id,
-                ProjectRepository.is_primary == True
-            )
+            .where(ProjectRepository.project_id == project_id, ProjectRepository.is_primary)
         )
         project_repo = result.scalar_one_or_none()
 
@@ -41,10 +36,7 @@ class RepositoryResolver:
         return project_repo.repository if project_repo else None
 
     @staticmethod
-    async def get_all_repositories(
-        project_id: int,
-        db: AsyncSession
-    ) -> List[Repository]:
+    async def get_all_repositories(project_id: int, db: AsyncSession) -> List[Repository]:
         """Get all repositories linked to a project"""
         result = await db.execute(
             select(ProjectRepository)
@@ -58,9 +50,7 @@ class RepositoryResolver:
 
     @staticmethod
     async def get_repository_by_provider(
-        project_id: int,
-        provider: str,
-        db: AsyncSession
+        project_id: int, provider: str, db: AsyncSession
     ) -> Optional[Repository]:
         """Get a repository for a project by provider (github/gitlab)"""
         result = await db.execute(
@@ -68,8 +58,7 @@ class RepositoryResolver:
             .options(selectinload(ProjectRepository.repository))
             .join(Repository)
             .where(
-                ProjectRepository.project_id == project_id,
-                Repository.provider == provider.lower()
+                ProjectRepository.project_id == project_id, Repository.provider == provider.lower()
             )
             .order_by(ProjectRepository.is_primary.desc())
             .limit(1)
@@ -79,17 +68,14 @@ class RepositoryResolver:
         return project_repo.repository if project_repo else None
 
     @staticmethod
-    async def get_project_by_repository(
-        repository_id: int,
-        db: AsyncSession
-    ) -> Optional[Project]:
+    async def get_project_by_repository(repository_id: int, db: AsyncSession) -> Optional[Project]:
         """Get the primary project for a repository"""
         result = await db.execute(
             select(ProjectRepository)
             .options(selectinload(ProjectRepository.project))
             .where(
                 ProjectRepository.repository_id == repository_id,
-                ProjectRepository.is_primary == True
+                ProjectRepository.is_primary,
             )
         )
         project_repo = result.scalar_one_or_none()

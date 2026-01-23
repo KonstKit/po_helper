@@ -15,6 +15,7 @@ export interface EmptyStateProps {
   secondaryAction?: EmptyStateAction;
   benefits?: string[];
   setupSteps?: string[];
+  docsUrl?: string;
 }
 
 const EmptyState: React.FC<EmptyStateProps> = ({
@@ -25,6 +26,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({
   secondaryAction,
   benefits,
   setupSteps,
+  docsUrl,
 }) => {
   return (
     <Paper
@@ -58,6 +60,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({
       <Typography
         variant="body1"
         color="text.secondary"
+        component="div"
         sx={{ mb: 3, maxWidth: 600, mx: 'auto' }}
       >
         {description}
@@ -112,7 +115,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({
       {benefits && benefits.length > 0 && (
         <Box sx={{ mt: 3, textAlign: 'left', maxWidth: 600, mx: 'auto' }}>
           <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
-            What you'll get:
+            What you&apos;ll get:
           </Typography>
           <Stack spacing={1}>
             {benefits.map((benefit, index) => (
@@ -133,6 +136,20 @@ const EmptyState: React.FC<EmptyStateProps> = ({
               </Box>
             ))}
           </Stack>
+        </Box>
+      )}
+
+      {docsUrl && (
+        <Box sx={{ mt: 3 }}>
+          <Button
+            component="a"
+            href={docsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            size="small"
+          >
+            View Documentation
+          </Button>
         </Box>
       )}
     </Paper>

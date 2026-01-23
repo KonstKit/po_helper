@@ -124,8 +124,8 @@ class BearerAuthStrategy(JiraAuthStrategy):
         Returns:
             Headers with Authorization: Bearer <token>
         """
-        if 'Authorization' not in headers:
-            headers['Authorization'] = f"Bearer {self.token}"
+        if "Authorization" not in headers:
+            headers["Authorization"] = f"Bearer {self.token}"
         return headers
 
     def get_requests_auth(self):
@@ -154,10 +154,10 @@ class JiraAuthFactory:
 
     @staticmethod
     def create_auth(
-        email: str = None,
-        api_token: str = None,
-        bearer_token: str = None,
-        use_pat: bool = None,
+        email: str | None = None,
+        api_token: str | None = None,
+        bearer_token: str | None = None,
+        use_pat: bool | None = None,
     ) -> JiraAuthStrategy:
         """
         Create appropriate authentication strategy.

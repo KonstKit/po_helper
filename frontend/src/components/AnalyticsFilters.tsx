@@ -9,11 +9,11 @@ import {
   Select,
   MenuItem,
   Collapse,
-  IconButton,
   Typography,
   Grid,
   Divider,
 } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import {
   ExpandMore as ExpandMoreIcon,
   FilterList as FilterIcon,
@@ -23,18 +23,46 @@ import {
 interface AnalyticsFiltersProps {
   projectId: number | 'all';
   onProjectChange: (id: number | 'all') => void;
-  projects: any[];
+  projects: ProjectOption[];
   timeRange: '1month' | '3months' | '6months' | '1year';
   onTimeRangeChange: (range: '1month' | '3months' | '6months' | '1year') => void;
   prMetricsRange?: '14d' | '30d' | '90d' | 'all';
   onPRMetricsRangeChange?: (range: '14d' | '30d' | '90d' | 'all') => void;
 }
 
-const QUICK_FILTERS = [
+interface ProjectOption {
+  id: number;
+  name: string;
+}
+
+type TimeRange = AnalyticsFiltersProps['timeRange'];
+type PrMetricsRange = NonNullable<AnalyticsFiltersProps['prMetricsRange']>;
+
+const QUICK_FILTERS: Array<{ value: TimeRange; label: string }> = [
   { value: '1month', label: 'Last Month' },
   { value: '3months', label: 'Last 3 Months' },
   { value: '6months', label: 'Last 6 Months' },
 ];
+
+const parseProjectValue = (value: string): number | 'all' => {
+  if (value === 'all') return 'all';
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 'all';
+};
+
+const parseTimeRange = (value: string): TimeRange | null => {
+  if (value === '1month' || value === '3months' || value === '6months' || value === '1year') {
+    return value;
+  }
+  return null;
+};
+
+const parsePrMetricsRange = (value: string): PrMetricsRange | null => {
+  if (value === '14d' || value === '30d' || value === '90d' || value === 'all') {
+    return value;
+  }
+  return null;
+};
 
 export const AnalyticsFilters: React.FC<AnalyticsFiltersProps> = ({
   projectId,
@@ -65,7 +93,7 @@ export const AnalyticsFilters: React.FC<AnalyticsFiltersProps> = ({
             <InputLabel>Project</InputLabel>
             <Select
               value={projectId}
-              onChange={(e) => onProjectChange(e.target.value as number | 'all')}
+              onChange={(e: SelectChangeEvent) => onProjectChange(parseProjectValue(e.target.value))}
               label="Project"
             >
               <MenuItem value="all">All Projects</MenuItem>
@@ -84,7 +112,7 @@ export const AnalyticsFilters: React.FC<AnalyticsFiltersProps> = ({
               <Chip
                 key={filter.value}
                 label={filter.label}
-                onClick={() => onTimeRangeChange(filter.value as any)}
+                onClick={() => onTimeRangeChange(filter.value)}
                 color={timeRange === filter.value ? 'primary' : 'default'}
                 variant={timeRange === filter.value ? 'filled' : 'outlined'}
                 clickable
@@ -154,9 +182,12 @@ export const AnalyticsFilters: React.FC<AnalyticsFiltersProps> = ({
                 <InputLabel>Time Range</InputLabel>
                 <Select
                   value={timeRange}
-                  onChange={(e) =>
-                    onTimeRangeChange(e.target.value as '1month' | '3months' | '6months' | '1year')
-                  }
+                  onChange={(e: SelectChangeEvent) => {
+                    const nextRange = parseTimeRange(e.target.value);
+                    if (nextRange) {
+                      onTimeRangeChange(nextRange);
+                    }
+                  }}
                   label="Time Range"
                 >
                   <MenuItem value="1month">Last Month</MenuItem>
@@ -171,11 +202,16 @@ export const AnalyticsFilters: React.FC<AnalyticsFiltersProps> = ({
               <Grid item xs={12} sm={6} md={4}>
                 <FormControl fullWidth size="small">
                   <InputLabel>PR Metrics Range</InputLabel>
-                  <Select
-                    value={prMetricsRange}
-                    onChange={(e) => onPRMetricsRangeChange(e.target.value as any)}
-                    label="PR Metrics Range"
-                  >
+                <Select
+                  value={prMetricsRange}
+                  onChange={(e: SelectChangeEvent) => {
+                    const nextRange = parsePrMetricsRange(e.target.value);
+                    if (nextRange) {
+                      onPRMetricsRangeChange(nextRange);
+                    }
+                  }}
+                  label="PR Metrics Range"
+                >
                     <MenuItem value="14d">Last 14 Days</MenuItem>
                     <MenuItem value="30d">Last 30 Days</MenuItem>
                     <MenuItem value="90d">Last 90 Days</MenuItem>

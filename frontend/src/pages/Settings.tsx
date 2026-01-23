@@ -19,6 +19,7 @@ import { Save as SaveIcon, Science as TestIcon, Analytics as AnalyticsIcon, Auto
 import { getJiraSettings, putJiraSettings, getConfluenceSettings, putConfluenceSettings, testJiraConnection, testConfluenceConnection, testGithubConnection, testGitlabConnection, testTestrailConnection, getGithubSettings, putGithubSettings, getGitlabSettings, putGitlabSettings, getTestrailSettings, putTestrailSettings } from '../services/api';
 import { analytics } from '../services/analytics';
 import { detectTimezone, detectCurrency, loadSmartDefaults, SmartDefaults } from '../utils/smartDefaults';
+import { getErrorMessage } from '../utils/errorUtils';
 import { OptionalIntegrations } from '../components/OptionalIntegrations';
 import { IntegrationCard } from '../components/IntegrationCard';
 import { HelpPanel } from '../components/HelpPanel';
@@ -28,6 +29,51 @@ interface TabPanelProps {
   index: number;
   value: number;
 }
+
+type AuthMode = 'PAT' | 'Basic';
+
+type JiraSettings = {
+  baseUrl: string;
+  email: string;
+  apiToken: string;
+};
+
+type ConfluenceSettings = {
+  baseUrl: string;
+  email: string;
+  apiToken: string;
+};
+
+type NotificationSettings = {
+  emailNotifications: boolean;
+  slackNotifications: boolean;
+  riskAlerts: boolean;
+  dailyReports: boolean;
+};
+
+type GeneralSettings = {
+  sprintDuration: number;
+  workingHoursPerDay: number;
+  currency: string;
+  timezone: string;
+};
+
+type MessageState = { type: 'success' | 'error'; text: string };
+
+type GitProviderSettings = {
+  baseUrl: string;
+  apiToken: string;
+  webhookSecret: string;
+};
+
+type TestRailSettings = {
+  baseUrl: string;
+  email: string;
+  apiToken: string;
+};
+
+const DEFAULT_JIRA_BASE_URL = 'https://company.atlassian.net';
+const DEFAULT_CONFLUENCE_BASE_URL = 'https://company.atlassian.net/wiki';
 
 function TabPanel(props: TabPanelProps) {
   const { children, value, index, ...other } = props;
@@ -46,40 +92,51 @@ function TabPanel(props: TabPanelProps) {
 const Settings = () => {
   const navigate = useNavigate();
   const [tabValue, setTabValue] = useState(0);
-  const [jiraSettings, setJiraSettings] = useState({
-    baseUrl: 'https://company.atlassian.net',
+  const [jiraSettings, setJiraSettings] = useState<JiraSettings>({
+    baseUrl: DEFAULT_JIRA_BASE_URL,
     email: '',
     apiToken: '',
   });
   const [jiraHasToken, setJiraHasToken] = useState(false);
-  const [authMode, setAuthMode] = useState<'PAT'|'Basic'>('PAT');
-  const [confluenceSettings, setConfluenceSettings] = useState({
-    baseUrl: 'https://company.atlassian.net/wiki',
+  const [authMode, setAuthMode] = useState<AuthMode>('PAT');
+  const [confluenceSettings, setConfluenceSettings] = useState<ConfluenceSettings>({
+    baseUrl: DEFAULT_CONFLUENCE_BASE_URL,
     email: '',
     apiToken: '',
   });
   const [confluenceHasToken, setConfluenceHasToken] = useState(false);
-  const [notificationSettings, setNotificationSettings] = useState({
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
     emailNotifications: true,
     slackNotifications: false,
     riskAlerts: true,
     dailyReports: false,
   });
-  const [generalSettings, setGeneralSettings] = useState({
-    sprintDuration: 14,
-    workingHoursPerDay: 8,
-    currency: 'USD',
-    timezone: 'UTC',
+  const [smartDefaults] = useState<SmartDefaults | null>(() => loadSmartDefaults());
+  const [generalSettings, setGeneralSettings] = useState<GeneralSettings>(() => {
+    const defaults = loadSmartDefaults();
+    if (defaults) {
+      return {
+        sprintDuration: defaults.sprintDuration,
+        workingHoursPerDay: defaults.workingHoursPerDay,
+        currency: defaults.currency,
+        timezone: defaults.timezone,
+      };
+    }
+    return {
+      sprintDuration: 14,
+      workingHoursPerDay: 8,
+      currency: detectCurrency(),
+      timezone: detectTimezone(),
+    };
   });
-  const [smartDefaults, setSmartDefaults] = useState<SmartDefaults | null>(null);
-  const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
+  const [message, setMessage] = useState<MessageState | null>(null);
   // Git providers
-  const [githubSettings, setGithubSettings] = useState({ baseUrl: '', apiToken: '', webhookSecret: '' });
+  const [githubSettings, setGithubSettings] = useState<GitProviderSettings>({ baseUrl: '', apiToken: '', webhookSecret: '' });
   const [githubHasToken, setGithubHasToken] = useState(false);
-  const [gitlabSettings, setGitlabSettings] = useState({ baseUrl: '', apiToken: '', webhookSecret: '' });
+  const [gitlabSettings, setGitlabSettings] = useState<GitProviderSettings>({ baseUrl: '', apiToken: '', webhookSecret: '' });
   const [gitlabHasToken, setGitlabHasToken] = useState(false);
   // TestRail
-  const [testrailSettings, setTestrailSettings] = useState({ baseUrl: '', email: '', apiToken: '' });
+  const [testrailSettings, setTestrailSettings] = useState<TestRailSettings>({ baseUrl: '', email: '', apiToken: '' });
   const [testrailHasToken, setTestrailHasToken] = useState(false);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -87,116 +144,122 @@ const Settings = () => {
   };
 
   useEffect(() => {
-    // Load smart defaults
-    const defaults = loadSmartDefaults();
-    if (defaults) {
-      setSmartDefaults(defaults);
-      setGeneralSettings({
-        sprintDuration: defaults.sprintDuration,
-        workingHoursPerDay: defaults.workingHoursPerDay,
-        currency: defaults.currency,
-        timezone: defaults.timezone,
-      });
-    } else {
-      // Apply browser-detected defaults
-      setGeneralSettings(prev => ({
-        ...prev,
-        currency: detectCurrency(),
-        timezone: detectTimezone(),
-      }));
-    }
-
     (async () => {
       try {
         const j = await getJiraSettings();
         setJiraSettings({
-          baseUrl: j.base_url || jiraSettings.baseUrl,
+          baseUrl: j.base_url || DEFAULT_JIRA_BASE_URL,
           email: j.email || '',
           apiToken: '', // masked on server; keep local empty
         });
         setJiraHasToken(!!j.has_token);
         setAuthMode(j.email ? 'Basic' : 'PAT');
-      } catch {}
+      } catch (err) {
+        console.warn('Failed to load Jira settings', err);
+      }
       try {
         const c = await getConfluenceSettings();
         setConfluenceSettings({
-          baseUrl: c.base_url || confluenceSettings.baseUrl,
+          baseUrl: c.base_url || DEFAULT_CONFLUENCE_BASE_URL,
           email: c.email || '',
           apiToken: c.api_token || '',
         });
         setConfluenceHasToken(!!c.has_token);
-      } catch {}
+      } catch (err) {
+        console.warn('Failed to load Confluence settings', err);
+      }
       try {
         const gh = await getGithubSettings();
         setGithubSettings({ baseUrl: gh.base_url || '', apiToken: '', webhookSecret: '' });
         setGithubHasToken(!!gh.has_token);
-      } catch {}
+      } catch (err) {
+        console.warn('Failed to load GitHub settings', err);
+      }
       try {
         const gl = await getGitlabSettings();
         setGitlabSettings({ baseUrl: gl.base_url || '', apiToken: '', webhookSecret: '' });
         setGitlabHasToken(!!gl.has_token);
-      } catch {}
+      } catch (err) {
+        console.warn('Failed to load GitLab settings', err);
+      }
       try {
         const tr = await getTestrailSettings();
         setTestrailSettings({ baseUrl: tr.base_url || '', email: tr.email || '', apiToken: '' });
         setTestrailHasToken(!!tr.has_token);
-      } catch {}
+      } catch (err) {
+        console.warn('Failed to load TestRail settings', err);
+      }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleJiraSettingsChange = (field: string, value: string) => {
-    setJiraSettings({ ...jiraSettings, [field]: value });
+  const handleJiraSettingsChange = <K extends keyof JiraSettings>(
+    field: K,
+    value: JiraSettings[K]
+  ) => {
+    setJiraSettings((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleConfluenceSettingsChange = (field: string, value: string) => {
-    setConfluenceSettings({ ...confluenceSettings, [field]: value });
+  const handleConfluenceSettingsChange = <K extends keyof ConfluenceSettings>(
+    field: K,
+    value: ConfluenceSettings[K]
+  ) => {
+    setConfluenceSettings((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleNotificationChange = (field: string, value: boolean) => {
-    setNotificationSettings({ ...notificationSettings, [field]: value });
+  const handleNotificationChange = <K extends keyof NotificationSettings>(
+    field: K,
+    value: NotificationSettings[K]
+  ) => {
+    setNotificationSettings((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleGeneralSettingsChange = <K extends keyof GeneralSettings>(
+    field: K,
+    value: GeneralSettings[K]
+  ) => {
+    setGeneralSettings((prev) => ({ ...prev, [field]: value }));
   };
 
   const testJiraConnectionHandler = async () => {
     try {
       await testJiraConnection({
-        base_url: jiraSettings.baseUrl,
+        baseUrl: jiraSettings.baseUrl,
         email: authMode === 'Basic' ? jiraSettings.email : undefined,
-        api_token: jiraSettings.apiToken,
-        use_pat: authMode === 'PAT',
+        apiToken: jiraSettings.apiToken,
+        usePat: authMode === 'PAT',
       });
       setMessage({ type: 'success', text: 'Jira connection successful!' });
     } catch (error) {
-      const anyErr = error as any;
-      const detail = anyErr?.response?.data?.detail || anyErr.message || 'Unknown error';
+      const detail = getErrorMessage(error, 'Unknown error');
       setMessage({ type: 'error', text: `Failed to connect to Jira: ${detail}` });
     }
   };
 
   const testConfluenceConnectionHandler = async () => {
     try {
-      const payload: any = { base_url: confluenceSettings.baseUrl, api_token: confluenceSettings.apiToken };
+      const payload: { baseUrl: string; apiToken: string; email?: string } = {
+        baseUrl: confluenceSettings.baseUrl,
+        apiToken: confluenceSettings.apiToken,
+      };
       if (confluenceSettings.email) payload.email = confluenceSettings.email;
       await testConfluenceConnection(payload);
       setMessage({ type: 'success', text: 'Confluence connection successful!' });
     } catch (error) {
-      const anyErr = error as any;
-      const detail = anyErr?.response?.data?.detail || anyErr.message || 'Unknown error';
+      const detail = getErrorMessage(error, 'Unknown error');
       setMessage({ type: 'error', text: `Failed to connect to Confluence: ${detail}` });
     }
   };
   const testGithubConnectionHandler = async () => {
     try {
       const response = await testGithubConnection({
-        base_url: githubSettings.baseUrl || undefined,
-        api_token: githubSettings.apiToken || undefined,
+        baseUrl: githubSettings.baseUrl || undefined,
+        apiToken: githubSettings.apiToken || undefined,
       });
       const loginInfo = response?.login ? ` as ${response.login}` : '';
       const extraInfo = response?.message ? ` (${response.message})` : '';
       setMessage({ type: 'success', text: `GitHub connection successful${loginInfo}${extraInfo}`.trim() });
     } catch (error) {
-      const anyErr = error as any;
-      const detail = anyErr?.response?.data?.detail || anyErr.message || 'Unknown error';
+      const detail = getErrorMessage(error, 'Unknown error');
       setMessage({ type: 'error', text: `Failed to connect to GitHub: ${detail}` });
     }
   };
@@ -204,16 +267,15 @@ const Settings = () => {
   const testGitlabConnectionHandler = async () => {
     try {
       const response = await testGitlabConnection({
-        base_url: gitlabSettings.baseUrl || undefined,
-        api_token: gitlabSettings.apiToken || undefined,
-        webhook_secret: gitlabSettings.webhookSecret || undefined,
+        baseUrl: gitlabSettings.baseUrl || undefined,
+        apiToken: gitlabSettings.apiToken || undefined,
+        webhookSecret: gitlabSettings.webhookSecret || undefined,
       });
       const name = response?.username || response?.name;
       const suffix = name ? ` as ${name}` : '';
       setMessage({ type: 'success', text: `GitLab connection successful${suffix}`.trim() });
     } catch (error) {
-      const anyErr = error as any;
-      const detail = anyErr?.response?.data?.detail || anyErr.message || 'Unknown error';
+      const detail = getErrorMessage(error, 'Unknown error');
       setMessage({ type: 'error', text: `Failed to connect to GitLab: ${detail}` });
     }
   };
@@ -221,15 +283,14 @@ const Settings = () => {
   const testTestrailConnectionHandler = async () => {
     try {
       const response = await testTestrailConnection({
-        base_url: testrailSettings.baseUrl || undefined,
+        baseUrl: testrailSettings.baseUrl || undefined,
         email: testrailSettings.email || undefined,
-        api_token: testrailSettings.apiToken || undefined,
+        apiToken: testrailSettings.apiToken || undefined,
       });
       const extraInfo = typeof response?.status_count === 'number' ? ` (statuses: ${response.status_count})` : '';
       setMessage({ type: 'success', text: `TestRail connection successful${extraInfo}`.trim() });
     } catch (error) {
-      const anyErr = error as any;
-      const detail = anyErr?.response?.data?.detail || anyErr.message || 'Unknown error';
+      const detail = getErrorMessage(error, 'Unknown error');
       setMessage({ type: 'error', text: `Failed to connect to TestRail: ${detail}` });
     }
   };
@@ -239,14 +300,14 @@ const saveJiraSettings = async () => {
     analytics.track('integration_configured', { integration: 'jira', authMode });
     try {
       const r = await putJiraSettings({
-        base_url: jiraSettings.baseUrl,
+        baseUrl: jiraSettings.baseUrl,
         email: authMode === 'Basic' ? jiraSettings.email : undefined,
-        api_token: jiraSettings.apiToken,
-        use_pat: authMode === 'PAT',
+        apiToken: jiraSettings.apiToken,
+        usePat: authMode === 'PAT',
       });
       setJiraHasToken(!!r.has_token);
       setMessage({ type: 'success', text: 'Jira settings saved' });
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Failed to save Jira settings.' });
     }
   };
@@ -254,10 +315,10 @@ const saveJiraSettings = async () => {
   const saveConfluenceSettings = async () => {
     analytics.track('integration_configured', { integration: 'confluence' });
     try {
-      const r = await putConfluenceSettings({ base_url: confluenceSettings.baseUrl, email: confluenceSettings.email, api_token: confluenceSettings.apiToken });
+      const r = await putConfluenceSettings({ baseUrl: confluenceSettings.baseUrl, email: confluenceSettings.email, apiToken: confluenceSettings.apiToken });
       setConfluenceHasToken(!!r.has_token);
       setMessage({ type: 'success', text: 'Confluence settings saved' });
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Failed to save Confluence settings.' });
     }
   };
@@ -450,9 +511,9 @@ const saveJiraSettings = async () => {
               hasToken={githubHasToken}
               onSave={async () => {
                 const r = await putGithubSettings({
-                  base_url: githubSettings.baseUrl || undefined,
-                  api_token: githubSettings.apiToken || undefined,
-                  webhook_secret: githubSettings.webhookSecret || undefined,
+                  baseUrl: githubSettings.baseUrl || undefined,
+                  apiToken: githubSettings.apiToken || undefined,
+                  webhookSecret: githubSettings.webhookSecret || undefined,
                 });
                 setGithubHasToken(!!r.has_token);
                 setMessage({ type: 'success', text: 'GitHub settings saved' });
@@ -495,9 +556,9 @@ const saveJiraSettings = async () => {
               hasToken={gitlabHasToken}
               onSave={async () => {
                 const r = await putGitlabSettings({
-                  base_url: gitlabSettings.baseUrl || undefined,
-                  api_token: gitlabSettings.apiToken || undefined,
-                  webhook_secret: gitlabSettings.webhookSecret || undefined,
+                  baseUrl: gitlabSettings.baseUrl || undefined,
+                  apiToken: gitlabSettings.apiToken || undefined,
+                  webhookSecret: gitlabSettings.webhookSecret || undefined,
                 });
                 setGitlabHasToken(!!r.has_token);
                 setMessage({ type: 'success', text: 'GitLab settings saved' });
@@ -538,13 +599,13 @@ const saveJiraSettings = async () => {
               onSave={async () => {
                 try {
                   const r = await putTestrailSettings({
-                    base_url: testrailSettings.baseUrl || undefined,
+                    baseUrl: testrailSettings.baseUrl || undefined,
                     email: testrailSettings.email || undefined,
-                    api_token: testrailSettings.apiToken || undefined,
+                    apiToken: testrailSettings.apiToken || undefined,
                   });
                   setTestrailHasToken(!!r.has_token);
                   setMessage({ type: 'success', text: 'TestRail settings saved' });
-                } catch (error) {
+                } catch {
                   setMessage({ type: 'error', text: 'Failed to save TestRail settings.' });
                 }
               }}
@@ -652,7 +713,12 @@ const saveJiraSettings = async () => {
                 label="Default Sprint Duration"
                 type="number"
                 value={generalSettings.sprintDuration}
-                onChange={(e) => setGeneralSettings(prev => ({ ...prev, sprintDuration: parseInt(e.target.value) || 14 }))}
+                onChange={(e) =>
+                  handleGeneralSettingsChange(
+                    'sprintDuration',
+                    parseInt(e.target.value) || 14
+                  )
+                }
                 helperText={
                   smartDefaults
                     ? `Auto-detected from project history (${smartDefaults.sprintDuration} days)`
@@ -671,7 +737,12 @@ const saveJiraSettings = async () => {
                 label="Working Hours per Day"
                 type="number"
                 value={generalSettings.workingHoursPerDay}
-                onChange={(e) => setGeneralSettings(prev => ({ ...prev, workingHoursPerDay: parseInt(e.target.value) || 8 }))}
+                onChange={(e) =>
+                  handleGeneralSettingsChange(
+                    'workingHoursPerDay',
+                    parseInt(e.target.value) || 8
+                  )
+                }
                 helperText="Standard workday for time calculations"
               />
             </Grid>
@@ -680,7 +751,7 @@ const saveJiraSettings = async () => {
                 fullWidth
                 label="Currency"
                 value={generalSettings.currency}
-                onChange={(e) => setGeneralSettings(prev => ({ ...prev, currency: e.target.value }))}
+                onChange={(e) => handleGeneralSettingsChange('currency', e.target.value)}
                 helperText={
                   smartDefaults
                     ? `Detected from browser locale (${smartDefaults.currency})`
@@ -698,7 +769,7 @@ const saveJiraSettings = async () => {
                 fullWidth
                 label="Timezone"
                 value={generalSettings.timezone}
-                onChange={(e) => setGeneralSettings(prev => ({ ...prev, timezone: e.target.value }))}
+                onChange={(e) => handleGeneralSettingsChange('timezone', e.target.value)}
                 helperText={
                   smartDefaults
                     ? `Detected from browser (${smartDefaults.timezone})`

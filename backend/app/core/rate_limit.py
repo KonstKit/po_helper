@@ -1,4 +1,5 @@
 """Application-wide rate limiting helpers."""
+
 from __future__ import annotations
 
 from slowapi import Limiter, _rate_limit_exceeded_handler

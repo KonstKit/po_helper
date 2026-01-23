@@ -1,0 +1,98 @@
+{
+  "analysis_output/runs/20260121-154559_b562249/REPORT_20260121-154559_b562249.md": {
+    "sha256": "e0f52f8ebd078efb806e6b5a862dfc35aec1e8392d5b8a42ee55b6b8e2e877e9",
+    "size": 2438
+  },
+  "analysis_output/runs/20260121-154559_b562249/call_matrix_full.json": {
+    "sha256": "ac9b3218a5f8d7670bf992bfff9c5f252e075f1f735ca850ca575a635f3acb23",
+    "size": 3960690
+  },
+  "analysis_output/runs/20260121-154559_b562249/call_matrix_internal.json": {
+    "sha256": "198c29ebf9bfbc4e03a828cd10de4c8963d47330d93e983bce237c113e5b19c9",
+    "size": 304338
+  },
+  "analysis_output/runs/20260121-154559_b562249/chain_breaks.csv": {
+    "sha256": "45d7f3d5a1266311f11f37072e73263f5ab24f5f728473365557494a04f86661",
+    "size": 342
+  },
+  "analysis_output/runs/20260121-154559_b562249/ci_summary.json": {
+    "sha256": "ae342f92bff6746fd8c194ac3f411454791b55e613326bc21aa2f9209e56b831",
+    "size": 3629
+  },
+  "analysis_output/runs/20260121-154559_b562249/dependency_inventory.csv": {
+    "sha256": "2bbcb2d390d166cc86d048f860840b20d23a9be5911c2047f685e2134fb90dc6",
+    "size": 6750
+  },
+  "analysis_output/runs/20260121-154559_b562249/diagnostics.json": {
+    "sha256": "61a052a7a99d9a770d7ec06ad1dbe31482106cca949b7558d42f79a86cda14e9",
+    "size": 778
+  },
+  "analysis_output/runs/20260121-154559_b562249/edge_stats.json": {
+    "sha256": "3b276ee6f6168379696f9633594c316e0cd657527b816705e8df9f6b496a0b61",
+    "size": 270
+  },
+  "analysis_output/runs/20260121-154559_b562249/edges.csv": {
+    "sha256": "fd09d39697ddf3e59a7707b153c6e7a038e3dbc43043310e7ded8664733346dc",
+    "size": 2477613
+  },
+  "analysis_output/runs/20260121-154559_b562249/entrypoints.csv": {
+    "sha256": "1dbc977d53d05d2f9bbd2850ee9c991205f2b7bcf11aa4fcf135320fc1c3bb5f",
+    "size": 17053
+  },
+  "analysis_output/runs/20260121-154559_b562249/files.csv": {
+    "sha256": "f7f413e75aa96a5f07bf428442795e521ab39610a4f828348831307c2cdd641d",
+    "size": 67768
+  },
+  "analysis_output/runs/20260121-154559_b562249/issues.csv": {
+    "sha256": "17ce28a641c8ddd0a9d73cc83d3706125769b18ddf1b20ff4bcfa3d9a2f9239b",
+    "size": 133
+  },
+  "analysis_output/runs/20260121-154559_b562249/manifest.json": {
+    "sha256": "7c485449a84b607d47be547b95302f339751f35a8b32478139c6c65d4455546e",
+    "size": 4154
+  },
+  "analysis_output/runs/20260121-154559_b562249/methods.csv": {
+    "sha256": "75ab76a0cb05dda99147cf181ba918c4a2a90498f64d092a7838f009066f6c66",
+    "size": 310841
+  },
+  "analysis_output/runs/20260121-154559_b562249/parse_errors.csv": {
+    "sha256": "8ca3346c2a69730e31ae152ca3ecab69f832879bf133105048bfdc74f37d9299",
+    "size": 81
+  },
+  "analysis_output/runs/20260121-154559_b562249/raw_tool_outputs/tsc/npx_tsc__noEmit__p_tsconfig_json.exitcode": {
+    "sha256": "d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
+    "size": 1
+  },
+  "analysis_output/runs/20260121-154559_b562249/raw_tool_outputs/tsc/npx_tsc__noEmit__p_tsconfig_json.stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "analysis_output/runs/20260121-154559_b562249/raw_tool_outputs/tsc/npx_tsc__noEmit__p_tsconfig_json.stdout": {
+    "sha256": "3a7293fcfe229e0e9691e398d61daf1303e7acea6743e77e12a5e51a6c5761a5",
+    "size": 34372
+  },
+  "analysis_output/runs/20260121-154559_b562249/reverse_call_matrix_full.json": {
+    "sha256": "6beb0edc3922b66535183ad3455353ea85dd4735eee21db0c06a3b5dc7688a60",
+    "size": 4424695
+  },
+  "analysis_output/runs/20260121-154559_b562249/reverse_call_matrix_internal.json": {
+    "sha256": "f1166e9f608626c587563512d439869348aeee31b471391ada2eb0dcee697b15",
+    "size": 300126
+  },
+  "analysis_output/runs/20260121-154559_b562249/tree.json": {
+    "sha256": "ff79ac1931355f7c8ec47d5d56e4ae471b3c97333c9c4d902a33841ab06f80e4",
+    "size": 1202515
+  },
+  "analysis_output/runs/20260121-154559_b562249/types.csv": {
+    "sha256": "52895b23f4fd31bd155963d1a29f4cdef7992639b9b5e506eba7f53232e08896",
+    "size": 79178
+  },
+  "analysis_output/runs/20260121-154559_b562249/unused_prod.csv": {
+    "sha256": "fb7cb09a1d98d1dd100c0cfe9620b87b44829d232d0ec3c7c7c6e870046aaaec",
+    "size": 326275
+  },
+  "analysis_output/runs/20260121-154559_b562249/unused_with_tests.csv": {
+    "sha256": "726d3be283ad26006873187535c7d348fef5f382d4fa525af7509cc50be1e333",
+    "size": 325156
+  }
+}

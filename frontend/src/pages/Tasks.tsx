@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useDebouncedValue, DEBOUNCE_DELAYS } from '../hooks/useDebounce';
 import {
   Box,
   Typography,
@@ -17,12 +18,20 @@ import {
   Snackbar,
   Alert,
 } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import {
   Download as DownloadIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
-import { DataGrid, GridColDef, GridToolbar } from '@mui/x-data-grid';
-import { listTasks, listProjects, setTaskBusinessValue, withRetry } from '../services/api';
+import { DataGrid, GridColDef, GridToolbar, GridPaginationModel } from '@mui/x-data-grid';
+import { listTasksPaginated, listProjects, setTaskBusinessValue, withRetry, type Project, type TaskItem } from '../services/api';
+import { getErrorMessage } from '../utils/errorUtils';
+
+/** Extended task row with computed display fields */
+interface TaskRow extends TaskItem {
+  assignee: string;
+  project: string;
+}
 
 const defaultFilters = { status: '', assignee: '', project: '' };
 
@@ -60,51 +69,64 @@ const getPriorityChipColor = (priority?: string | null): 'default' | 'primary' |
 
 const Tasks = () => {
   const [filters, setFilters] = useState(defaultFilters);
-  const [rows, setRows] = useState<any[]>([]);
-  const [projects, setProjects] = useState<any[]>([]);
+  const [rows, setRows] = useState<TaskRow[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ open: boolean; severity: 'success' | 'error' | 'info' | 'warning'; message: string }>({ open: false, severity: 'info', message: '' });
   const [businessDialog, setBusinessDialog] = useState<{ open: boolean; taskId: number | null; value: string }>({ open: false, taskId: null, value: '' });
   const [businessDialogError, setBusinessDialogError] = useState<string | null>(null);
 
-  const projectOptions = useMemo(() => projects.map((p: any) => ({ id: p.id, name: p.name })), [projects]);
+  // Server-side pagination state
+  const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({ page: 0, pageSize: 25 });
+  const [rowCount, setRowCount] = useState(0);
+
+  // Debounce filters to prevent excessive API calls
+  const debouncedFilters = useDebouncedValue(filters, DEBOUNCE_DELAYS.FILTER);
+
+  const projectOptions = useMemo(() => projects.map((p) => ({ id: p.id, name: p.name })), [projects]);
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const map = new Map(projects.map((p: any) => [p.id, p.name]));
-      const selectedProject = projects.find((p: any) => p.name === filters.project);
-      const data = await withRetry(
-        () => listTasks({
-          status: filters.status || undefined,
-          assignee: filters.assignee || undefined,
-          project_id: selectedProject?.id,
+      const map = new Map(projects.map((p) => [p.id, p.name]));
+      const selectedProject = projects.find((p) => p.name === debouncedFilters.project);
+      const response = await withRetry(
+        () => listTasksPaginated({
+          status: debouncedFilters.status || undefined,
+          assignee: debouncedFilters.assignee || undefined,
+          projectId: selectedProject?.id,
+          skip: paginationModel.page * paginationModel.pageSize,
+          limit: paginationModel.pageSize,
         }, { timeout: 60000 }),
         { retries: 2, baseDelayMs: 500, maxDelayMs: 4000 }
       );
       setRows(
-        data.map((task: any) => ({
+        response.data.map((task): TaskRow => ({
           ...task,
           assignee: task.assignee_name || '',
-          project: map.get(task.project_id) || '',
+          project:
+            typeof task.project_id === 'number'
+              ? map.get(task.project_id) || ''
+              : '',
         })),
       );
+      setRowCount(response.meta.total);
     } catch (err) {
       console.error('Failed to load tasks', err);
       setToast({ open: true, severity: 'error', message: 'Failed to load tasks' });
     } finally {
       setLoading(false);
     }
-  }, [filters.assignee, filters.project, filters.status, projects]);
+  }, [debouncedFilters.assignee, debouncedFilters.project, debouncedFilters.status, projects, paginationModel]);
 
   useEffect(() => {
     (async () => {
       try {
-        const ps = await withRetry(
-          () => listProjects({ timeout: 45000 }),
+        const psResp = await withRetry(
+          () => listProjects(),
           { retries: 2, baseDelayMs: 300, maxDelayMs: 2000 }
         );
-        setProjects(ps);
+        setProjects(psResp.data);
       } catch (err) {
         console.error('Failed to load projects', err);
         setToast({ open: true, severity: 'error', message: 'Failed to load projects list' });
@@ -116,7 +138,7 @@ const Tasks = () => {
     reload();
   }, [reload]);
 
-  const openBusinessValueDialog = useCallback((task: any) => {
+  const openBusinessValueDialog = useCallback((task: TaskRow) => {
     setBusinessDialog({ open: true, taskId: task.id, value: task?.business_value != null ? String(task.business_value) : '' });
     setBusinessDialogError(null);
   }, []);
@@ -138,18 +160,18 @@ const Tasks = () => {
       return;
     }
     try {
-      await setTaskBusinessValue(businessDialog.taskId, { business_value: parsed });
+      await setTaskBusinessValue(businessDialog.taskId, { businessValue: parsed });
       await reload();
       setToast({ open: true, severity: 'success', message: 'Business value updated' });
       closeBusinessValueDialog();
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      const detail = err?.response?.data?.detail;
-      setToast({ open: true, severity: 'error', message: detail ? `Failed to update business value: ${detail}` : 'Failed to update business value' });
+      const detail = getErrorMessage(err, 'Failed to update business value');
+      setToast({ open: true, severity: 'error', message: detail });
     }
   };
 
-  const columns: GridColDef[] = useMemo(() => [
+  const columns: GridColDef<TaskItem>[] = useMemo(() => [
     { field: 'key', headerName: 'Key', width: 120 },
     { field: 'summary', headerName: 'Summary', flex: 1, minWidth: 240 },
     {
@@ -227,10 +249,18 @@ const Tasks = () => {
 
   const handleFilterChange = (field: keyof typeof defaultFilters, value: string) => {
     setFilters((prev) => ({ ...prev, [field]: value }));
+    // Reset to first page when filters change
+    setPaginationModel((prev) => ({ ...prev, page: 0 }));
+  };
+  const handleStatusFilterChange = (event: SelectChangeEvent<string>) => {
+    handleFilterChange('status', event.target.value);
+  };
+  const handleProjectFilterChange = (event: SelectChangeEvent<string>) => {
+    handleFilterChange('project', event.target.value);
   };
 
   const handleExport = () => {
-    console.log('Exporting tasks...');
+    // TODO: Implement task export functionality
   };
 
   return (
@@ -252,7 +282,7 @@ const Tasks = () => {
           <Typography variant="subtitle1">Filters:</Typography>
           <FormControl size="small" sx={{ minWidth: 150 }}>
             <InputLabel>Status</InputLabel>
-            <Select value={filters.status} label="Status" onChange={(e) => handleFilterChange('status', e.target.value)}>
+            <Select value={filters.status} label="Status" onChange={handleStatusFilterChange}>
               <MenuItem value="">All</MenuItem>
               <MenuItem value="Todo">Todo</MenuItem>
               <MenuItem value="In Progress">In Progress</MenuItem>
@@ -269,7 +299,7 @@ const Tasks = () => {
           />
           <FormControl size="small" sx={{ minWidth: 200 }}>
             <InputLabel>Project</InputLabel>
-            <Select value={filters.project} label="Project" onChange={(e) => handleFilterChange('project', e.target.value)}>
+            <Select value={filters.project} label="Project" onChange={handleProjectFilterChange}>
               <MenuItem value="">All</MenuItem>
               {projectOptions.map((p) => (
                 <MenuItem key={p.id} value={p.name}>
@@ -278,7 +308,10 @@ const Tasks = () => {
               ))}
             </Select>
           </FormControl>
-          <Button variant="text" onClick={() => setFilters(defaultFilters)}>
+          <Button variant="text" onClick={() => {
+            setFilters(defaultFilters);
+            setPaginationModel((prev) => ({ ...prev, page: 0 }));
+          }}>
             Clear Filters
           </Button>
         </Box>
@@ -289,11 +322,10 @@ const Tasks = () => {
           rows={rows}
           columns={columns}
           loading={loading}
-          initialState={{
-            pagination: {
-              paginationModel: { page: 0, pageSize: 25 },
-            },
-          }}
+          paginationMode="server"
+          rowCount={rowCount}
+          paginationModel={paginationModel}
+          onPaginationModelChange={setPaginationModel}
           pageSizeOptions={[25, 50, 100]}
           checkboxSelection
           disableRowSelectionOnClick

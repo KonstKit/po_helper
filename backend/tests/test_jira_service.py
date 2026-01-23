@@ -1,8 +1,11 @@
-﻿import json
+import os
+import json
 
 import pytest
 from requests import Response
 from requests.structures import CaseInsensitiveDict
+
+os.environ["SKIP_SERVICE_AUTOCONNECT"] = "1"
 
 from app.services.jira_service import JiraAuthError, JiraService, JiraUnexpectedResponse
 

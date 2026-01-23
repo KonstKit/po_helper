@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   Box,
   Card,
@@ -33,24 +33,27 @@ const AnalyticsDashboard: React.FC = () => {
   const [timeToFirstValue, setTimeToFirstValue] = useState<number | null>(null);
   const [sessionDuration, setSessionDuration] = useState<number>(0);
 
+  const loadMetrics = useCallback(() => {
+    setOnboardingMetrics(analytics.getOnboardingMetrics());
+    setTimeToValueMetrics(analytics.getTimeToValueMetrics());
+    setFeatureAdoptionMetrics(analytics.getFeatureAdoptionMetrics());
+    setTimeToFirstValue(analytics.getTimeToFirstValue());
+    setSessionDuration(analytics.getSessionDuration());
+  }, []);
+
   useEffect(() => {
-    loadMetrics();
+    const timeoutId = setTimeout(() => loadMetrics(), 0);
 
     // Refresh session duration every 30 seconds
     const interval = setInterval(() => {
       setSessionDuration(analytics.getSessionDuration());
     }, 30000);
 
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadMetrics = () => {
-    setOnboardingMetrics(analytics.getOnboardingMetrics());
-    setTimeToValueMetrics(analytics.getTimeToValueMetrics());
-    setFeatureAdoptionMetrics(analytics.getFeatureAdoptionMetrics());
-    setTimeToFirstValue(analytics.getTimeToFirstValue());
-    setSessionDuration(analytics.getSessionDuration());
-  };
+    return () => {
+      clearTimeout(timeoutId);
+      clearInterval(interval);
+    };
+  }, [loadMetrics]);
 
   const formatDuration = (minutes: number | null): string => {
     if (minutes === null || minutes === 0) return 'N/A';

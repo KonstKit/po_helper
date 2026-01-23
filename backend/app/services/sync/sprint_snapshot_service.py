@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
@@ -23,11 +23,7 @@ class SnapshotResult:
     total_sprints_processed: int = 0
     total_snapshots_created: int = 0
     sprints_skipped: int = 0
-    errors: List[tuple[str, str]] = None
-
-    def __post_init__(self):
-        if self.errors is None:
-            self.errors = []
+    errors: List[tuple[str, str]] = field(default_factory=list)
 
 
 class SprintSnapshotService:
@@ -57,18 +53,16 @@ class SprintSnapshotService:
         Returns:
             SnapshotResult with statistics and any errors
         """
-        logger.info('Starting sprint snapshots generation for project %d', project_id)
+        logger.info("Starting sprint snapshots generation for project %d", project_id)
 
         result = SnapshotResult()
 
         # Fetch all sprints for the project
-        sprint_rows = await db.execute(
-            select(Sprint).where(Sprint.project_id == project_id)
-        )
+        sprint_rows = await db.execute(select(Sprint).where(Sprint.project_id == project_id))
         sprints = sprint_rows.scalars().all()
 
         if not sprints:
-            logger.info('No sprints found for project %d', project_id)
+            logger.info("No sprints found for project %d", project_id)
             return result
 
         for sprint in sprints:
@@ -76,6 +70,8 @@ class SprintSnapshotService:
                 if not sprint.start_date or not (sprint.end_date or sprint.complete_date):
                     result.sprints_skipped += 1
                     continue
+                # mypy: start/end now guaranteed non-None
+                assert sprint.start_date is not None
 
                 snapshots_created = await self._create_sprint_snapshots(
                     sprint,
@@ -88,21 +84,18 @@ class SprintSnapshotService:
 
             except Exception as e:
                 logger.error(
-                    'Failed to create snapshots for sprint %s: %s',
-                    sprint.name,
-                    e,
-                    exc_info=True
+                    "Failed to create snapshots for sprint %s: %s", sprint.name, e, exc_info=True
                 )
                 result.errors.append((sprint.name or str(sprint.id), str(e)))
 
         await db.commit()
 
         logger.info(
-            'Completed sprint snapshots for project %d: %d sprints, %d snapshots, %d skipped',
+            "Completed sprint snapshots for project %d: %d sprints, %d snapshots, %d skipped",
             project_id,
             result.total_sprints_processed,
             result.total_snapshots_created,
-            result.sprints_skipped
+            result.sprints_skipped,
         )
 
         return result
@@ -121,6 +114,8 @@ class SprintSnapshotService:
         """
         start = sprint.start_date
         end = sprint.end_date or sprint.complete_date
+        if start is None or end is None:
+            return 0
 
         # Delete existing snapshots
         existing = await db.execute(
@@ -131,12 +126,9 @@ class SprintSnapshotService:
 
         # Fetch sprint tasks
         task_rows = await db.execute(
-            select(Task).where(
-                Task.project_id == project_id,
-                Task.sprint_id == sprint.id
-            )
+            select(Task).where(Task.project_id == project_id, Task.sprint_id == sprint.id)
         )
-        sprint_tasks = task_rows.scalars().all()
+        sprint_tasks: List[Task] = list(task_rows.scalars().all())
 
         # Calculate initial commitment (tasks present at sprint start)
         commitment = sum(
@@ -188,11 +180,8 @@ class SprintSnapshotService:
 
         query = (
             select(
-                func.date(WorkLog.started).label('day'),
-                func.coalesce(
-                    func.sum(WorkLog.time_spent_seconds / 3600.0),
-                    0.0
-                ).label('hours'),
+                func.date(WorkLog.started).label("day"),
+                func.coalesce(func.sum(WorkLog.time_spent_seconds / 3600.0), 0.0).label("hours"),
             )
             .where(
                 WorkLog.task_id.in_(task_ids),
@@ -200,7 +189,7 @@ class SprintSnapshotService:
                 func.date(WorkLog.started) >= start.date(),
                 func.date(WorkLog.started) <= end.date(),
             )
-            .group_by('day')
+            .group_by("day")
         )
 
         result = await db.execute(query)

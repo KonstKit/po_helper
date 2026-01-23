@@ -1,4 +1,4 @@
-﻿"""add performance indexes for analytics"""
+"""add performance indexes for analytics"""
 
 from alembic import op
 import sqlalchemy as sa

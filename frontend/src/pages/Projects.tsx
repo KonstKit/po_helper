@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box,
@@ -21,6 +21,7 @@ import {
   TextField,
   DialogActions,
   Skeleton,
+  type ChipProps,
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -28,7 +29,8 @@ import {
   Folder as FolderIcon,
 } from "@mui/icons-material";
 import { useDispatch, useSelector } from "react-redux";
-import type { RootState } from "../store/store";
+import type { RootState, AppDispatch } from "../store/store";
+import type { SelectChangeEvent } from "@mui/material/Select";
 import {
   setProjects as setProjectsAction,
   setLoading as setLoadingAction,
@@ -43,33 +45,52 @@ import {
   getProjectById,
   syncJiraProject,
   withRetry,
+  listJiraProjects,
+  type Project,
 } from "../services/api";
-import api from "../services/api";
 import CircularProgressWithLabel from "../components/CircularProgressWithLabel";
+import { getErrorMessage, isRequestCanceled } from "../utils/errorUtils";
+
+type ProjectStats = Partial<Project> & {
+  total_tasks?: number;
+  completed_tasks?: number;
+  completion_percentage?: number;
+  total_estimate_hours?: number;
+  total_spent_hours?: number;
+};
+
+type NewProject = {
+  name: string;
+  jira_key: string;
+  description: string;
+};
+
+const EMPTY_PROJECT: NewProject = {
+  name: "",
+  jira_key: "",
+  description: "",
+};
+
+const PROJECTS_TTL_MS = 60_000; // 1 minute cache for projects list
 
 const Projects = () => {
   const navigate = useNavigate();
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   const projectsState = useSelector((s: RootState) => s.project);
   const lastLoadedAt = projectsState.lastLoadedAt;
-  const TTL_MS = 60_000; // 1 minute cache for projects list
   const authUser = useSelector((s: RootState) => s.auth.user);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [selectedProject, setSelectedProject] = useState<any>(null);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
-  const [newProject, setNewProject] = useState({
-    name: "",
-    jira_key: "",
-    description: "",
-  });
+  const [newProject, setNewProject] = useState<NewProject>(EMPTY_PROJECT);
   const [jiraProjects, setJiraProjects] = useState<
-    { key: string; name: string; id: any }[]
+    { key: string; name: string; id: number | string }[]
   >([]);
 
   const [syncingProjectId, setSyncingProjectId] = useState<number | null>(null);
 
   const projects = projectsState.projects;
-  const [statsMap, setStatsMap] = useState<Record<number, any>>({});
+  const [statsMap, setStatsMap] = useState<Record<number, ProjectStats>>({});
   const [progress, setProgress] = useState<{
     loading: boolean;
     percent: number;
@@ -77,14 +98,23 @@ const Projects = () => {
   }>({ loading: false, percent: 0, step: "" });
   const abortRef = useRef<AbortController | null>(null);
   const hasLoadedRef = useRef(false);
+  const handleNewProjectChange = useCallback(
+    <K extends keyof NewProject>(field: K, value: NewProject[K]) => {
+      setNewProject((prev) => ({ ...prev, [field]: value }));
+    },
+    []
+  );
+  const handleJiraProjectSelect = useCallback(
+    (event: SelectChangeEvent<string>) => {
+      handleNewProjectChange("jira_key", event.target.value);
+    },
+    [handleNewProjectChange]
+  );
 
-  const loadProjects = async (force: boolean = false) => {
+  const loadProjects = useCallback(async (force: boolean = false) => {
     try {
       // Prevent duplicate loads
       if (!force && hasLoadedRef.current && projects.length > 0) {
-        console.log(
-          "[Projects] Skipping duplicate load, already have projects",
-        );
         return;
       }
 
@@ -94,20 +124,20 @@ const Projects = () => {
       }
       const controller = new AbortController();
       abortRef.current = controller;
-      const signal = controller.signal;
       const shouldFetchList =
         force ||
         projects.length === 0 ||
         !lastLoadedAt ||
-        Date.now() - lastLoadedAt > TTL_MS;
-      let data = projects as any[];
+        Date.now() - lastLoadedAt > PROJECTS_TTL_MS;
+      let data: Project[] = projects;
       if (shouldFetchList) {
         dispatch(setLoadingAction(true));
         setProgress({ loading: true, percent: 5, step: "Loading projects..." });
-        data = await withRetry(() => listProjects({ signal }), {
+        const response = await withRetry(() => listProjects(), {
           retries: 2,
           baseDelayMs: 400,
         });
+        data = response.data;
         hasLoadedRef.current = true;
       }
       dispatch(setProjectsAction(data));
@@ -118,39 +148,36 @@ const Projects = () => {
 
       // Fetch details in batches with fail-safe; do not block page
       const BATCH_SIZE = 3;
-      const statsMapTemp: Record<number, any> = {};
+      const statsMapTemp: Record<number, ProjectStats> = {};
 
       for (let i = 0; i < data.length; i += BATCH_SIZE) {
         if (controller.signal.aborted) break;
 
         const batch = data.slice(i, i + BATCH_SIZE);
         const results = await Promise.allSettled(
-          batch.map((p: any) =>
-            withRetry(() => getProjectById(p.id, { signal: controller.signal }), {
+          batch.map((project: Project) =>
+            withRetry(() => getProjectById(project.id, { signal: controller.signal }), {
               retries: 1,
               baseDelayMs: 200,
             }),
           ),
         );
 
-        batch.forEach((p: any, idx: number) => {
+        batch.forEach((project: Project, idx: number) => {
           const result = results[idx];
-          statsMapTemp[p.id] =
-            result.status === "fulfilled"
-              ? (result as PromiseFulfilledResult<any>).value
-              : {};
+          statsMapTemp[project.id] = result.status === "fulfilled" ? result.value : {};
         });
         setStatsMap({ ...statsMapTemp });
       }
-    } catch (e: any) {
-      if (e?.code === "ERR_CANCELED") return; // ignore aborted requests
-      dispatch(setErrorAction("Failed to load projects"));
+    } catch (e: unknown) {
+      if (isRequestCanceled(e)) return; // ignore aborted requests
+      dispatch(setErrorAction(getErrorMessage(e, "Failed to load projects")));
     } finally {
       // already handled above; keep state consistent on unexpected paths
       dispatch(setLoadingAction(false));
       setProgress({ loading: false, percent: 100, step: "Ready" });
     }
-  };
+  }, [dispatch, lastLoadedAt, projects]);
 
   useEffect(() => {
     let isMounted = true;
@@ -160,7 +187,7 @@ const Projects = () => {
       const needsLoad =
         projects.length === 0 ||
         !lastLoadedAt ||
-        Date.now() - lastLoadedAt > TTL_MS;
+        Date.now() - lastLoadedAt > PROJECTS_TTL_MS;
 
       if (isMounted && needsLoad) {
         await loadProjects().catch((err) =>
@@ -173,36 +200,33 @@ const Projects = () => {
 
         try {
           const BATCH_SIZE = 3; // Load 3 projects at a time
-          const statsMapTemp: Record<number, any> = {};
+          const statsMapTemp: Record<number, ProjectStats> = {};
 
           for (let i = 0; i < projects.length; i += BATCH_SIZE) {
             if (!isMounted || controller.signal.aborted) break;
 
             const batch = projects.slice(i, i + BATCH_SIZE);
             const results = await Promise.allSettled(
-              batch.map((p: any) =>
+              batch.map((project: Project) =>
                 withRetry(
-                  () => getProjectById(p.id, { signal: controller.signal }),
+                  () => getProjectById(project.id, { signal: controller.signal }),
                   { retries: 1, baseDelayMs: 200 },
                 ),
               ),
             );
 
             if (isMounted) {
-              batch.forEach((p: any, idx: number) => {
+              batch.forEach((project: Project, idx: number) => {
                 const result = results[idx];
-                statsMapTemp[p.id] =
-                  result.status === "fulfilled"
-                    ? (result as PromiseFulfilledResult<any>).value
-                    : {};
+                statsMapTemp[project.id] = result.status === "fulfilled" ? result.value : {};
               });
               setStatsMap({ ...statsMapTemp });
             }
           }
 
           hasLoadedRef.current = true;
-        } catch (e: any) {
-          if (e?.code !== "ERR_CANCELED") {
+        } catch (e: unknown) {
+          if (!isRequestCanceled(e)) {
             console.error("Failed to load project stats:", e);
           }
         }
@@ -221,20 +245,17 @@ const Projects = () => {
         abortRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [lastLoadedAt, loadProjects, projects]);
 
   useEffect(() => {
     if (!openDialog) return;
     const ctrl = new AbortController();
     (async () => {
       try {
-        const { data } = await api.get("/v1/jira/projects", {
-          signal: ctrl.signal,
-        });
+        const data = await listJiraProjects(undefined, { signal: ctrl.signal });
         setJiraProjects(data.projects || []);
-      } catch (e: any) {
-        if (e?.code === "ERR_CANCELED") return;
+      } catch (e: unknown) {
+        if (isRequestCanceled(e)) return;
       }
     })();
     return () => ctrl.abort();
@@ -242,7 +263,7 @@ const Projects = () => {
 
   const handleMenuClick = (
     event: React.MouseEvent<HTMLElement>,
-    project: any,
+    project: Project,
   ) => {
     setAnchorEl(event.currentTarget);
     setSelectedProject(project);
@@ -264,10 +285,10 @@ const Projects = () => {
       const owner_id = await ensureOwnerId();
       await apiCreateProject({ ...newProject, owner_id });
       setOpenDialog(false);
-      setNewProject({ name: "", jira_key: "", description: "" });
+      setNewProject(EMPTY_PROJECT);
       await loadProjects(true); // force refresh to include the new project
     } catch (e) {
-      console.error(e);
+      dispatch(setErrorAction(getErrorMessage(e, "Failed to create project")));
     }
   };
 
@@ -286,10 +307,8 @@ const Projects = () => {
       await syncJiraProject(projectToSync.jira_key, { timeout: 15000 });
       await loadProjects(true);
       dispatch(setErrorAction(null));
-    } catch (e: any) {
-      const message =
-        e?.response?.data?.detail || e?.message || "Failed to sync project";
-      dispatch(setErrorAction(message));
+    } catch (e: unknown) {
+      dispatch(setErrorAction(getErrorMessage(e, "Failed to sync project")));
     } finally {
       setSyncingProjectId(null);
       setProgress({ loading: false, percent: 100, step: "Ready" });
@@ -297,7 +316,7 @@ const Projects = () => {
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): ChipProps["color"] => {
     switch (status) {
       case "active":
         return "success";
@@ -342,7 +361,7 @@ const Projects = () => {
         {!projectsState.loading && projects.length === 0 && (
           <Grid item xs={12}>
             <Typography variant="body1" color="text.secondary" align="center">
-              No projects found. Click "New Project" to create one.
+              No projects found. Click &quot;New Project&quot; to create one.
             </Typography>
           </Grid>
         )}
@@ -391,7 +410,7 @@ const Projects = () => {
                   <Box mb={2}>
                     <Chip
                       label={project.status}
-                      color={getStatusColor(project.status) as any}
+                      color={getStatusColor(project.status)}
                       size="small"
                     />
                     <Typography
@@ -539,9 +558,7 @@ const Projects = () => {
             fullWidth
             variant="outlined"
             value={newProject.name}
-            onChange={(e) =>
-              setNewProject({ ...newProject, name: e.target.value })
-            }
+            onChange={(e) => handleNewProjectChange("name", e.target.value)}
             sx={{ mb: 2 }}
           />
           <TextField
@@ -550,9 +567,7 @@ const Projects = () => {
             fullWidth
             variant="outlined"
             value={newProject.jira_key}
-            onChange={(e) =>
-              setNewProject({ ...newProject, jira_key: e.target.value })
-            }
+            onChange={(e) => handleNewProjectChange("jira_key", e.target.value)}
             sx={{ mb: 2 }}
           />
           <FormControl fullWidth size="small" sx={{ mb: 2 }}>
@@ -560,12 +575,7 @@ const Projects = () => {
             <Select
               label="Pick Jira Project"
               value={newProject.jira_key}
-              onChange={(e) =>
-                setNewProject({
-                  ...newProject,
-                  jira_key: String(e.target.value),
-                })
-              }
+              onChange={handleJiraProjectSelect}
             >
               {jiraProjects.map((jp) => (
                 <MenuItem key={jp.id} value={jp.key}>
@@ -582,9 +592,7 @@ const Projects = () => {
             rows={3}
             variant="outlined"
             value={newProject.description}
-            onChange={(e) =>
-              setNewProject({ ...newProject, description: e.target.value })
-            }
+            onChange={(e) => handleNewProjectChange("description", e.target.value)}
           />
         </DialogContent>
         <DialogActions>

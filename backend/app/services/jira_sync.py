@@ -1,7 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
-from typing import Any
 
 from app.services.sync import ProjectSyncOrchestrator
 
@@ -27,15 +26,15 @@ async def perform_project_sync(project_key: str, project_id: int) -> None:
     # Log comprehensive result
     if result.success:
         logger.info(
-            'Project sync succeeded for %s: %d issues, %.2fs duration',
+            "Project sync succeeded for %s: %d issues, %.2fs duration",
             project_key,
             result.total_issues,
-            result.sync_duration_seconds
+            result.sync_duration_seconds,
         )
     else:
         logger.error(
-            'Project sync failed for %s: reason=%s, errors=%d',
+            "Project sync failed for %s: reason=%s, errors=%d",
             project_key,
             result.failure_reason,
-            len(result.errors)
+            len(result.errors),
         )

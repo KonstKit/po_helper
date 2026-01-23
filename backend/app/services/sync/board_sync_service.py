@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, List
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -26,11 +25,7 @@ class BoardSyncResult:
     total_boards_processed: int = 0
     total_sprints_synced: int = 0
     total_tasks_linked: int = 0
-    errors: List[tuple[str, str]] = None
-
-    def __post_init__(self):
-        if self.errors is None:
-            self.errors = []
+    errors: List[tuple[str, str]] = field(default_factory=list)
 
 
 class BoardSyncService:
@@ -64,16 +59,16 @@ class BoardSyncService:
         Returns:
             BoardSyncResult with statistics and any errors
         """
-        logger.info('Starting boards and sprints sync for project %s', project_key)
+        logger.info("Starting boards and sprints sync for project %s", project_key)
 
         result = BoardSyncResult()
 
         try:
             boards = self.jira_service.list_boards_for_project(project_key)
-            logger.info('Boards for %s: %s', project_key, [board.get('name') for board in boards])
+            logger.info("Boards for %s: %s", project_key, [board.get("name") for board in boards])
 
             for board in boards:
-                board_name = board.get('name', 'Unknown')
+                board_name = board.get("name", "Unknown")
                 try:
                     board_result = await self._sync_board_sprints(
                         board,
@@ -86,25 +81,20 @@ class BoardSyncService:
                     result.total_tasks_linked += board_result.total_tasks_linked
 
                 except Exception as e:
-                    logger.error(
-                        'Failed to sync board %s: %s',
-                        board_name,
-                        e,
-                        exc_info=True
-                    )
+                    logger.error("Failed to sync board %s: %s", board_name, e, exc_info=True)
                     result.errors.append((board_name, str(e)))
 
             logger.info(
-                'Completed boards and sprints sync for project %s: %d boards, %d sprints, %d tasks linked',
+                "Completed boards and sprints sync for project %s: %d boards, %d sprints, %d tasks linked",
                 project_key,
                 result.total_boards_processed,
                 result.total_sprints_synced,
-                result.total_tasks_linked
+                result.total_tasks_linked,
             )
 
         except Exception as e:
-            logger.error('Boards and sprints sync failed for project %s: %s', project_key, e)
-            result.errors.append(('sync_boards', str(e)))
+            logger.error("Boards and sprints sync failed for project %s: %s", project_key, e)
+            result.errors.append(("sync_boards", str(e)))
 
         return result
 
@@ -121,7 +111,7 @@ class BoardSyncService:
             BoardSyncResult with sprint and task statistics
         """
         result = BoardSyncResult()
-        board_id = board.get('id')
+        board_id = board.get("id")
 
         if not board_id:
             return result
@@ -142,18 +132,15 @@ class BoardSyncService:
                         result.total_tasks_linked += tasks_linked
 
                     except Exception as e:
-                        sprint_name = sprint.get('name', 'Unknown')
-                        logger.error(
-                            'Failed to sync sprint %s: %s',
-                            sprint_name,
-                            e,
-                            exc_info=True
-                        )
+                        sprint_name = sprint.get("name", "Unknown")
+                        logger.error("Failed to sync sprint %s: %s", sprint_name, e, exc_info=True)
                         result.errors.append((sprint_name, str(e)))
 
         except IntegrityError:
             await db.rollback()
-            logger.warning('Duplicate sprint detected during sync for project %d; continuing', project_id)
+            logger.warning(
+                "Duplicate sprint detected during sync for project %d; continuing", project_id
+            )
 
         return result
 
@@ -169,7 +156,7 @@ class BoardSyncService:
         Returns:
             Number of tasks linked to the sprint
         """
-        sprint_jira_id = sprint.get('id')
+        sprint_jira_id = sprint.get("id")
         if not sprint_jira_id:
             return 0
 
@@ -187,13 +174,14 @@ class BoardSyncService:
             created_new = True
 
         # Update sprint fields
-        db_sprint.name = sprint.get('name')
-        db_sprint.goal = sprint.get('goal')
-        db_sprint.state = sprint.get('state')
+        name_val = sprint.get("name")
+        db_sprint.name = str(name_val) if name_val is not None else "Unknown"
+        db_sprint.goal = sprint.get("goal")
+        db_sprint.state = sprint.get("state")
         db_sprint.project_id = project_id
-        db_sprint.start_date = parse_datetime(sprint.get('startDate'))
-        db_sprint.end_date = parse_datetime(sprint.get('endDate'))
-        db_sprint.complete_date = parse_datetime(sprint.get('completeDate'))
+        db_sprint.start_date = parse_datetime(sprint.get("startDate"))
+        db_sprint.end_date = parse_datetime(sprint.get("endDate"))
+        db_sprint.complete_date = parse_datetime(sprint.get("completeDate"))
 
         if created_new:
             # Ensure PK available for relation updates
@@ -224,15 +212,12 @@ class BoardSyncService:
         """
         sprint_issues = self.jira_service.list_issues_in_sprint(sprint_jira_id)
 
-        keys = [item.get('key') for item in sprint_issues if item.get('key')]
+        keys = [item.get("key") for item in sprint_issues if item.get("key")]
         if not keys:
             return 0
 
         # Find tasks by key and link to sprint
-        tasks_query = select(Task).where(
-            Task.key.in_(keys),
-            Task.project_id == project_id
-        )
+        tasks_query = select(Task).where(Task.key.in_(keys), Task.project_id == project_id)
 
         tasks = (await db.execute(tasks_query)).scalars().all()
         tasks_linked = 0

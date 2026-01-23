@@ -26,6 +26,13 @@ import {
 } from '@mui/material';
 import { Check as CheckIcon, Celebration as CelebrationIcon } from '@mui/icons-material';
 import { analytics } from '../services/analytics';
+import {
+  connectJira,
+  listJiraProjects,
+  syncJiraProject,
+  type JiraProject,
+} from '../services/api';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface OnboardingWizardProps {
   open: boolean;
@@ -38,7 +45,7 @@ interface OnboardingState {
   jiraUrl: string;
   jiraEmail: string;
   jiraToken: string;
-  jiraProjects: any[];
+  jiraProjects: JiraProject[];
   selectedProjectKey: string;
   integrationsEnabled: {
     confluence: boolean;
@@ -124,52 +131,23 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ open, onComplete, o
     setConnectionSuccess(false);
 
     try {
-      // First, test connection using /jira/connect endpoint (query params required, not body)
-      const params: Record<string, string> = {
-        base_url: state.jiraUrl,
-        api_token: state.jiraToken,
-        save: 'false',  // Don't save during onboarding test
-      };
+      await connectJira({
+        baseUrl: state.jiraUrl,
+        email: state.jiraEmail || undefined,
+        apiToken: state.jiraToken,
+        save: false,
+        usePat: !state.jiraEmail,
+      });
 
-      // Only add email if provided, otherwise use PAT mode
-      if (state.jiraEmail) {
-        params.email = state.jiraEmail;
-        params.use_pat = 'false';
-      } else {
-        params.use_pat = 'true';
-      }
-
-      const queryString = new URLSearchParams(params).toString();
-
-      const connectResponse = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/v1/jira/connect?${queryString}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
-
-      if (!connectResponse.ok) {
-        const error = await connectResponse.json();
-        throw new Error(error.detail || 'Connection failed');
-      }
-
-      // If connection successful, fetch projects
-      const projectsResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/v1/jira/projects`);
-
-      if (!projectsResponse.ok) {
-        throw new Error('Failed to fetch projects');
-      }
-
-      const projectsData = await projectsResponse.json();
+      const projectsData = await listJiraProjects();
       setState(prev => ({ ...prev, jiraProjects: projectsData.projects || [] }));
       setConnectionSuccess(true);
 
       // Track Jira connection success
       analytics.trackTimeToValue('jiraConnectedAt');
       analytics.track('jira_connected', { projectCount: projectsData.projects?.length || 0 });
-    } catch (error: any) {
-      setConnectionError(error.message || 'Failed to connect to Jira');
+    } catch (error: unknown) {
+      setConnectionError(getErrorMessage(error, 'Failed to connect to Jira'));
     } finally {
       setTestingConnection(false);
     }
@@ -183,20 +161,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ open, onComplete, o
       await new Promise(resolve => setTimeout(resolve, 1000));
       setState(prev => ({ ...prev, syncResults: { tasks: 0, sprints: 0, complete: false } }));
 
-      // Call backend to start sync
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/v1/jira/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          project_key: state.selectedProjectKey,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Sync failed');
-      }
-
-      const data = await response.json();
+      const data = await syncJiraProject(state.selectedProjectKey);
       setState(prev => ({
         ...prev,
         syncInProgress: false,
@@ -245,7 +210,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ open, onComplete, o
               Welcome to PO Helper! 👋
             </Typography>
             <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4 }}>
-              What's your primary goal?
+              What&apos;s your primary goal?
             </Typography>
             <FormControl component="fieldset" fullWidth>
               <RadioGroup
@@ -533,7 +498,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ open, onComplete, o
             {!state.syncInProgress && !state.syncResults?.complete && (
               <Box sx={{ textAlign: 'center', my: 4 }}>
                 <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-                  We'll import tasks, sprints, and calculate metrics from project: <strong>{state.selectedProjectKey}</strong>
+                  We&apos;ll import tasks, sprints, and calculate metrics from project: <strong>{state.selectedProjectKey}</strong>
                 </Typography>
                 <Button variant="contained" size="large" onClick={handleStartSync}>
                   Start Sync

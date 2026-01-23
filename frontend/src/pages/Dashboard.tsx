@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../store/store';
 import { setCurrentProject } from '../store/projectSlice';
 import { loadProjectData } from '../store/dataThunks';
+import { Task } from '../store/taskSlice';
 import {
   Alert,
   Box,
@@ -16,16 +17,13 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControl,
   Grid,
-  InputLabel,
   LinearProgress,
   List,
   ListItem,
+  ListItemButton,
   ListItemText,
-  MenuItem,
   Paper,
-  Select,
   Typography,
 } from '@mui/material';
 import {
@@ -35,8 +33,17 @@ import {
   Warning,
   Speed,
 } from '@mui/icons-material';
-import { Line, Bar, Doughnut } from 'react-chartjs-2';
-import { getIntegrationsStatus, getProjectBudgetHours, getProjectValueMetrics, getProjectSprints, getSprintWipStatus } from '../services/api';
+import { Line, Doughnut } from 'react-chartjs-2';
+import type { ChartOptions } from 'chart.js';
+import {
+  getIntegrationsStatus,
+  getProjectBudgetHours,
+  getProjectValueMetrics,
+  getSprintWipStatus,
+  type BudgetHoursResponse,
+  type ValueMetricsResponse,
+  type SprintWipStatus,
+} from '../services/api';
 import KPIBar, { KPIMetric } from '../components/KPIBar';
 import DashboardSkeleton from '../components/DashboardSkeleton';
 import { DashboardFilters } from '../components/DashboardFilters';
@@ -53,6 +60,8 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
+import type { ChartData } from 'chart.js';
+import { categorizeStatus, isDoneStatus } from '../hooks/useTaskStatuses';
 
 ChartJS.register(
   CategoryScale,
@@ -66,67 +75,7 @@ ChartJS.register(
   Legend
 );
 
-type StatusBucket = 'todo' | 'in_progress' | 'blocked' | 'done' | 'other';
-
-const normalizeStatus = (status?: string | null) => (status ?? '').trim().toLowerCase();
-
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
-
-const categorizeStatus = (status?: string | null): StatusBucket => {
-  const normalized = normalizeStatus(status);
-  if (!normalized) return 'other';
-  if (normalized.includes('block')) return 'blocked';
-
-  const doneMatches = [
-    'done',
-    'closed',
-    'resolved',
-    'work done',
-    'workdone',
-    'requirements done',
-    'completed',
-    'complete',
-  ];
-  if (doneMatches.includes(normalized) || normalized.endsWith(' done') || normalized.startsWith('done ')) {
-    return 'done';
-  }
-
-  const todoMatches = [
-    'backlog',
-    'to do',
-    'todo',
-    'design ready',
-    'ready for refinement',
-  ];
-  if (todoMatches.includes(normalized)) {
-    return 'todo';
-  }
-
-  const inProgressExact = [
-    'in progress',
-    'in review',
-    'code review',
-    'review',
-    'testing',
-    'ready for qa',
-    'ready for test',
-    'qa',
-    'po review',
-    'requirements review',
-    'in ba',
-    'in design',
-  ];
-  if (inProgressExact.includes(normalized)) {
-    return 'in_progress';
-  }
-  if (normalized.includes('progress') || normalized.includes('review') || normalized.includes('qa') || normalized.includes('testing')) {
-    return 'in_progress';
-  }
-
-  return 'other';
-};
-
-const isDoneStatus = (status?: string | null) => categorizeStatus(status) === 'done';
 
 type StatCardProps = {
   title: string;
@@ -139,23 +88,72 @@ type StatCardProps = {
   testId?: string;
 };
 
+const StatCard = ({ title, value, icon, color, progress, helperText, onClick, testId }: StatCardProps) => (
+  <Card sx={{ height: '100%' }}>
+    <CardActionArea
+      data-testid={testId}
+      sx={{ height: '100%', alignItems: 'stretch' }}
+      onClick={onClick}
+      disabled={!onClick}
+    >
+      <CardContent>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Box>
+            <Typography color="textSecondary" gutterBottom variant="body2">
+              {title}
+            </Typography>
+            <Typography variant="h4" component="div">
+              {value}
+            </Typography>
+            {progress !== undefined && (
+              <Box mt={2}>
+                <LinearProgress variant="determinate" value={progress} sx={{ height: 8, borderRadius: 4 }} />
+                <Typography variant="body2" color="textSecondary" mt={0.5}>
+                  {progress}% Complete
+                </Typography>
+              </Box>
+            )}
+            {helperText && (
+              <Typography variant="caption" color="textSecondary" display="block" mt={1}>
+                {helperText}
+              </Typography>
+            )}
+          </Box>
+          <Box
+            sx={{
+              bgcolor: color,
+              borderRadius: '50%',
+              p: 1.5,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {icon}
+          </Box>
+        </Box>
+      </CardContent>
+    </CardActionArea>
+  </Card>
+);
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
 
   // Redux state
   const { projects, currentProject, loading: projectsLoading } = useSelector((state: RootState) => state.project);
-  const { tasks, tasksByProject, loading: tasksLoading } = useSelector((state: RootState) => state.task);
-  const { sprints, sprintsByProject, activeSprint } = useSelector((state: RootState) => state.sprint);
+  const { tasksByProject, loading: tasksLoading } = useSelector((state: RootState) => state.task);
+  const { activeSprint } = useSelector((state: RootState) => state.sprint);
 
   // Local state for additional data
-  const [integrations, setIntegrations] = useState<any>(null);
-  const [budgetData, setBudgetData] = useState<any | null>(null);
-  const [valueMetrics, setValueMetrics] = useState<any | null>(null);
-  const [wipStatus, setWipStatus] = useState<any | null>(null);
+  const [budgetData, setBudgetData] = useState<BudgetHoursResponse | null>(null);
+  const [valueMetrics, setValueMetrics] = useState<ValueMetricsResponse | null>(null);
+  const [wipStatus, setWipStatus] = useState<SprintWipStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [now, setNow] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
-  const [drilldown, setDrilldown] = useState<{ open: boolean; title: string; tasks: any[] }>({ open: false, title: '', tasks: [] });
+  const [drilldown, setDrilldown] = useState<{ open: boolean; title: string; tasks: Task[] }>({ open: false, title: '', tasks: [] });
 
   // Filter preferences (saved to localStorage)
   const [dateRange, setDateRange] = useState<string>(() => {
@@ -164,6 +162,30 @@ const Dashboard = () => {
   const [chartView, setChartView] = useState<string>(() => {
     return localStorage.getItem('dashboard_chart_view') || 'both';
   });
+  const lineChartOptions: ChartOptions<'line'> = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'top',
+        },
+      },
+    }),
+    []
+  );
+  const doughnutChartOptions: ChartOptions<'doughnut'> = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
+        },
+      },
+    }),
+    []
+  );
 
   // Save preferences to localStorage
   const handleDateRangeChange = (range: string) => {
@@ -176,19 +198,30 @@ const Dashboard = () => {
     localStorage.setItem('dashboard_chart_view', view);
   };
 
+  const projectTasks = useMemo(
+    () => (currentProject ? (tasksByProject[currentProject.id] || []) : []),
+    [currentProject, tasksByProject]
+  );
 
-  const projectTasks = currentProject ? (tasksByProject[currentProject.id] || []) : [];
-  const projectSprints = currentProject ? (sprintsByProject[currentProject.id] || []) : [];
+  useEffect(() => {
+    const updateNow = () => setNow(Date.now());
+    const timeoutId = setTimeout(updateNow, 0);
+    const intervalId = setInterval(updateNow, 60000);
+    return () => {
+      clearTimeout(timeoutId);
+      clearInterval(intervalId);
+    };
+  }, []);
 
   const stats = useMemo(() => {
-    const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 3600 * 1000);
+    const twoWeeksAgo = new Date(now - 14 * 24 * 3600 * 1000);
     let totalTasks = 0;
     let completedTasks = 0;
     let inProgress = 0;
     let velocityHours = 0;
     const blockerIds = new Set<number>();
 
-    projectTasks.forEach((row: any, index) => {
+    projectTasks.forEach((row: Task, index) => {
       totalTasks += 1;
       const bucket = categorizeStatus(row.status);
       if (bucket === 'done') completedTasks += 1;
@@ -211,9 +244,9 @@ const Dashboard = () => {
       blockers: blockerIds.size,
       velocity: Math.round(velocityHours),
     };
-  }, [projectTasks]);
+  }, [projectTasks, now]);
 
-  const openDrilldown = useCallback((title: string, filter: (row: any) => boolean) => {
+  const openDrilldown = useCallback((title: string, filter: (row: Task) => boolean) => {
     const filtered = projectTasks.filter(filter).slice(0, 100);
     setDrilldown({ open: true, title, tasks: filtered });
   }, [projectTasks]);
@@ -225,7 +258,6 @@ const Dashboard = () => {
   // Initialize with first project if none selected
   useEffect(() => {
     if (!currentProject && projects.length > 0) {
-      console.log('[Dashboard] Auto-selecting first project:', projects[0].id);
       dispatch(setCurrentProject(projects[0]));
     }
   }, [currentProject, projects, dispatch]);
@@ -233,7 +265,6 @@ const Dashboard = () => {
   // Load project-specific data when current project changes
   useEffect(() => {
     if (!currentProject) return;
-    console.log('[Dashboard] Loading data for project:', currentProject.id);
     dispatch(loadProjectData({ projectId: currentProject.id }));
   }, [currentProject, dispatch]);
 
@@ -262,10 +293,11 @@ const Dashboard = () => {
     } else {
       setWipStatus(null);
     }
-  }, [currentProject, activeSprint?.id]);
+  }, [currentProject, activeSprint]);
 
   useEffect(() => {
-    refreshProjectMetrics();
+    const timeoutId = setTimeout(() => refreshProjectMetrics(), 0);
+    return () => clearTimeout(timeoutId);
   }, [refreshProjectMetrics]);
 
   useEffect(() => {
@@ -330,23 +362,18 @@ const Dashboard = () => {
     let cancelled = false;
     (async () => {
       try {
-        const st = await getIntegrationsStatus();
+        await getIntegrationsStatus();
         if (!cancelled) {
-          setIntegrations(st);
+          // no-op: background check to surface connectivity issues
         }
-      } catch {}
+      } catch (err) {
+        console.warn('Integrations status check failed', err);
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, []);
-
-
-  useEffect(() => {
-    refreshProjectMetrics();
-  }, [refreshProjectMetrics]);
-
-
   const handleProjectChange = (projectId: number) => {
     const project = projects.find(p => p.id === projectId);
     if (project) {
@@ -363,7 +390,7 @@ const Dashboard = () => {
   }, [currentProject, dispatch, refreshProjectMetrics]);
 
   // Weekly velocity (last 5 weeks) based on completed tasks' estimates
-  const velocityData = useMemo(() => {
+  const velocityData = useMemo<ChartData<'line', number[], string>>(() => {
     const weeks: string[] = [];
     const buckets: Record<string, number> = {};
     for (let i = 4; i >= 0; i--) {
@@ -441,31 +468,31 @@ const Dashboard = () => {
   }, [projectTasks]);
 
   const overdueTasks = useMemo(() => {
-    const now = Date.now();
-    return projectTasks.filter((row: any) => {
+    const nowMs = now;
+    return projectTasks.filter((row: Task) => {
       if (isDoneStatus(row.status) || !row.due_date) return false;
       const due = new Date(row.due_date).getTime();
-      return !Number.isNaN(due) && due < now;
+      return !Number.isNaN(due) && due < nowMs;
     });
-  }, [projectTasks]);
+  }, [projectTasks, now]);
 
   const activeBlockers = useMemo(() =>
-    projectTasks.filter((row: any) => row?.is_blocker || categorizeStatus(row.status) === 'blocked'),
+    projectTasks.filter((row: Task) => row?.is_blocker || categorizeStatus(row.status) === 'blocked'),
   [projectTasks]);
 
   const staleInProgress = useMemo(() => {
-    const threshold = Date.now() - 5 * DAY_IN_MS;
-    return projectTasks.filter((row: any) => {
+    const threshold = now - 5 * DAY_IN_MS;
+    return projectTasks.filter((row: Task) => {
       if (categorizeStatus(row.status) !== 'in_progress') return false;
       if (!row.updated_date) return true;
       const updated = new Date(row.updated_date).getTime();
       if (Number.isNaN(updated)) return true;
       return updated < threshold;
     });
-  }, [projectTasks]);
+  }, [projectTasks, now]);
 
   const velocitySeries = useMemo<number[]>(() => {
-    const dataset = (velocityData?.datasets?.[0]?.data as number[]) || [];
+    const dataset = velocityData.datasets?.[0]?.data ?? [];
     return dataset.map((value) => Number(value) || 0);
   }, [velocityData]);
 
@@ -514,7 +541,7 @@ const Dashboard = () => {
         level: 'High',
         message: `${count} overdue ${count === 1 ? 'task needs' : 'tasks need'} attention`,
         color: 'error.main',
-        onClick: () => openDrilldown('Overdue tasks', (row: any) => overdueTasks.some((item: any) => (item.id && row.id && item.id === row.id) || (item.key && row.key && item.key === row.key))),
+        onClick: () => openDrilldown('Overdue tasks', (row: Task) => overdueTasks.some((item: Task) => (item.id && row.id && item.id === row.id) || (item.key && row.key && item.key === row.key))),
       });
     }
     if (activeBlockers.length) {
@@ -523,7 +550,7 @@ const Dashboard = () => {
         level: overdueTasks.length ? 'Medium' : 'High',
         message: `${count} blocker${count === 1 ? '' : 's'} impacting flow`,
         color: 'warning.main',
-        onClick: () => openDrilldown('Blocking tasks', (row: any) => row?.is_blocker || categorizeStatus(row.status) === 'blocked'),
+        onClick: () => openDrilldown('Blocking tasks', (row: Task) => row?.is_blocker || categorizeStatus(row.status) === 'blocked'),
       });
     }
     if (staleInProgress.length) {
@@ -532,7 +559,7 @@ const Dashboard = () => {
         level: 'Medium',
         message: `${count} task${count === 1 ? '' : 's'} stuck >5 days`,
         color: 'warning.main',
-        onClick: () => openDrilldown('Stalled tasks', (row: any) => staleInProgress.some((item: any) => (item.id && row.id && item.id === row.id) || (item.key && row.key && item.key === row.key))),
+        onClick: () => openDrilldown('Stalled tasks', (row: Task) => staleInProgress.some((item: Task) => (item.id && row.id && item.id === row.id) || (item.key && row.key && item.key === row.key))),
       });
     }
     if (velocityTrend === 'down') {
@@ -547,10 +574,10 @@ const Dashboard = () => {
   }, [overdueTasks, activeBlockers, staleInProgress, velocityTrend, openDrilldown]);
 
   const upcomingTasks = useMemo(() => {
-    const now = Date.now();
-    const horizon = now + 14 * DAY_IN_MS;
+    const nowMs = now;
+    const horizon = nowMs + 14 * DAY_IN_MS;
     return projectTasks
-      .filter((row: any) => {
+      .filter((row: Task) => {
         if (isDoneStatus(row.status)) return false;
         const due = row.due_date ? new Date(row.due_date).getTime() : NaN;
         if (!Number.isNaN(due)) {
@@ -558,16 +585,16 @@ const Dashboard = () => {
         }
         return categorizeStatus(row.status) === 'todo';
       })
-      .map((row: any) => {
+      .map((row: Task) => {
         const due = row.due_date ? new Date(row.due_date).getTime() : NaN;
         const created = row.created_date ? new Date(row.created_date).getTime() : NaN;
         const sortKey = !Number.isNaN(due) ? due : (!Number.isNaN(created) ? created : Number.MAX_SAFE_INTEGER);
-        const daysRemaining = !Number.isNaN(due) ? Math.ceil((due - now) / DAY_IN_MS) : null;
+        const daysRemaining = !Number.isNaN(due) ? Math.ceil((due - nowMs) / DAY_IN_MS) : null;
         return { row, sortKey, due, daysRemaining };
       })
       .sort((a, b) => (a.sortKey || Number.MAX_SAFE_INTEGER) - (b.sortKey || Number.MAX_SAFE_INTEGER))
       .slice(0, 6);
-  }, [projectTasks]);
+  }, [projectTasks, now]);
 
   const formatDueDate = useCallback((value?: string | null) => {
     if (!value) return '--';
@@ -575,54 +602,6 @@ const Dashboard = () => {
     if (Number.isNaN(parsed.getTime())) return '--';
     return parsed.toLocaleDateString();
   }, []);
-
-  const StatCard = ({ title, value, icon, color, progress, helperText, onClick, testId }: StatCardProps) => (
-    <Card sx={{ height: '100%' }}>
-      <CardActionArea data-testid={testId} sx={{ height: '100%', alignItems: 'stretch' }} onClick={onClick} disabled={!onClick}>
-        <CardContent>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Box>
-              <Typography color="textSecondary" gutterBottom variant="body2">
-                {title}
-              </Typography>
-              <Typography variant="h4" component="div">
-                {value}
-              </Typography>
-              {progress !== undefined && (
-                <Box mt={2}>
-                  <LinearProgress
-                    variant="determinate"
-                    value={progress}
-                    sx={{ height: 8, borderRadius: 4 }}
-                  />
-                  <Typography variant="body2" color="textSecondary" mt={0.5}>
-                    {progress}% Complete
-                  </Typography>
-                </Box>
-              )}
-              {helperText && (
-                <Typography variant="caption" color="textSecondary" display="block" mt={1}>
-                  {helperText}
-                </Typography>
-              )}
-            </Box>
-            <Box
-              sx={{
-                bgcolor: color,
-                borderRadius: '50%',
-                p: 1.5,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              {icon}
-            </Box>
-          </Box>
-        </CardContent>
-      </CardActionArea>
-    </Card>
-  );
 
   const isLoading = projectsLoading || tasksLoading;
 
@@ -657,9 +636,9 @@ const Dashboard = () => {
         tooltip: 'Overdue and blocked tasks',
         onClick: () => {
           if (overdueTasks.length) {
-            openDrilldown('At Risk Tasks', (row: any) =>
-              overdueTasks.some((item: any) => item.id === row.id) ||
-              activeBlockers.some((item: any) => item.id === row.id)
+            openDrilldown('At Risk Tasks', (row: Task) =>
+              overdueTasks.some((item: Task) => item.id === row.id) ||
+              activeBlockers.some((item: Task) => item.id === row.id)
             );
           }
         },
@@ -680,7 +659,6 @@ const Dashboard = () => {
   // Filter charts based on chartView preference
   const shouldShowVelocity = chartView === 'velocity' || chartView === 'both';
   const shouldShowBurndown = chartView === 'burndown' || chartView === 'both';
-  const shouldShowDistribution = chartView === 'distribution' || chartView === 'both';
 
   return (
     <Box>
@@ -769,7 +747,7 @@ const Dashboard = () => {
                   </Box>
                 ) : (
                   <Box height={250}>
-                    <Line data={burndownData} options={{ responsive: true, maintainAspectRatio: false }} />
+                    <Line data={burndownData} options={lineChartOptions} />
                   </Box>
                 )}
               </CardContent>
@@ -789,7 +767,7 @@ const Dashboard = () => {
                 </Box>
               ) : (
                 <Box height={250} display="flex" justifyContent="center" alignItems="center">
-                  <Doughnut data={taskDistribution} options={{ responsive: true, maintainAspectRatio: false }} />
+                  <Doughnut data={taskDistribution} options={doughnutChartOptions} />
                 </Box>
               )}
             </CardContent>
@@ -807,29 +785,41 @@ const Dashboard = () => {
                 </Box>
               ) : (
                 <List dense>
-                  {riskItems.map((item, idx) => (
-                    <ListItem
-                      key={idx}
-                      button={!!item.onClick}
-                      onClick={item.onClick}
-                      sx={{
-                        borderLeft: 4,
-                        borderColor: item.color,
-                        mb: 1,
-                        borderRadius: 1,
-                        bgcolor: 'action.hover',
-                      }}
-                    >
+                  {riskItems.map((item, idx) => {
+                    const content = (
                       <ListItemText
+                        primaryTypographyProps={{ component: 'div' }}
                         primary={
                           <Box display="flex" alignItems="center" gap={1}>
-                            <Chip label={item.level} size="small" color={item.color === 'error.main' ? 'error' : item.color === 'warning.main' ? 'warning' : 'success'} />
+                            <Chip
+                              label={item.level}
+                              size="small"
+                              color={item.color === 'error.main' ? 'error' : item.color === 'warning.main' ? 'warning' : 'success'}
+                            />
                             <Typography variant="body2">{item.message}</Typography>
                           </Box>
                         }
                       />
-                    </ListItem>
-                  ))}
+                    );
+
+                    const sx = {
+                      borderLeft: 4,
+                      borderColor: item.color,
+                      mb: 1,
+                      borderRadius: 1,
+                      bgcolor: 'action.hover',
+                    };
+
+                    return item.onClick ? (
+                      <ListItemButton key={idx} onClick={item.onClick} sx={sx}>
+                        {content}
+                      </ListItemButton>
+                    ) : (
+                      <ListItem key={idx} sx={sx}>
+                        {content}
+                      </ListItem>
+                    );
+                  })}
                 </List>
               )}
             </CardContent>
@@ -852,6 +842,8 @@ const Dashboard = () => {
                   {upcomingTasks.slice(0, 6).map(({ row, daysRemaining }, idx) => (
                     <ListItem key={idx} sx={{ py: 0.5 }}>
                       <ListItemText
+                        primaryTypographyProps={{ component: 'div' }}
+                        secondaryTypographyProps={{ component: 'div' }}
                         primary={
                           <Typography variant="body2" noWrap>
                             {row.key || row.summary || 'Untitled'}
@@ -899,7 +891,7 @@ const Dashboard = () => {
             color="success.main"
             progress={stats.totalTasks ? Math.round((stats.completedTasks / stats.totalTasks) * 100) : 0}
             helperText="Click for recently completed work"
-            onClick={() => openDrilldown('Completed tasks', (row: any) => isDoneStatus(row.status))}
+            onClick={() => openDrilldown('Completed tasks', (row: Task) => isDoneStatus(row.status))}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -910,7 +902,7 @@ const Dashboard = () => {
             icon={<TrendingUp sx={{ color: 'white' }} />}
             color="info.main"
             helperText="Show tasks currently being worked on"
-            onClick={() => openDrilldown('In progress tasks', (row: any) => categorizeStatus(row.status) === 'in_progress')}
+            onClick={() => openDrilldown('In progress tasks', (row: Task) => categorizeStatus(row.status) === 'in_progress')}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -921,7 +913,7 @@ const Dashboard = () => {
             icon={<Warning sx={{ color: 'white' }} />}
             color="error.main"
             helperText="Identify items blocking delivery"
-            onClick={() => openDrilldown('Blocking tasks', (row: any) => row?.is_blocker || categorizeStatus(row.status) === 'blocked')}
+            onClick={() => openDrilldown('Blocking tasks', (row: Task) => row?.is_blocker || categorizeStatus(row.status) === 'blocked')}
           />
         </Grid>
 
@@ -953,9 +945,9 @@ const Dashboard = () => {
             testId="card-wip"
             value={wipStatus ? wipStatus.total_active : 0}
             icon={<Assignment sx={{ color: 'white' }} />}
-            color={(wipStatus?.assignees || []).some((a:any) => a.wip_exceeded) ? 'error.main' : 'success.main'}
+            color={(wipStatus?.assignees || []).some((a) => a.wip_exceeded) ? 'error.main' : 'success.main'}
             helperText={wipStatus ? `Limit: ${wipStatus.limit || '--'}` : undefined}
-            onClick={() => openDrilldown('Active WIP', (row: any) => categorizeStatus(row.status) === 'in_progress')}
+            onClick={() => openDrilldown('Active WIP', (row: Task) => categorizeStatus(row.status) === 'in_progress')}
           />
         </Grid>
 
@@ -968,15 +960,7 @@ const Dashboard = () => {
             <Box height={300}>
               <Line
                 data={velocityData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: {
-                      position: 'top' as const,
-                    },
-                  },
-                }}
+                options={lineChartOptions}
               />
             </Box>
           </Paper>
@@ -991,15 +975,7 @@ const Dashboard = () => {
             <Box height={300}>
               <Line
                 data={burndownData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: {
-                      position: 'top' as const,
-                    },
-                  },
-                }}
+                options={lineChartOptions}
               />
             </Box>
           </Paper>
@@ -1014,15 +990,7 @@ const Dashboard = () => {
             <Box height={300} display="flex" justifyContent="center" alignItems="center">
               <Doughnut
                 data={taskDistribution}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: {
-                      position: 'bottom' as const,
-                    },
-                  },
-                }}
+                options={doughnutChartOptions}
               />
             </Box>
           </Paper>
@@ -1076,7 +1044,7 @@ const Dashboard = () => {
             </Typography>
             {upcomingTasks.length ? (
               <List dense>
-                {upcomingTasks.map(({ row, daysRemaining }: any, index: number) => (
+                {upcomingTasks.map(({ row, daysRemaining }: { row: Task; daysRemaining: number | null }, index: number) => (
                   <ListItem data-testid="upcoming-item" key={`upcoming-${row.id || index}`} alignItems="flex-start" divider>
                     <ListItemText
                       primary={`${row.key || 'Task'}${row.summary ? ' -- ' + row.summary : ''}`}
@@ -1112,7 +1080,7 @@ const Dashboard = () => {
         <DialogContent dividers>
           {drilldown.tasks.length ? (
             <List dense>
-              {drilldown.tasks.map((task: any, index: number) => (
+              {drilldown.tasks.map((task, index: number) => (
                 <ListItem data-testid="drilldown-item" key={`drilldown-${task.id || index}`} alignItems="flex-start" divider>
                   <ListItemText
                     primary={`${task.key || task.id}${task.summary ? ' -- ' + task.summary : ''}`}

@@ -1,0 +1,437 @@
+issue_id,severity,category,rule_id,tool,language,file,line,column,end_line,end_column,message,evidence,suggestion,confidence,target
+4d913e38e700b0b76fdb4468d3259beb2989cf30,MAJOR,maintainability,react-hooks/set-state-in-effect,eslint,TypeScript,frontend/src/App.tsx,90,9,90,26,"Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/Users/kkitanin/Documents/MyApps/po_copilot/po_helper/frontend/src/App.tsx:90:9
+  88 |       const onboardingCompleted = localStorage.getItem('onboarding_completed');
+  89 |       if (!onboardingCompleted) {
+> 90 |         setShowOnboarding(true);
+     |         ^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  91 |       }
+  92 |     }
+  93 |   }, [isAuthenticated]);",,,HIGH,prod
+3eba337dd49145b6187c12a16a44168929c055d4,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/AnalyticsFilters.tsx,12,3,12,13,'IconButton' is defined but never used.,,,HIGH,prod
+2125b8311c86a6fe8c482f790b4c3b9fd2ecbd37,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/AnalyticsFilters.tsx,26,13,26,16,Unexpected any. Specify a different type.,,,HIGH,prod
+47bd5a365c1452c86060d58535efce3a18f313a6,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/AnalyticsFilters.tsx,87,66,87,69,Unexpected any. Specify a different type.,,,HIGH,prod
+de3f036eaf0d408ce26d24244107478dcda0f9b0,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/AnalyticsFilters.tsx,176,79,176,82,Unexpected any. Specify a different type.,,,HIGH,prod
+0ff57eb4e99cebe62596a3d4d5755a64735b517a,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/BackendStatusAlert.tsx,20,15,20,19,'type' is assigned a value but never used.,,,HIGH,prod
+ac157c7c6b477790205e49e91fe562cfee8f7075,MAJOR,maintainability,no-undef,eslint,TypeScript,frontend/src/components/BackendStatusAlert.tsx,30,76,30,89,'EventListener' is not defined.,,,HIGH,prod
+4afb89ea946c09e1991c8b48fe951d0f51e110a6,MAJOR,maintainability,no-undef,eslint,TypeScript,frontend/src/components/BackendStatusAlert.tsx,31,68,31,81,'EventListener' is not defined.,,,HIGH,prod
+a27ecede9ae23aececd9682080e2627fd660e04d,MAJOR,maintainability,react-hooks/set-state-in-effect,eslint,TypeScript,frontend/src/components/BackendStatusAlert.tsx,35,5,35,14,"Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/Users/kkitanin/Documents/MyApps/po_copilot/po_helper/frontend/src/components/BackendStatusAlert.tsx:35:5
+  33 |     // Check initial status
+  34 |     const initialStatus = backendHealthMonitor.getStatus();
+> 35 |     setStatus(initialStatus);
+     |     ^^^^^^^^^ Avoid calling setState() directly within an effect
+  36 |     setShowAlert(!initialStatus.isHealthy);
+  37 |
+  38 |     return () => {",,,HIGH,prod
+3f4bff82739903e7621c95db104803a81286a60e,MAJOR,maintainability,no-undef,eslint,TypeScript,frontend/src/components/BackendStatusAlert.tsx,39,81,39,94,'EventListener' is not defined.,,,HIGH,prod
+65cb6b4c0a87c2ec1ea1a50fa66af07b8a6b74cd,MAJOR,maintainability,no-undef,eslint,TypeScript,frontend/src/components/BackendStatusAlert.tsx,40,73,40,86,'EventListener' is not defined.,,,HIGH,prod
+06190777424851df053d043f393a67dddfb04f81,MAJOR,maintainability,react-hooks/set-state-in-effect,eslint,TypeScript,frontend/src/components/BackfillProgressDialog.tsx,48,7,48,24,"Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/Users/kkitanin/Documents/MyApps/po_copilot/po_helper/frontend/src/components/BackfillProgressDialog.tsx:48:7
+  46 |   useEffect(() => {
+  47 |     if (!open) {
+> 48 |       setElapsedSeconds(0);
+     |       ^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  49 |       return;
+  50 |     }
+  51 |",,,HIGH,prod
+05dc61816df2922a4d174748b9f3d35b1029a283,MAJOR,maintainability,no-undef,eslint,TypeScript,frontend/src/components/EmptyState.test.tsx,8,38,8,43,'React' is not defined.,,,HIGH,test
+02c8e539f078cc0b18c4e5a7fdd84726e92910d0,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/EmptyState.test.tsx,27,13,27,22,'container' is assigned a value but never used.,,,HIGH,test
+4ef501f1405b244ea959481308f69e0191764df7,MAJOR,maintainability,react/no-unescaped-entities,eslint,TypeScript,frontend/src/components/EmptyState.tsx,117,21,,,"`'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.",,,HIGH,prod
+8df12f9aa2b67d5d0356bbb7bd3654f31194c137,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/HelpPanel.tsx,13,3,13,7,'Link' is defined but never used.,,,HIGH,prod
+fa6fcfb46d5f975ee75e5fd6805d7434e22f9864,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/HelpTooltip.test.tsx,60,13,60,22,'container' is assigned a value but never used.,,,HIGH,test
+e2e0b456143762beedfa31f4fc915cdb6f7de397,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/IntegrationCard.tsx,8,3,8,8,'Paper' is defined but never used.,,,HIGH,prod
+f5aa9a2a88f4644a050a1b2df791f5b6e1d2bf96,MAJOR,maintainability,react/prop-types,eslint,TypeScript,frontend/src/components/KPIBar.tsx,25,53,25,60,'metrics' is missing in props validation,,,HIGH,prod
+2165dd930485e6c0626b77623f118389a41a3ae8,MAJOR,maintainability,react/prop-types,eslint,TypeScript,frontend/src/components/KPIBar.tsx,71,18,71,21,'metrics.map' is missing in props validation,,,HIGH,prod
+16552f58aec72f7f6180c7c832589981ac61709d,MAJOR,maintainability,react/no-unescaped-entities,eslint,TypeScript,frontend/src/components/OnboardingWizard.tsx,256,19,,,"`'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.",,,HIGH,prod
+6647563101f396389c3bbd4ddf271c0632208a5c,MAJOR,maintainability,react/no-unescaped-entities,eslint,TypeScript,frontend/src/components/OnboardingWizard.tsx,544,21,,,"`'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.",,,HIGH,prod
+8a08da61e82739d25b2f1401ac2fb0c5807e5477,MAJOR,maintainability,no-undef,eslint,TypeScript,frontend/src/components/PageViewTracker.tsx,8,52,8,57,'React' is not defined.,,,HIGH,prod
+3ed520ac865425d613d73f0657d3aa5316b3ddb1,MAJOR,maintainability,react/prop-types,eslint,TypeScript,frontend/src/components/PageViewTracker.tsx,8,76,8,84,'children' is missing in props validation,,,HIGH,prod
+7d216c0105a02b04ddff995f3a929f1b5262846d,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/QuickSetupPanel.tsx,21,17,21,31,'ExpandMoreIcon' is defined but never used.,,,HIGH,prod
+0335daabadaa289244110eb2b26cb1deff3109a6,MAJOR,maintainability,react/no-unescaped-entities,eslint,TypeScript,frontend/src/components/QuickSetupPanel.tsx,219,97,,,"`""` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.",,,HIGH,prod
+2190d1751e78e2cd865e87d3b2c5761e20f619bd,MAJOR,maintainability,react/no-unescaped-entities,eslint,TypeScript,frontend/src/components/QuickSetupPanel.tsx,220,49,,,"`""` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.",,,HIGH,prod
+ad72c262d37d7542a3e78076ec49986fc8575e4a,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/RepositoryStatus/RepositorySyncButton.tsx,35,3,35,15,'repositoryId' is defined but never used.,,,HIGH,prod
+ef2783c6dde0c5874e3df44f1a85ac4f95225440,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/SuggestedLinksPanel.tsx,39,17,39,27,'FilterIcon' is defined but never used.,,,HIGH,prod
+a201ea1d2816a8783ffdc640d3bfd077230d6e6e,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/SuggestedLinksPanel.tsx,140,13,140,19,'result' is assigned a value but never used.,,,HIGH,prod
+c86d8952e3e4e02583e6f74f80bd313c4f173bf4,MAJOR,maintainability,react/no-unescaped-entities,eslint,TypeScript,frontend/src/components/SuggestedLinksPanel.tsx,406,70,,,"`""` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.",,,HIGH,prod
+08966869dc4825b62b467e39d170a4fd1e3bee27,MAJOR,maintainability,react-hooks/set-state-in-effect,eslint,TypeScript,frontend/src/components/SyncProgressDialog.tsx,50,7,50,24,"Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/Users/kkitanin/Documents/MyApps/po_copilot/po_helper/frontend/src/components/SyncProgressDialog.tsx:50:7
+  48 |   useEffect(() => {
+  49 |     if (!open) {
+> 50 |       setElapsedSeconds(0);
+     |       ^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  51 |       return;
+  52 |     }
+  53 |",,,HIGH,prod
+588d87a061896599b35544e654fef9902a77b5d7,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/VelocityChart.tsx,5,3,5,16,'CategoryScale' is defined but never used.,,,HIGH,prod
+1bdee816d7fc57e7660affd19997c375ed5936e1,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/VelocityChart.tsx,6,3,6,14,'LinearScale' is defined but never used.,,,HIGH,prod
+19b665604d51269d9dea31591bbf5f4f3e592cf5,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/VelocityChart.tsx,7,3,7,15,'PointElement' is defined but never used.,,,HIGH,prod
+b891e0ee4965ecf35c569d045dad5a9fa0ab2c8f,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/VelocityChart.tsx,8,3,8,14,'LineElement' is defined but never used.,,,HIGH,prod
+37990bb874b3cf0b99438c11f934e15f58013c2a,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/VelocityChart.tsx,9,3,9,8,'Title' is defined but never used.,,,HIGH,prod
+c2178f2398c292fae2cef4ebb5cc9404aa3cd59d,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/VelocityChart.tsx,10,3,10,10,'Tooltip' is defined but never used.,,,HIGH,prod
+8ca7a213d42d4bfc41fa68afb5ac450e882242ed,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/VelocityChart.tsx,11,3,11,9,'Legend' is defined but never used.,,,HIGH,prod
+0d9fdf4e7365c36a27c77a8a17ab479611f86c70,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/VelocityChart.tsx,73,19,73,22,Unexpected any. Specify a different type.,,,HIGH,prod
+fe0d0ec8971f8a584f7ad26271e5ac13611ed9af,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/VelocityChart.tsx,105,22,105,25,Unexpected any. Specify a different type.,,,HIGH,prod
+4803d33dfdb73f91899922b1bba42b48afb20257,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/capacity/CFDVisualization.tsx,131,30,131,33,Unexpected any. Specify a different type.,,,HIGH,prod
+8d6f776d5317b57090e274c2c7ed76eff06bae78,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/capacity/CapacitySettingsPanel.tsx,54,3,54,19,'useCapacityValue' is defined but never used.,,,HIGH,prod
+c14c4d05b403ef35fc37fca5693d0bc2a6bf27dd,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/capacity/CapacitySettingsPanel.tsx,107,7,107,21,'UtilizationBar' is assigned a value but never used.,,,HIGH,prod
+9a9d490453c3ce5c7b96a82576c67632ced409fa,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/capacity/TeamHealthDashboard.tsx,21,3,21,10,'Tooltip' is defined but never used.,,,HIGH,prod
+e3234e314892ceb053314a5a67159ba51744ec58,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/capacity/TeamHealthDashboard.tsx,37,3,37,14,'HealthTrend' is defined but never used.,,,HIGH,prod
+58561f2a26b272bd0b7b0b0c6481e9e2d89ba4de,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/capacity/TeamHealthDashboard.tsx,154,30,154,33,Unexpected any. Specify a different type.,,,HIGH,prod
+8ca43645fe08aaa1aa51449450cc07d5985ae35e,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/capacity/TeamHealthDashboard.tsx,196,10,196,22,'recentChecks' is assigned a value but never used.,,,HIGH,prod
+56c79e3e39e2a517877dbbc3c2230bd88aba2c17,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/capacity/TeamHealthDashboard.tsx,391,37,391,40,Unexpected any. Specify a different type.,,,HIGH,prod
+4e9f2a52e08408b2739a4afcb62874c29d480607,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/quality/QualityDashboard.tsx,13,3,13,17,'LinearProgress' is defined but never used.,,,HIGH,prod
+ccecf19006ee9f838fabb9605643c3ec2230ed93,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/quality/QualityDashboard.tsx,15,3,15,10,'Tooltip' is defined but never used.,,,HIGH,prod
+12f3a8eeaff8db6e73a013b54bc76a5f8d5ebd85,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/quality/QualityDashboard.tsx,16,3,16,13,'IconButton' is defined but never used.,,,HIGH,prod
+39d9e1a48d654b88d8c060fbe35d310b2ae50351,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/quality/QualityDashboard.tsx,34,13,34,23,'ShieldIcon' is defined but never used.,,,HIGH,prod
+3b12d877265341b39f01bd5383b1802dd5bdb4db,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/quality/QualityDashboard.tsx,38,18,38,33,'CheckCircleIcon' is defined but never used.,,,HIGH,prod
+ea6480adbe79dfa7eb4e22023843929e787f1f8e,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/quality/QualityDashboard.tsx,39,12,39,21,'ErrorIcon' is defined but never used.,,,HIGH,prod
+c57205f033bffdcbc2ede27c2aab981c5da8957d,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/quality/QualityReportPanel.tsx,29,3,29,10,'Tooltip' is defined but never used.,,,HIGH,prod
+3af9240f104ec716b9c6bd0c16e887aa456ba329,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/quality/QualityReportPanel.tsx,41,12,41,21,'ErrorIcon' is defined but never used.,,,HIGH,prod
+a68cacf11c05acfaa6fe580a08883ab12606f32f,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/quality/QualityReportPanel.tsx,42,11,42,19,'InfoIcon' is defined but never used.,,,HIGH,prod
+256f0c944ec9f7e2a6c7294e50ba2e2a53066a61,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/components/quality/QualityReportPanel.tsx,100,6,100,27,React Hook useEffect has a missing dependency: 'loadReportData'. Either include it or remove the dependency array.,,,HIGH,prod
+f8356f216ffb21269a1ea67cf361b89e84102461,MAJOR,maintainability,react/no-unescaped-entities,eslint,TypeScript,frontend/src/components/quality/QualityReportPanel.tsx,433,59,,,"`'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.",,,HIGH,prod
+d050adcbef571c59bb24efc2a8ecb1537b48d350,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/security/MFASettings.tsx,40,14,40,25,'WarningIcon' is defined but never used.,,,HIGH,prod
+29e7437914b969e587111224370f8ec4859b1954,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/security/MFASettings.tsx,92,14,92,17,'err' is defined but never used.,,,HIGH,prod
+3319df8fcbbc5bcc705f0d11a82641d0e83368c6,MAJOR,maintainability,react/no-unescaped-entities,eslint,TypeScript,frontend/src/components/security/MFASettings.tsx,243,16,,,"`'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.",,,HIGH,prod
+7cc257d0cf25fb3c0a2208b3191fbbf08e239f12,MAJOR,maintainability,react/no-unescaped-entities,eslint,TypeScript,frontend/src/components/security/MFASettings.tsx,288,16,,,"`'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.",,,HIGH,prod
+934727f9f89d7e1172fc7f676c328e828b87bd28,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/testing/TestAnalyticsDashboard.tsx,37,26,37,29,'Bar' is defined but never used.,,,HIGH,prod
+c1a4c0766762153be8f985cbc4f9f8b497d79978,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/components/testing/TestAnalyticsDashboard.tsx,343,6,343,43,React Hook useEffect has a missing dependency: 'loadData'. Either include it or remove the dependency array.,,,HIGH,prod
+47d4e439e43226fc70fe733351ff76702e205183,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/traceability/DataConsistencyPanel.tsx,33,3,33,10,'Divider' is defined but never used.,,,HIGH,prod
+fa4ae8a3a626790570fe8562dfe90c3d483ea484,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/traceability/DataConsistencyPanel.tsx,41,3,41,10,'Refresh' is defined but never used.,,,HIGH,prod
+109cf6bf76d72d85a4a6aa4197fc0a30265f59cd,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/traceability/DataConsistencyPanel.tsx,242,12,242,15,Unexpected any. Specify a different type.,,,HIGH,prod
+b8780059707abd01d0d9754ccb6a7f5eaf7e9c4b,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/traceability/DataConsistencyPanel.tsx,243,24,243,27,Unexpected any. Specify a different type.,,,HIGH,prod
+00525e0d7a4356d79be333c43a39470d13626813,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/traceability/DataConsistencyPanel.tsx,292,34,292,37,Unexpected any. Specify a different type.,,,HIGH,prod
+eed8c4cb73692df28bb1b4b2825a42435f357a03,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/traceability/DataConsistencyPanel.tsx,320,33,320,36,Unexpected any. Specify a different type.,,,HIGH,prod
+11e58d7c4c85f2b5a903f494b7455e12ef2fe44f,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/traceability/DataConsistencyPanel.tsx,348,37,348,40,Unexpected any. Specify a different type.,,,HIGH,prod
+8f1ed53fe16873871c26d17b1478a1435d3bccb1,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/traceability/DataConsistencyPanel.tsx,367,37,367,40,Unexpected any. Specify a different type.,,,HIGH,prod
+5bff9161599692bf57628f5fe17422554dc7662e,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/traceability/DataConsistencyPanel.tsx,382,33,382,36,Unexpected any. Specify a different type.,,,HIGH,prod
+6fa2f58e791f27b16d835b72db6eebecdf432859,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/traceability/DataConsistencyPanel.tsx,420,58,420,61,Unexpected any. Specify a different type.,,,HIGH,prod
+4a1aade6d83279598140102e7184d354f870df5b,MAJOR,maintainability,react/no-unescaped-entities,eslint,TypeScript,frontend/src/components/traceability/DataConsistencyPanel.tsx,690,29,,,"`""` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.",,,HIGH,prod
+b2247fbe0c23647ff23776dbadedf78314a05eff,MAJOR,maintainability,react/no-unescaped-entities,eslint,TypeScript,frontend/src/components/traceability/DataConsistencyPanel.tsx,702,15,,,"`'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.",,,HIGH,prod
+4a22e5fdbb8859a2ab240f6055ad4f4ee24b9a1c,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/traceability/ImpactAnalysisPanel.tsx,28,3,28,7,'Info' is defined but never used.,,,HIGH,prod
+6e1d96d0c93760e832dab2dc234ad91af3f8479b,MAJOR,maintainability,react/no-unescaped-entities,eslint,TypeScript,frontend/src/components/traceability/ImpactAnalysisPanel.tsx,312,30,,,"`""` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.",,,HIGH,prod
+c9120fb5a928f90e3cde2517fe976d87c72ca690,MAJOR,maintainability,react/no-unescaped-entities,eslint,TypeScript,frontend/src/components/traceability/ImportExportDialog.tsx,184,41,,,"`""` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.",,,HIGH,prod
+11fe3389e0a11c0b3537d23290ce7c0672e7472f,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/traceability/OrphanedArtifactsPanel.tsx,6,3,6,19,'CircularProgress' is defined but never used.,,,HIGH,prod
+0a091cd25dfed57ceacdd8124e3dcd865ccdf59b,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/traceability/OrphanedArtifactsPanel.tsx,29,3,29,12,'OpenInNew' is defined but never used.,,,HIGH,prod
+e20685c1a5214429a634d6452856ab991c210497,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/traceability/OrphanedArtifactsPanel.tsx,36,3,36,19,'OrphanedArtifact' is defined but never used.,,,HIGH,prod
+cb173fa195ff40601b8e793ad353da1e5a2a7b00,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/traceability/OrphanedArtifactsPanel.tsx,97,9,97,24,'coveragePercent' is assigned a value but never used.,,,HIGH,prod
+6b937edbdaad7b665c480eb7207416251b6c6934,MAJOR,maintainability,react-hooks/set-state-in-effect,eslint,TypeScript,frontend/src/components/traceability/PropertiesPanelEditable.tsx,76,7,76,20,"Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/Users/kkitanin/Documents/MyApps/po_copilot/po_helper/frontend/src/components/traceability/PropertiesPanelEditable.tsx:76:7
+  74 |   useEffect(() => {
+  75 |     if (selectedNode) {
+> 76 |       setEditedData({ ...selectedNode.data });
+     |       ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  77 |     }
+  78 |   }, [selectedNode]);
+  79 |",,,HIGH,prod
+187d606fc982adc7fb0317e7f3f31b7a1ca5435c,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/traceability/SyncHealthDashboard.tsx,33,3,33,7,'Sync' is defined but never used.,,,HIGH,prod
+3d710f248776d4db30bfa9aefdfe535178616bb5,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/traceability/Toolbox.tsx,21,16,21,23,'AddIcon' is defined but never used.,,,HIGH,prod
+370b67210812344d9e9524ad4782c741a8c543a7,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/traceability/Toolbox.tsx,37,16,37,19,Unexpected any. Specify a different type.,,,HIGH,prod
+f574077bf00c1dc8cb534b0c2a7c3809248aae72,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/traceability/Toolbox.tsx,147,76,147,79,Unexpected any. Specify a different type.,,,HIGH,prod
+b305ffaef6490b4b3375c1a2bd1c8ab435c12e5b,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/traceability/TraceabilityGraph.tsx,25,3,25,7,'Info' is defined but never used.,,,HIGH,prod
+2a432ba2ec37fdf6c0acd6665d7479339a65a426,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/traceability/TraceabilityGraph.tsx,31,3,31,16,'FullChainEdge' is defined but never used.,,,HIGH,prod
+6b4fdc290938c7455a4718e80a46823aff21ab13,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/traceability/TraceabilityGraph.tsx,57,39,57,42,Unexpected any. Specify a different type.,,,HIGH,prod
+e02c9dc9f08f766ccc8692a0b232576049680816,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/traceability/TraceabilityGraph.tsx,97,10,97,22,'selectedNode' is assigned a value but never used.,,,HIGH,prod
+6161c558bdda0c0aa8221744834f21370b3ae7aa,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/components/traceability/ValidationPanel.tsx,17,18,17,27,'CheckIcon' is defined but never used.,,,HIGH,prod
+35bb947fed984b6b49e3defe8b7f19cf921020d0,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/components/traceability/nodes/BaseNode.tsx,6,9,6,12,Unexpected any. Specify a different type.,,,HIGH,prod
+c760344400ec65db5554c2f06a3accb7e7089271,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/hooks/useParallelLoading.ts,9,24,9,42,'ParallelLoadResult' is defined but never used.,,,HIGH,prod
+b119889cac17c451b10fde42eda01378d3d9092b,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/hooks/useTaskStatuses.ts,8,10,8,17,'useMemo' is defined but never used.,,,HIGH,prod
+1cb9b0000605f5df04668b3a8b6a389de3c8f45e,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Analytics.tsx,1,17,1,28,'useCallback' is defined but never used.,,,HIGH,prod
+511fb484717429c17d84ace9c2259c55239c76e7,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Analytics.tsx,9,3,9,9,'Select' is defined but never used.,,,HIGH,prod
+a25ed8550e9b887bc1d85e93411974e63933b89b,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Analytics.tsx,10,3,10,11,'MenuItem' is defined but never used.,,,HIGH,prod
+8767df025ccb903a9b510a3131770b110d9cf724,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Analytics.tsx,11,3,11,14,'FormControl' is defined but never used.,,,HIGH,prod
+5a784d8b9223f36f091ec30c07d50880823f05f2,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Analytics.tsx,12,3,12,13,'InputLabel' is defined but never used.,,,HIGH,prod
+fe9ccafbf30a0dacbe35a81c65eeb9daf67f685a,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Analytics.tsx,28,3,28,9,'Button' is defined but never used.,,,HIGH,prod
+40982aa1de18173f205a58c62a735a99aa809aaf,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Analytics.tsx,33,154,33,168,'getDoraMetrics' is defined but never used.,,,HIGH,prod
+ea035da4c90f1374cc58728c8c80c4c452a020ba,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Analytics.tsx,42,3,42,16,'BurndownPoint' is defined but never used.,,,HIGH,prod
+cd3fa77d15026576bc2bb5793e7f8308502edd3c,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Analytics.tsx,44,3,44,11,'RiskItem' is defined but never used.,,,HIGH,prod
+87cc508429b3d08f4d2bd613db26fce75415eb9e,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Analytics.tsx,412,44,412,47,Unexpected any. Specify a different type.,,,HIGH,prod
+76a95674e0c66a581c8299447886c790ef2e3bf4,MAJOR,maintainability,react-hooks/immutability,eslint,TypeScript,frontend/src/pages/AnalyticsDashboard.tsx,37,5,37,16,"Error: Cannot access variable before it is declared
+
+`loadMetrics` is accessed before it is declared, which prevents the earlier access from updating when this value changes over time.
+
+/Users/kkitanin/Documents/MyApps/po_copilot/po_helper/frontend/src/pages/AnalyticsDashboard.tsx:37:5
+  35 |
+  36 |   useEffect(() => {
+> 37 |     loadMetrics();
+     |     ^^^^^^^^^^^ `loadMetrics` accessed before it is declared
+  38 |
+  39 |     // Refresh session duration every 30 seconds
+  40 |     const interval = setInterval(() => {
+
+/Users/kkitanin/Documents/MyApps/po_copilot/po_helper/frontend/src/pages/AnalyticsDashboard.tsx:47:3
+  45 |   }, []);
+  46 |
+> 47 |   const loadMetrics = () => {
+     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 48 |     setOnboardingMetrics(analytics.getOnboardingMetrics());
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 49 |     setTimeToValueMetrics(analytics.getTimeToValueMetrics());
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 50 |     setFeatureAdoptionMetrics(analytics.getFeatureAdoptionMetrics());
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 51 |     setTimeToFirstValue(analytics.getTimeToFirstValue());
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 52 |     setSessionDuration(analytics.getSessionDuration());
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 53 |   };
+     | ^^^^^ `loadMetrics` is declared here
+  54 |
+  55 |   const formatDuration = (minutes: number | null): string => {
+  56 |     if (minutes === null || minutes === 0) return 'N/A';",,,HIGH,prod
+4b3e5cf1f84d635fe65653b78b3543c59223323b,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,20,3,20,14,'FormControl' is defined but never used.,,,HIGH,prod
+bbc5834ce133b58f8fa02d0ff6ea5e4508654cd9,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,22,3,22,13,'InputLabel' is defined but never used.,,,HIGH,prod
+4df4c291d8496e533e4aafd40cb543702efb3fd3,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,28,3,28,11,'MenuItem' is defined but never used.,,,HIGH,prod
+40df58f745c4f711514ad0e12a999be091543f9d,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,30,3,30,9,'Select' is defined but never used.,,,HIGH,prod
+a40666233371a88eb864dab7e768d2a734038464,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,40,16,40,19,'Bar' is defined but never used.,,,HIGH,prod
+8e5c76720498be7f78413bbb4ec18369bb8c535b,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,45,3,45,20,'getProjectSprints' is defined but never used.,,,HIGH,prod
+38e6de5fdecc021c1357bcaf0ca68b22140b722d,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,68,47,68,59,'StatusBucket' is defined but never used.,,,HIGH,prod
+3d11ca51390e23a6ed883149f47aed9a7e8ef3ba,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,101,11,101,16,'tasks' is assigned a value but never used.,,,HIGH,prod
+11a5cdf3611c5a17ae47bc46635b9625d6392698,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,102,11,102,18,'sprints' is assigned a value but never used.,,,HIGH,prod
+ae4e52898a966857ec381ff93a24e1d2ea22701e,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,105,10,105,22,'integrations' is assigned a value but never used.,,,HIGH,prod
+c4e5029d54e4c8fe8a473d08f6b68b377e72352c,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,133,9,133,87,"The 'projectTasks' conditional could make the dependencies of useMemo Hook (at line 167) change on every render. To fix this, wrap the initialization of 'projectTasks' in its own useMemo() Hook.",,,HIGH,prod
+0e6a519ce041b47744c8a9ddf0c0b5ae40966604,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,133,9,133,87,"The 'projectTasks' conditional could make the dependencies of useCallback Hook (at line 172) change on every render. To fix this, wrap the initialization of 'projectTasks' in its own useMemo() Hook.",,,HIGH,prod
+11a30072e08bcba3fa39743dec100c26395b49d0,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,133,9,133,87,"The 'projectTasks' conditional could make the dependencies of useMemo Hook (at line 348) change on every render. To fix this, wrap the initialization of 'projectTasks' in its own useMemo() Hook.",,,HIGH,prod
+9b8e308336df38208ed73302cbe51dcfb969b04e,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,133,9,133,87,"The 'projectTasks' conditional could make the dependencies of useMemo Hook (at line 366) change on every render. To fix this, wrap the initialization of 'projectTasks' in its own useMemo() Hook.",,,HIGH,prod
+decb83fe4dfc600945d7f975ea5f6925ff7f6a34,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,133,9,133,87,"The 'projectTasks' conditional could make the dependencies of useMemo Hook (at line 392) change on every render. To fix this, wrap the initialization of 'projectTasks' in its own useMemo() Hook.",,,HIGH,prod
+9281cf54540a8696a7693dd2864c851a726afc96,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,133,9,133,87,"The 'projectTasks' conditional could make the dependencies of useMemo Hook (at line 401) change on every render. To fix this, wrap the initialization of 'projectTasks' in its own useMemo() Hook.",,,HIGH,prod
+1d360043b653292f34150b710eae35addc019466,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,133,9,133,87,"The 'projectTasks' conditional could make the dependencies of useMemo Hook (at line 405) change on every render. To fix this, wrap the initialization of 'projectTasks' in its own useMemo() Hook.",,,HIGH,prod
+245fe6091799c175b8f4a8da4a6f2a4d56d988c8,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,133,9,133,87,"The 'projectTasks' conditional could make the dependencies of useMemo Hook (at line 416) change on every render. To fix this, wrap the initialization of 'projectTasks' in its own useMemo() Hook.",,,HIGH,prod
+15a0a4d0d66595ecceb410e32f6a6bd5068aa672,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,133,9,133,87,"The 'projectTasks' conditional could make the dependencies of useMemo Hook (at line 521) change on every render. To fix this, wrap the initialization of 'projectTasks' in its own useMemo() Hook.",,,HIGH,prod
+37a72f608f4fbef84ad0add431ab155df549332a,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,134,9,134,23,'projectSprints' is assigned a value but never used.,,,HIGH,prod
+4cf63e13efe1ea33d8de064ac44aef742b1c6263,MAJOR,maintainability,react-hooks/purity,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,137,34,137,44,"Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/Users/kkitanin/Documents/MyApps/po_copilot/po_helper/frontend/src/pages/Dashboard.tsx:137:34
+  135 |
+  136 |   const stats = useMemo(() => {
+> 137 |     const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 3600 * 1000);
+      |                                  ^^^^^^^^^^ Cannot call impure function
+  138 |     let totalTasks = 0;
+  139 |     let completedTasks = 0;
+  140 |     let inProgress = 0;",,,HIGH,prod
+5a80d79b3fe3ff6083cb3ec612486decd7fd6be4,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,288,15,288,17,Empty block statement.,,,HIGH,prod
+cc41b9a55dab5b2473754554e36ac0213b0d9ae5,MAJOR,maintainability,react-hooks/purity,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,395,17,395,27,"Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/Users/kkitanin/Documents/MyApps/po_copilot/po_helper/frontend/src/pages/Dashboard.tsx:395:17
+  393 |
+  394 |   const overdueTasks = useMemo(() => {
+> 395 |     const now = Date.now();
+      |                 ^^^^^^^^^^ Cannot call impure function
+  396 |     return projectTasks.filter((row: Task) => {
+  397 |       if (isDoneStatus(row.status) || !row.due_date) return false;
+  398 |       const due = new Date(row.due_date).getTime();",,,HIGH,prod
+f7c29b1e74db7fd5cd798ba4c0b576fe47390b50,MAJOR,maintainability,react-hooks/purity,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,408,23,408,33,"Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/Users/kkitanin/Documents/MyApps/po_copilot/po_helper/frontend/src/pages/Dashboard.tsx:408:23
+  406 |
+  407 |   const staleInProgress = useMemo(() => {
+> 408 |     const threshold = Date.now() - 5 * DAY_IN_MS;
+      |                       ^^^^^^^^^^ Cannot call impure function
+  409 |     return projectTasks.filter((row: Task) => {
+  410 |       if (categorizeStatus(row.status) !== 'in_progress') return false;
+  411 |       if (!row.updated_date) return true;",,,HIGH,prod
+5b4d2dc1c5ebb22d934425b048ec7c6ac1a85eb3,MAJOR,maintainability,react-hooks/purity,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,501,17,501,27,"Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/Users/kkitanin/Documents/MyApps/po_copilot/po_helper/frontend/src/pages/Dashboard.tsx:501:17
+  499 |
+  500 |   const upcomingTasks = useMemo(() => {
+> 501 |     const now = Date.now();
+      |                 ^^^^^^^^^^ Cannot call impure function
+  502 |     const horizon = now + 14 * DAY_IN_MS;
+  503 |     return projectTasks
+  504 |       .filter((row: Task) => {",,,HIGH,prod
+34642e8d47bd50bc04bfd31a4fb9fa719de3fde1,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Dashboard.tsx,634,9,634,31,'shouldShowDistribution' is assigned a value but never used.,,,HIGH,prod
+8d878f208c67d0a15b20fda843e3c165b5a22505,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/JiraFieldsConfig.tsx,10,3,10,13,'InputLabel' is defined but never used.,,,HIGH,prod
+f72aa8dbc7d26bfaa7f0f5dcf2996ca9483fddc9,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/JiraFieldsConfig.tsx,26,3,26,17,'LinearProgress' is defined but never used.,,,HIGH,prod
+b6803c1208b3be0e06b7bbbb327b75f29061232e,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/JiraFieldsConfig.tsx,37,3,37,14,'AutoFixHigh' is defined but never used.,,,HIGH,prod
+493d58c5461ea472556d53ed0d0976cded25520e,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/JiraFieldsConfig.tsx,84,10,84,25,'showManualSetup' is assigned a value but never used.,,,HIGH,prod
+f74e6949d7b42db0e1a4bfe089e81fe029a517ee,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/pages/JiraFieldsConfig.tsx,93,6,93,8,React Hook useEffect has a missing dependency: 'loadData'. Either include it or remove the dependency array.,,,HIGH,prod
+a70da3d39dc8a19f30f8f33a57fe5fa8c8c29f65,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/JiraFieldsConfig.tsx,477,49,477,52,Unexpected any. Specify a different type.,,,HIGH,prod
+448ad8c5bb7c356926df2e0cf6ce71cc873858c6,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/JiraFieldsConfig.tsx,524,86,524,89,Unexpected any. Specify a different type.,,,HIGH,prod
+aa6ed67032896ad45dcfd22a633cbe849ed3b25b,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Knowledge.tsx,6,24,6,38,'ExpandMoreIcon' is defined but never used.,,,HIGH,prod
+5d00c7b15656cd95b9600ec7c2afabd576af8836,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Knowledge.tsx,95,13,95,15,Empty block statement.,,,HIGH,prod
+ba33e8b97712244d970774104fc9bcafc2b40f06,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Knowledge.tsx,119,13,119,15,Empty block statement.,,,HIGH,prod
+acc8bfec006b649586b2b0cc69d3b3cbcfd6cfc3,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Knowledge.tsx,149,215,149,217,Empty block statement.,,,HIGH,prod
+fc423d6cd4865d734787260fae503e99c84b5e99,MAJOR,maintainability,no-undef,eslint,TypeScript,frontend/src/pages/Knowledge.tsx,188,23,188,29,'NodeJS' is not defined.,,,HIGH,prod
+733ee5ee0f6878ed4db33e69716f96b82ccb3bd4,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Knowledge.tsx,375,143,375,145,Empty block statement.,,,HIGH,prod
+59be2e8f0481dd231bf896daa5887faf3a532390,MAJOR,maintainability,react/no-unescaped-entities,eslint,TypeScript,frontend/src/pages/Login.tsx,453,54,,,"`'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.",,,HIGH,prod
+0a3f6eaaf9f259df6ccb7d07fdf02d9031aa6b6e,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,38,3,38,21,'listTasksByProject' is defined but never used.,,,HIGH,prod
+22fa81ed35fa1da9834f44710a538194830eecdd,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,83,10,83,26,'CircularProgress' is defined but never used.,,,HIGH,prod
+193da645f395764a54a51b978f54c88e24c72c64,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,86,8,86,18,'GitHubIcon' is defined but never used.,,,HIGH,prod
+b058c0e991cd69b1def9dffd5207ce67099c9e89,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,87,8,87,18,'GitlabIcon' is defined but never used.,,,HIGH,prod
+a30e9acb0cb6fa8cd4c62d876fbcac511c79a4dc,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,106,11,106,28,'BudgetOverrunItem' is defined but never used.,,,HIGH,prod
+2f207dca6edee179a4d49e029977d907b81b6566,MINOR,style,eslint,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,152,7,,,Unused eslint-disable directive (no problems were reported from 'no-console').,,,HIGH,prod
+366ccbc64f280c152fca889acb88e30486986203,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,179,10,179,21,'velocityAvg' is assigned a value but never used.,,,HIGH,prod
+302325fa859d281131565305ed64d3faf3eb2f9a,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,391,15,391,17,Empty block statement.,,,HIGH,prod
+e69f2a62ab5ee15a7c3016afe50d36e7fd75d9a0,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,542,5,542,22,React Hook useCallback has an unnecessary dependency: 'reloadToken'. Either exclude it or remove the dependency array.,,,HIGH,prod
+261e29825392a3bbeea24b5225bf2f7e8b816981,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,659,6,659,43,React Hook useEffect has a missing dependency: 'updateTaskRows'. Either include it or remove the dependency array.,,,HIGH,prod
+3e68a83b5cae9dfdac4f9e958ee1c04c649e2d07,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,701,19,701,21,Empty block statement.,,,HIGH,prod
+3a4bd3614677d1f0668f25811caa3c1b1d0e851a,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,736,19,736,21,Empty block statement.,,,HIGH,prod
+9d8637be660472e26f79fd1728218764374ec1a6,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,744,19,744,21,Empty block statement.,,,HIGH,prod
+3147ecdde65eca9931a017dbd5097b5c7ddb4803,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,753,19,753,21,Empty block statement.,,,HIGH,prod
+25490af70c16d464387e7b50d6f51cb626c7689b,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,762,19,762,21,Empty block statement.,,,HIGH,prod
+19f478132151f14303b0c968af101fa902af51bd,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,771,19,771,21,Empty block statement.,,,HIGH,prod
+d41445707d003c90e9d86e643da191e57e1b32ba,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,780,19,780,21,Empty block statement.,,,HIGH,prod
+ee245f3c26644051a17a006103daa6f607540012,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,792,19,792,21,Empty block statement.,,,HIGH,prod
+a46501cfb0763121f9b47956eff8137c986aff69,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,818,23,818,25,Empty block statement.,,,HIGH,prod
+f1f46f831d0ccb658c87fdd3f29d150db5535822,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,826,23,826,25,Empty block statement.,,,HIGH,prod
+adff5cd5d871f6bbfec2151dc196d9aea44edc56,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,834,23,834,25,Empty block statement.,,,HIGH,prod
+dcbe22e49a0f6ccd1f2a5b9a98798d251ed7b422,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,925,35,925,37,Empty block statement.,,,HIGH,prod
+66473459145af79c7a68f02993e440a888362997,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,972,27,972,29,Empty block statement.,,,HIGH,prod
+50087a9ecdeb5692984e40638bfa060a5cb25b37,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,991,20,991,21,'e' is defined but never used.,,,HIGH,prod
+0d9b854b9494f5d18b74f8b0f83f712e989897e3,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,998,21,998,23,Empty block statement.,,,HIGH,prod
+0ba365b735be3fc1455fc0e96ec73f5484887336,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,1029,6,1029,10,"React Hook useEffect has missing dependencies: 'boardId', 'loadProjectDetails', 'taskPaginationModel.page', and 'taskPaginationModel.pageSize'. Either include them or remove the dependency array.",,,HIGH,prod
+b5ae15c816a69179674e1d5ba9b874517388cb7c,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,1081,19,1081,21,Empty block statement.,,,HIGH,prod
+4149a707f38d6cf094cd435dd65177e9bacf6e64,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,1086,15,1086,17,Empty block statement.,,,HIGH,prod
+c8a96f501f73db0537429b233a5bd771a1ac4b77,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,1092,15,1092,17,Empty block statement.,,,HIGH,prod
+12f6b9a6040847ac3e8b2bddaff4bad2fa32bdac,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,1095,6,1095,10,React Hook useEffect has missing dependencies: 'loadProjectDetails' and 'loadTasksPage'. Either include them or remove the dependency array.,,,HIGH,prod
+497e3d21ea24fb98fcf1cc30929fe996fa2620ed,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,1097,9,1097,14,'tasks' is assigned a value but never used.,,,HIGH,prod
+ed12adfe616b9ae9548ead12797ea7ef36d15cd8,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,1111,9,1111,21,'burndownData' is assigned a value but never used.,,,HIGH,prod
+d7ae8f7705673266ac9678f7765e4d9db6ddc232,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,1523,27,1523,29,Empty block statement.,,,HIGH,prod
+29666f8a60c47a46255120f29a357f07c052e31a,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,1543,27,1543,29,Empty block statement.,,,HIGH,prod
+27624f832d65e18c07bf38c53015b671de71bc2d,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,1546,27,1546,29,Empty block statement.,,,HIGH,prod
+dfab6b386b4843c8806e153f6718c046c2929600,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,1549,27,1549,29,Empty block statement.,,,HIGH,prod
+4e0245b3a3412128fcbef14aeadc20319f5b1376,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,1614,23,1614,25,Empty block statement.,,,HIGH,prod
+a080675f6ea34eab0d2f7e501e0977d33593051c,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,2005,33,2005,35,Empty block statement.,,,HIGH,prod
+f0565901afe5c264f531fbabded27edf14666755,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,2538,27,2538,29,Empty block statement.,,,HIGH,prod
+9ebedc7572864cc9de517ceafcd52557bc930253,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/ProjectDetail.tsx,2563,29,2563,31,Empty block statement.,,,HIGH,prod
+bb4e9674aea858e16e215fa8306fbda752877b09,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Projects.tsx,94,13,94,19,'signal' is assigned a value but never used.,,,HIGH,prod
+add57ba7f4c5bcf79e15026366b3bca3d6123465,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Projects.tsx,100,30,100,33,Unexpected any. Specify a different type.,,,HIGH,prod
+272644a5439a1e5c6d3ea61107eae8a6e424a765,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Projects.tsx,118,42,118,45,Unexpected any. Specify a different type.,,,HIGH,prod
+5450c3825af6e390a19911e87b954986115b4c47,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Projects.tsx,125,25,125,28,Unexpected any. Specify a different type.,,,HIGH,prod
+4339677b4881fe2f861e2afc298af6e2cc456830,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Projects.tsx,133,27,133,30,Unexpected any. Specify a different type.,,,HIGH,prod
+389723bbb9c394faaca389766d500bc4ebb786f4,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Projects.tsx,137,51,137,54,Unexpected any. Specify a different type.,,,HIGH,prod
+f19ea4bd6603d8bd91eb09de8dc0ee83a7d14b3c,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Projects.tsx,174,46,174,49,Unexpected any. Specify a different type.,,,HIGH,prod
+f37443d4f4d54c01eff4b84c215d04583f482982,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Projects.tsx,181,29,181,32,Unexpected any. Specify a different type.,,,HIGH,prod
+5118160816716745c3de1f96d2a9c6d8b42623be,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Projects.tsx,190,33,190,36,Unexpected any. Specify a different type.,,,HIGH,prod
+7c4a67cced66d2aaa55a66f0264ca9f576bccd39,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Projects.tsx,194,57,194,60,Unexpected any. Specify a different type.,,,HIGH,prod
+e6c2485d03c21e6ce14f366af03588527fbc28e0,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Projects.tsx,245,14,245,17,Unexpected any. Specify a different type.,,,HIGH,prod
+e2c1cd1553050e383273393cac29409806aca00b,MAJOR,maintainability,react/no-unescaped-entities,eslint,TypeScript,frontend/src/pages/Projects.tsx,345,52,,,"`""` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.",,,HIGH,prod
+337d65d451831a68edb0d6398ac092dfeacee3ff,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Projects.tsx,394,64,394,67,Unexpected any. Specify a different type.,,,HIGH,prod
+3af7d82edbedd9ac92ec469743e3db1372d30707,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Quality.tsx,2,15,2,19,'Grid' is defined but never used.,,,HIGH,prod
+790d4c3f86ee0f7191e46bb677fec529d1084b2d,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Quality.tsx,2,40,2,44,'Card' is defined but never used.,,,HIGH,prod
+13754fc169556c6cd979e48dfb7a908b278c162d,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Quality.tsx,2,46,2,57,'CardContent' is defined but never used.,,,HIGH,prod
+b3f36960f2e057a68b0d11c8ee99741a3204cf28,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Quality.tsx,2,171,2,180,'Container' is defined but never used.,,,HIGH,prod
+6f1a2c9e40545eb9458f661466f7616a5413c63d,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Quality.tsx,14,3,14,20,'getProjectSprints' is defined but never used.,,,HIGH,prod
+5e250747d8430f3d53965e7e14245204c7a866d8,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Quality.tsx,15,8,15,14,'Sprint' is defined but never used.,,,HIGH,prod
+99b0f23a9cb2a3a3ff465a44e7ca073b93e6be5d,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Quality.tsx,71,17,71,19,Empty block statement.,,,HIGH,prod
+951f87e4bcef15f37d46cb3e937220cb7220fed1,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Quality.tsx,80,19,80,21,Empty block statement.,,,HIGH,prod
+c71043d2fd42e337d6c36cd82f7b825e671a4829,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Quality.tsx,104,15,104,17,Empty block statement.,,,HIGH,prod
+82d092e9b08963bf054140b6eed685c587c486cb,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Settings.tsx,119,15,119,17,Empty block statement.,,,HIGH,prod
+7643269c7815a8f47e84e79286eaa060a6028ad7,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Settings.tsx,128,15,128,17,Empty block statement.,,,HIGH,prod
+f316c25606e059fa64e88bf252fb14125fe9aaf1,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Settings.tsx,133,15,133,17,Empty block statement.,,,HIGH,prod
+229c70790c5cfd6ae99a99656a65cefd7542788b,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Settings.tsx,138,15,138,17,Empty block statement.,,,HIGH,prod
+a15e8cd07181492272551332e5ea091d55d9433d,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Settings.tsx,143,15,143,17,Empty block statement.,,,HIGH,prod
+d4eb34a2b16e7c2d59bcf4b8a03890e3e4dc92a8,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Settings.tsx,170,31,170,34,Unexpected any. Specify a different type.,,,HIGH,prod
+246e5adafd3aa60ddc2d60ce936fca9a530839db,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Settings.tsx,178,22,178,25,Unexpected any. Specify a different type.,,,HIGH,prod
+b59b16e848305a3fa3bed4d310c124b4f8fa7997,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Settings.tsx,183,31,183,34,Unexpected any. Specify a different type.,,,HIGH,prod
+9d3a25ab3088f5f422ae3eec5ff2b7bf7bdeb0c0,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Settings.tsx,198,31,198,34,Unexpected any. Specify a different type.,,,HIGH,prod
+e42bb17765050261299dde4a9c5aef0d218e9f58,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Settings.tsx,215,31,215,34,Unexpected any. Specify a different type.,,,HIGH,prod
+9b4a8a35f87fdfd898e3129b5e9b92a625a50d23,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Settings.tsx,231,31,231,34,Unexpected any. Specify a different type.,,,HIGH,prod
+c3afa252fc241a45009795f80ce51ade6ee06d31,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Settings.tsx,249,14,249,19,'error' is defined but never used.,,,HIGH,prod
+9023d69acbea2d95bd63526b2fa011c14a878fb1,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Settings.tsx,260,14,260,19,'error' is defined but never used.,,,HIGH,prod
+18b52063608a5ef620c304baf5ee2de06722bbe2,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Settings.tsx,547,26,547,31,'error' is defined but never used.,,,HIGH,prod
+886f036c81effa0e86eae79a0acaa1e7fbeb2cd1,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/SprintCapacity.tsx,13,3,13,10,'Divider' is defined but never used.,,,HIGH,prod
+f8e3bd81294137f258b7cc865ebba9884270a22d,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/SprintCapacity.tsx,45,10,45,17,'loading' is assigned a value but never used.,,,HIGH,prod
+46510d50ef08b208f76ceced5958aad75a3713b4,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Testing.tsx,2,40,2,44,'Card' is defined but never used.,,,HIGH,prod
+7ba2a566a7210a164dddc84a1b76ecef9c338971,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Testing.tsx,2,46,2,57,'CardContent' is defined but never used.,,,HIGH,prod
+fd0cfbd52b81dbf2d98ff0e19e0899a6d2d48559,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Testing.tsx,4,78,4,92,'TrendingUpIcon' is defined but never used.,,,HIGH,prod
+bce14662251a51ec745181151e8bfb1ec6fb29b9,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Testing.tsx,64,10,64,19,'failedFor' is assigned a value but never used.,,,HIGH,prod
+b4ed5f10dd8f4d4fb1b0fa89c9b105572a80e913,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Testing.tsx,84,105,84,107,Empty block statement.,,,HIGH,prod
+086300891006e293f4a70e9c8f0cfd2987bd6ed4,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Testing.tsx,86,113,86,115,Empty block statement.,,,HIGH,prod
+8e4d6954e000237559a6925efcbe7eda8626f564,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Testing.tsx,115,19,115,20,'_' is defined but never used.,,,HIGH,prod
+8457e5b4e630cc6f53e1f25f88460a70b6adb658,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Testing.tsx,127,13,127,15,Empty block statement.,,,HIGH,prod
+79d40567347999f259ba90409e1a98b9fa3da4d3,MAJOR,maintainability,react-hooks/set-state-in-effect,eslint,TypeScript,frontend/src/pages/Testing.tsx,179,34,179,50,"Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/Users/kkitanin/Documents/MyApps/po_copilot/po_helper/frontend/src/pages/Testing.tsx:179:34
+  177 |
+  178 |   useEffect(() => {
+> 179 |     if (!baseline || !compare) { setCoverageDelta({}); return; }
+      |                                  ^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  180 |     const base = coverageList.find((c)=> c.commit_sha === baseline);
+  181 |     const comp = coverageList.find((c)=> c.commit_sha === compare);
+  182 |     if (!base || !comp) { setCoverageDelta({}); return; }",,,HIGH,prod
+021fba8e4af81c784d45f0e2fc688d9aca7de358,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Testing.tsx,299,44,299,47,Unexpected any. Specify a different type.,,,HIGH,prod
+ef76556602231dfb64b4cdde5b1e82a366b3917e,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Testing.tsx,307,48,307,51,Unexpected any. Specify a different type.,,,HIGH,prod
+5881771998a4aed90ae615115d73820494e4f30e,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/Testing.tsx,318,48,318,51,Unexpected any. Specify a different type.,,,HIGH,prod
+c96fcb6fe5a34636fcbacc344adf42df10b19b54,MAJOR,maintainability,no-empty,eslint,TypeScript,frontend/src/pages/Testing.tsx,379,137,379,139,Empty block statement.,,,HIGH,prod
+d2bd9ff3b0b62cce0c689193ae01f0284b5a8d6d,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Traceability.tsx,89,11,89,21,'FlowColumn' is defined but never used.,,,HIGH,prod
+a7ca444a65bf0a03372341f1930bdada6feabad2,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/Traceability.tsx,372,9,372,25,'incomingEdgesMap' is assigned a value but never used.,,,HIGH,prod
+2dfea77c707e652fc816723cb7d8bde84e310fa2,MINOR,style,react-hooks/exhaustive-deps,eslint,TypeScript,frontend/src/pages/Traceability.tsx,497,6,497,17,React Hook useEffect has missing dependencies: 'flowRootId' and 'loadFlowByArtifactId'. Either include them or remove the dependency array.,,,HIGH,prod
+f33a960b60e4a87d8c4c0fb7358acc6d5c9af8be,MAJOR,maintainability,react/no-unescaped-entities,eslint,TypeScript,frontend/src/pages/Traceability.tsx,728,46,,,"`""` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.",,,HIGH,prod
+15ce1b379d9ea492acfe56ee355507e6d3c40d41,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/TraceabilityFlowBuilder.tsx,9,3,9,7,'Edge' is defined but never used.,,,HIGH,prod
+92a0921b5d10374430d6613a95f72b4d3ede8215,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/TraceabilityFlowBuilder.tsx,23,24,23,40,'ValidationResult' is defined but never used.,,,HIGH,prod
+106736d859ac566104271ed8a3622c7c03b96ac3,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/TraceabilityFlowBuilder.tsx,78,62,78,65,Unexpected any. Specify a different type.,,,HIGH,prod
+06ccca4e45e3b64e462a5c7afd44f6be2b4aa5fa,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/pages/TraceabilityVisualization.tsx,19,3,19,15,'Autocomplete' is defined but never used.,,,HIGH,prod
+29c25ea9b61f1c82aa15be2406d69655de29afc9,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/__tests__/Dashboard.test.tsx,147,21,147,24,Unexpected any. Specify a different type.,,,HIGH,test
+ec0cd67bc191b3a377c94438b799bb8d24d8dbc7,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/__tests__/Dashboard.test.tsx,149,22,149,25,Unexpected any. Specify a different type.,,,HIGH,test
+7385179c6ece51fcf3f01ead465e98d188145d9e,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/__tests__/Dashboard.test.tsx,150,22,150,25,Unexpected any. Specify a different type.,,,HIGH,test
+d18c8e97b1133fb7093477933c01c43750d2ad9b,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/__tests__/Dashboard.test.tsx,167,27,167,30,Unexpected any. Specify a different type.,,,HIGH,test
+e6ff92edc38400356d38256785f5fec241666b93,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/__tests__/Dashboard.test.tsx,185,20,185,23,Unexpected any. Specify a different type.,,,HIGH,test
+526713596e7ded6474b68944318bdf2f06f539dd,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/pages/__tests__/Dashboard.test.tsx,189,20,189,23,Unexpected any. Specify a different type.,,,HIGH,test
+f1cb731c42e494d67cc5971713a1780fa10a0d89,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/services/analytics.ts,8,30,8,33,Unexpected any. Specify a different type.,,,HIGH,prod
+93883df18742eced8e96d918adbfce27ea3fdfd1,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/services/analytics.ts,88,55,88,58,Unexpected any. Specify a different type.,,,HIGH,prod
+58488215ad38a2db8be6fea2fbaddf34e4896ba9,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/services/analytics.ts,119,90,119,93,Unexpected any. Specify a different type.,,,HIGH,prod
+037a41fd0e6537a41d8ef93127efcb115e896acc,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/services/analytics.ts,318,31,318,36,'event' is defined but never used.,,,HIGH,prod
+83958ce21f2c284fffc7cf8c591e1cce34bf0d90,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/test/setup.ts,1,10,1,16,'expect' is defined but never used.,,,HIGH,test
+c8b7832c2fc5f3959936325266d333a3c92e915c,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/test/setup.ts,34,6,34,9,Unexpected any. Specify a different type.,,,HIGH,test
+e2c15eed47e57b738f01f5d86cc9ca83d9a9c35f,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/test/setup.ts,42,6,42,9,Unexpected any. Specify a different type.,,,HIGH,test
+c18b2d5f525fb2dd627e485fe8ef16cc93397cc4,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/utils/smartDefaults.ts,84,48,84,51,Unexpected any. Specify a different type.,,,HIGH,prod
+3ce20a6f5c0c17f86b490e8aba6e5ebaeb4e7257,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/utils/smartDefaults.ts,129,44,129,47,Unexpected any. Specify a different type.,,,HIGH,prod
+6e629da3cdaae16eb22a65e7f5baea387f01338f,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/utils/smartDefaults.ts,129,37,129,42,'tasks' is defined but never used.,,,HIGH,prod
+48033ec00d6eb3e833f3a9b8b967461da3df043a,MAJOR,maintainability,@typescript-eslint/no-unused-vars,eslint,TypeScript,frontend/src/utils/smartDefaults.ts,143,9,143,19,'allMetrics' is assigned a value but never used.,,,HIGH,prod
+8b6ae5156ba1bf685d24d05e828daba59b30bdff,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/utils/smartDefaults.ts,198,13,198,16,Unexpected any. Specify a different type.,,,HIGH,prod
+d7955bbf31f85d12f5f2375a271d2fad76371c33,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/utils/smartDefaults.ts,199,11,199,14,Unexpected any. Specify a different type.,,,HIGH,prod
+669788b19b1038444b3abf8bed9878ab8ba0ca2e,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/utils/smartDefaults.ts,243,82,243,85,Unexpected any. Specify a different type.,,,HIGH,prod
+2d4634a225f2d86ef69fe7dbc2049a26db49a502,MAJOR,maintainability,@typescript-eslint/no-explicit-any,eslint,TypeScript,frontend/src/utils/smartDefaults.ts,255,67,255,70,Unexpected any. Specify a different type.,,,HIGH,prod
+63255119c571691f1d4a48a20c758658d45c2a91,MAJOR,maintainability,no-prototype-builtins,eslint,TypeScript,frontend/src/utils/storage.ts,36,26,36,40,Do not access Object.prototype method 'hasOwnProperty' from target object.,,,HIGH,prod

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -7,7 +7,6 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel,
   Table,
   TableBody,
   TableCell,
@@ -23,18 +22,17 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  LinearProgress,
   Tooltip,
   Grid,
   Card,
   CardContent,
   Snackbar,
+  type ChipProps,
 } from '@mui/material';
 import {
   Refresh,
   Save,
   Delete,
-  AutoFixHigh,
   Science,
   Download,
   Upload,
@@ -42,6 +40,7 @@ import {
   Close,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import EmptyState from '../components/EmptyState';
 import { QuickSetupPanel } from '../components/QuickSetupPanel';
 import { AdvancedFieldMapping } from '../components/AdvancedFieldMapping';
@@ -57,6 +56,7 @@ import {
   importConfiguration,
   FieldMapping,
   JiraField,
+  TestMappingResult,
 } from '../services/jiraFieldsApi';
 
 const FIELD_TYPES = [
@@ -78,20 +78,23 @@ const JiraFieldsConfig: React.FC = () => {
   const [calibrating, setCalibrating] = useState(false);
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [testIssueKey, setTestIssueKey] = useState('');
-  const [testResult, setTestResult] = useState<any>(null);
+  const [testResult, setTestResult] = useState<TestMappingResult | null>(null);
   const [editMapping, setEditMapping] = useState<FieldMapping | null>(null);
-  const [showManualSetup, setShowManualSetup] = useState(false);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({
     open: false,
     message: '',
     severity: 'info',
   });
+  const handleEditFieldChange = (event: SelectChangeEvent<string>) => {
+    setEditMapping((prev) => {
+      if (!prev) {
+        return prev;
+      }
+      return { ...prev, field_id: event.target.value };
+    });
+  };
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [discoveryResult, mappingsResult] = await Promise.all([
@@ -106,7 +109,11 @@ const JiraFieldsConfig: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleDiscoverFields = async (forceRefresh: boolean = false) => {
     setLoading(true);
@@ -227,7 +234,7 @@ const JiraFieldsConfig: React.FC = () => {
     setSnackbar({ open: true, message, severity });
   };
 
-  const getConfidenceColor = (confidence?: number) => {
+  const getConfidenceColor = (confidence?: number): ChipProps['color'] => {
     if (!confidence) return 'default';
     if (confidence > 0.8) return 'success';
     if (confidence > 0.5) return 'warning';
@@ -254,7 +261,6 @@ const JiraFieldsConfig: React.FC = () => {
   };
 
   const handleManualSetupClick = () => {
-    setShowManualSetup(true);
     // Discover fields if not already done
     if (Object.keys(fields).length === 0) {
       handleDiscoverFields(false);
@@ -461,19 +467,14 @@ const JiraFieldsConfig: React.FC = () => {
                           <FormControl size="small" fullWidth>
                             <Select
                               value={editMapping?.field_id || ''}
-                              onChange={(e) =>
-                                setEditMapping({
-                                  ...editMapping!,
-                                  field_id: e.target.value as string,
-                                })
-                              }
+                              onChange={handleEditFieldChange}
                             >
                               <MenuItem value="">
                                 <em>None</em>
                               </MenuItem>
                               {Object.entries(fields)
                                 // Show custom first, then system fields
-                                .sort((a:any, b:any) => {
+                                .sort((a, b) => {
                                   const ac = a[1]?.custom ? 0 : 1;
                                   const bc = b[1]?.custom ? 0 : 1;
                                   if (ac !== bc) return ac - bc;
@@ -520,7 +521,7 @@ const JiraFieldsConfig: React.FC = () => {
                             <Chip
                               size="small"
                               label={`${(mapping.confidence_score * 100).toFixed(0)}%`}
-                              color={getConfidenceColor(mapping.confidence_score) as any}
+                              color={getConfidenceColor(mapping.confidence_score)}
                             />
                           </Tooltip>
                         )}
@@ -538,9 +539,11 @@ const JiraFieldsConfig: React.FC = () => {
                             <IconButton
                               size="small"
                               color="primary"
-                              onClick={() =>
-                                handleSaveMapping(fieldType.value, editMapping!.field_id)
-                              }
+                              onClick={() => {
+                                if (editMapping) {
+                                  handleSaveMapping(fieldType.value, editMapping.field_id);
+                                }
+                              }}
                             >
                               <Save />
                             </IconButton>

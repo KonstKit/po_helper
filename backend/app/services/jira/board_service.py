@@ -69,18 +69,18 @@ class JiraBoardService:
             response.raise_for_status()
 
             # Check content type
-            ctype = (response.headers.get('content-type') or '').lower()
-            if 'application/json' not in ctype:
+            ctype = (response.headers.get("content-type") or "").lower()
+            if "application/json" not in ctype:
                 try:
-                    metrics.inc('jira_non_json_total', labels={'ep': 'boards'})
+                    metrics.inc("jira_non_json_total", labels={"ep": "boards"})
                 except Exception:
                     pass
-                body = (response.text or '')[:200]
+                body = (response.text or "")[:200]
                 logger.error("Non-JSON response from Jira boards: %s", ctype)
                 raise ValueError(f"Non-JSON response ctype={ctype} body={body}")
 
             data = response.json()
-            items = data.get('values', [])
+            items = data.get("values", [])
 
             self.circuit_breaker.record_success()
             return items
@@ -118,7 +118,7 @@ class JiraBoardService:
                 params = {
                     "startAt": start_at,
                     "maxResults": current_page_size,
-                    "state": "active,closed,future"
+                    "state": "active,closed,future",
                 }
 
                 # Use shorter timeout for sprint queries
@@ -126,21 +126,21 @@ class JiraBoardService:
                 response.raise_for_status()
 
                 # Check content type
-                ctype = (response.headers.get('content-type') or '').lower()
-                if 'application/json' not in ctype:
+                ctype = (response.headers.get("content-type") or "").lower()
+                if "application/json" not in ctype:
                     try:
-                        metrics.inc('jira_non_json_total', labels={'ep': 'sprints'})
+                        metrics.inc("jira_non_json_total", labels={"ep": "sprints"})
                     except Exception:
                         pass
-                    body = (response.text or '')[:200]
+                    body = (response.text or "")[:200]
                     raise ValueError(f"Non-JSON response ctype={ctype} body={body}")
 
                 data = response.json()
-                items = data.get('values', [])
+                items = data.get("values", [])
                 all_items.extend(items)
 
                 # Log progress for large datasets
-                total = data.get('total', 0)
+                total = data.get("total", 0)
                 if total > 10:
                     logger.info(
                         f"Fetching sprints for board {board_id}: "
@@ -185,17 +185,17 @@ class JiraBoardService:
                 response.raise_for_status()
 
                 # Check content type
-                ctype = (response.headers.get('content-type') or '').lower()
-                if 'application/json' not in ctype:
+                ctype = (response.headers.get("content-type") or "").lower()
+                if "application/json" not in ctype:
                     try:
-                        metrics.inc('jira_non_json_total', labels={'ep': 'sprint_issues'})
+                        metrics.inc("jira_non_json_total", labels={"ep": "sprint_issues"})
                     except Exception:
                         pass
-                    body = (response.text or '')[:200]
+                    body = (response.text or "")[:200]
                     raise ValueError(f"Non-JSON response ctype={ctype} body={body}")
 
                 data = response.json()
-                issues = data.get('issues', [])
+                issues = data.get("issues", [])
                 all_items.extend(issues)
 
                 if len(issues) == 0:
@@ -225,7 +225,7 @@ class JiraBoardService:
         if self.circuit_breaker.is_open():
             return []
 
-        versions = self.version_resolver.get_api_versions('default')
+        versions = self.version_resolver.get_api_versions("default")
         last_err: Optional[Exception] = None
 
         for ver in versions:
@@ -238,29 +238,29 @@ class JiraBoardService:
                     params = {"startAt": start_at, "maxResults": 100}
 
                     # Use dedicated timeout for worklog requests
-                    worklog_timeout = getattr(settings, 'JIRA_WORKLOG_TIMEOUT', None)
+                    worklog_timeout = getattr(settings, "JIRA_WORKLOG_TIMEOUT", None)
                     if not worklog_timeout:
-                        worklog_timeout = getattr(settings, 'JIRA_HTTP_TIMEOUT', 60) or 60
+                        worklog_timeout = getattr(settings, "JIRA_HTTP_TIMEOUT", 60) or 60
 
                     response = self.http_client.get(
-                        endpoint,
-                        params=params,
-                        timeout=worklog_timeout
+                        endpoint, params=params, timeout=worklog_timeout
                     )
                     response.raise_for_status()
 
                     # Check content type
-                    ctype = (response.headers.get('content-type') or '').lower()
-                    if 'application/json' not in ctype:
+                    ctype = (response.headers.get("content-type") or "").lower()
+                    if "application/json" not in ctype:
                         try:
-                            metrics.inc('jira_non_json_total', labels={'ep': 'worklog', 'ver': str(ver)})
+                            metrics.inc(
+                                "jira_non_json_total", labels={"ep": "worklog", "ver": str(ver)}
+                            )
                         except Exception:
                             pass
-                        body = (response.text or '')[:200]
+                        body = (response.text or "")[:200]
                         raise ValueError(f"Non-JSON response ctype={ctype} body={body}")
 
                     data = response.json()
-                    logs = data.get('worklogs', []) if isinstance(data, dict) else []
+                    logs = data.get("worklogs", []) if isinstance(data, dict) else []
                     items.extend(logs)
 
                     if not logs:
@@ -276,10 +276,10 @@ class JiraBoardService:
                 # Metrics for worklog failures/timeouts
                 try:
                     if isinstance(e, (Exception,)):  # Generic timeout check
-                        if 'timeout' in str(type(e).__name__).lower():
-                            metrics.inc('jira_worklog_timeout_total', labels={'ver': str(ver)})
+                        if "timeout" in str(type(e).__name__).lower():
+                            metrics.inc("jira_worklog_timeout_total", labels={"ver": str(ver)})
                         else:
-                            metrics.inc('jira_worklog_fail_total', labels={'ver': str(ver)})
+                            metrics.inc("jira_worklog_fail_total", labels={"ver": str(ver)})
                 except Exception:
                     pass
 
@@ -302,7 +302,7 @@ class JiraBoardService:
         if self.circuit_breaker.is_open():
             return []
 
-        versions = self.version_resolver.get_api_versions('default')
+        versions = self.version_resolver.get_api_versions("default")
 
         async with httpx.AsyncClient() as client:
             for ver in versions:
@@ -313,7 +313,7 @@ class JiraBoardService:
                 try:
                     while True:
                         params = {"startAt": start_at, "maxResults": 100}
-                        worklog_timeout = getattr(settings, 'JIRA_WORKLOG_TIMEOUT', None) or 60
+                        worklog_timeout = getattr(settings, "JIRA_WORKLOG_TIMEOUT", None) or 60
 
                         # Build URL and make request
                         url = f"{self.http_client.base_url}{endpoint}"
@@ -325,16 +325,12 @@ class JiraBoardService:
                             auth = (self.http_client.email, self.http_client.api_token)
 
                         resp = await client.get(
-                            url,
-                            params=params,
-                            headers=headers,
-                            auth=auth,
-                            timeout=worklog_timeout
+                            url, params=params, headers=headers, auth=auth, timeout=worklog_timeout
                         )
                         resp.raise_for_status()
 
                         data = resp.json()
-                        logs = data.get('worklogs', []) if isinstance(data, dict) else []
+                        logs = data.get("worklogs", []) if isinstance(data, dict) else []
                         items.extend(logs)
 
                         if not logs:
@@ -345,7 +341,9 @@ class JiraBoardService:
                     return items
 
                 except Exception as e:
-                    logger.warning("Async get_issue_worklogs (v%s) failed for %s: %s", ver, issue_key, e)
+                    logger.warning(
+                        "Async get_issue_worklogs (v%s) failed for %s: %s", ver, issue_key, e
+                    )
                     self.circuit_breaker.record_failure()
                     continue
 
@@ -363,7 +361,7 @@ class JiraBoardService:
             List of active sprint dicts
         """
         all_sprints = self.list_sprints(board_id)
-        return [s for s in all_sprints if s.get('state') == 'active']
+        return [s for s in all_sprints if s.get("state") == "active"]
 
     def get_worklogs(self, issue_key: str) -> List[Dict[str, Any]]:
         """

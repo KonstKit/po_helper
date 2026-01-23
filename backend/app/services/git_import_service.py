@@ -2,13 +2,15 @@
 Fetches commits and pull requests from configured repositories and upserts
 traceability artifacts linking them to Jira issues.
 """
+
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
 import requests
@@ -18,7 +20,7 @@ from sqlalchemy import select
 from app.core.crypto import decrypt_str
 from app.models import IntegrationSetting, Repository
 from app.services.repository_resolver import repository_resolver
-from app.api.api_v1.endpoints.git.webhooks import process_commits, process_pull_request
+from app.services.git.webhook_processor import process_commits, process_pull_request
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,10 @@ class GitImportService:
             self._session = requests.Session()
         return self._session
 
+    async def _session_get(self, url: str, **kwargs) -> requests.Response:
+        """Run session.get in a worker thread to avoid blocking the event loop."""
+        return await asyncio.to_thread(self._get_session().get, url, **kwargs)
+
     def close(self) -> None:
         """Close the session and cleanup resources."""
         if self._session:
@@ -84,6 +90,11 @@ class GitImportService:
             logger.info("No repositories linked to project %s", project_id)
             return {"project_id": project_id, "repositories": []}
 
+        # OPTIMIZED: Pre-fetch provider configs to avoid N+1 queries
+        unique_providers = {(repo.provider or "").lower() for repo in repositories}
+        valid_providers = unique_providers & {"github", "gitlab"}
+        provider_configs = await self._get_all_provider_configs(db, valid_providers)
+
         for repo in repositories:
             provider = (repo.provider or "").lower()
             if provider not in {"github", "gitlab"}:
@@ -94,7 +105,7 @@ class GitImportService:
                 )
                 continue
 
-            config = await self._get_provider_config(db, provider)
+            config = provider_configs.get(provider)
             if not config or not config.token:
                 logger.warning(
                     "Provider %s is not fully configured; skipping repository",
@@ -161,6 +172,55 @@ class GitImportService:
 
         return None
 
+    async def _get_all_provider_configs(
+        self,
+        db: AsyncSession,
+        providers: set,
+    ) -> Dict[str, ProviderConfig]:
+        """Batch fetch all provider configs in a single query (N+1 optimization)."""
+        if not providers:
+            return {}
+
+        res = await db.execute(
+            select(IntegrationSetting).where(IntegrationSetting.kind.in_(list(providers)))
+        )
+        rows = res.scalars().all()
+
+        configs: Dict[str, ProviderConfig] = {}
+        for row in rows:
+            if not row.api_token:
+                continue
+
+            provider = row.kind
+            decrypted = decrypt_str(row.api_token)
+            token: Optional[str] = None
+            extra: Dict[str, Any] = {}
+
+            if decrypted:
+                try:
+                    bundle = json.loads(decrypted)
+                    token = bundle.get("api_token") or bundle.get("token")
+                    extra.update(bundle)
+                except (json.JSONDecodeError, TypeError):
+                    token = decrypted
+
+            base_url = (row.base_url or "").strip()
+
+            if provider == "github":
+                api_base = base_url or "https://api.github.com"
+                api_base = api_base.rstrip("/")
+                configs[provider] = ProviderConfig(
+                    provider="github", api_base=api_base, token=token, extra=extra
+                )
+            elif provider == "gitlab":
+                api_base = base_url or "https://gitlab.com"
+                api_base = api_base.rstrip("/") + "/api/v4"
+                configs[provider] = ProviderConfig(
+                    provider="gitlab", api_base=api_base, token=token, extra=extra
+                )
+
+        return configs
+
     async def _ensure_default_branch(
         self,
         db: AsyncSession,
@@ -171,12 +231,12 @@ class GitImportService:
             return repo.default_branch
 
         # Validate repo_slug format to prevent path traversal
-        if config.provider == 'github':
-            if not re.match(r'^[a-zA-Z0-9\-_\.]+/[a-zA-Z0-9\-_\.]+$', repo.repo_slug):
+        if config.provider == "github":
+            if not re.match(r"^[a-zA-Z0-9\-_\.]+/[a-zA-Z0-9\-_\.]+$", repo.repo_slug):
                 logger.error("Invalid GitHub repo_slug format: %s", repo.repo_slug)
                 return None
         else:
-            if not re.match(r'^[a-zA-Z0-9\-_.]+(?:/[a-zA-Z0-9\-_.]+)+$', repo.repo_slug):
+            if not re.match(r"^[a-zA-Z0-9\-_.]+(?:/[a-zA-Z0-9\-_.]+)+$", repo.repo_slug):
                 logger.error("Invalid GitLab repo_slug format: %s", repo.repo_slug)
                 return None
 
@@ -184,13 +244,13 @@ class GitImportService:
         try:
             if config.provider == "github":
                 url = f"{config.api_base}/repos/{repo.repo_slug}"
-                resp = self._get_session().get(url, headers=config.headers, timeout=REQUEST_TIMEOUT)
+                resp = await self._session_get(url, headers=config.headers, timeout=REQUEST_TIMEOUT)
                 if resp.status_code < 400:
                     branch = resp.json().get("default_branch")
             elif config.provider == "gitlab":
                 project_path = quote(repo.repo_slug, safe="")
                 url = f"{config.api_base}/projects/{project_path}"
-                resp = self._get_session().get(url, headers=config.headers, timeout=REQUEST_TIMEOUT)
+                resp = await self._session_get(url, headers=config.headers, timeout=REQUEST_TIMEOUT)
                 if resp.status_code < 400:
                     branch = resp.json().get("default_branch")
         except Exception as exc:
@@ -217,9 +277,13 @@ class GitImportService:
         commits: List[Dict[str, Any]] = []
         try:
             if config.provider == "github":
-                commits = self._fetch_github_commits(config, repo.repo_slug)
+                commits = await asyncio.to_thread(
+                    self._fetch_github_commits, config, repo.repo_slug
+                )
             elif config.provider == "gitlab":
-                commits = self._fetch_gitlab_commits(config, repo.repo_slug, branch)
+                commits = await asyncio.to_thread(
+                    self._fetch_gitlab_commits, config, repo.repo_slug, branch
+                )
         except Exception as exc:
             logger.error("Git import: failed to fetch commits for %s: %s", repo.repo_slug, exc)
             return {"error": str(exc)}
@@ -248,11 +312,17 @@ class GitImportService:
         prs: List[Dict[str, Any]] = []
         try:
             if config.provider == "github":
-                prs = self._fetch_github_pull_requests(config, repo.repo_slug)
+                prs = await asyncio.to_thread(
+                    self._fetch_github_pull_requests, config, repo.repo_slug
+                )
             elif config.provider == "gitlab":
-                prs = self._fetch_gitlab_merge_requests(config, repo.repo_slug)
+                prs = await asyncio.to_thread(
+                    self._fetch_gitlab_merge_requests, config, repo.repo_slug
+                )
         except Exception as exc:
-            logger.error("Git import: failed to fetch pull requests for %s: %s", repo.repo_slug, exc)
+            logger.error(
+                "Git import: failed to fetch pull requests for %s: %s", repo.repo_slug, exc
+            )
             return {"error": str(exc)}
 
         suggestions: List[Dict[str, Any]] = []
@@ -287,31 +357,81 @@ class GitImportService:
 
     def _fetch_github_commits(self, config: ProviderConfig, repo_slug: str) -> List[Dict[str, Any]]:
         # Validate repo_slug format
-        if not re.match(r'^[a-zA-Z0-9\-_\.]+/[a-zA-Z0-9\-_\.]+$', repo_slug):
+        if not re.match(r"^[a-zA-Z0-9\-_\.]+/[a-zA-Z0-9\-_\.]+$", repo_slug):
             raise ValueError(f"Invalid repo_slug format: {repo_slug}")
 
-        params = {"per_page": COMMITS_PER_SYNC}
+        params: Dict[str, str | int | float | bool | None] = {"per_page": COMMITS_PER_SYNC}
         url = f"{config.api_base}/repos/{repo_slug}/commits"
-        resp = self._get_session().get(url, headers=config.headers, params=params, timeout=REQUEST_TIMEOUT)
+        resp = self._get_session().get(
+            url, headers=config.headers, params=params, timeout=REQUEST_TIMEOUT
+        )
         if resp.status_code >= 400:
-            raise RuntimeError(f"GitHub commits request failed ({resp.status_code}): {resp.text[:200]}")
+            raise RuntimeError(
+                f"GitHub commits request failed ({resp.status_code}): {resp.text[:200]}"
+            )
 
         data = resp.json() or []
         commits: List[Dict[str, Any]] = []
         for item in data:
             commit = item.get("commit", {})
             author = commit.get("author") or {}
-            commits.append({
-                "id": item.get("sha") or item.get("id"),
-                "sha": item.get("sha"),
-                "message": commit.get("message"),
-                "author": {
-                    "email": author.get("email") or (item.get("author") or {}).get("email"),
-                    "name": author.get("name") or (item.get("author") or {}).get("login"),
-                },
-                "url": item.get("html_url"),
-            })
+            commits.append(
+                {
+                    "id": item.get("sha") or item.get("id"),
+                    "sha": item.get("sha"),
+                    "message": commit.get("message"),
+                    "author": {
+                        "email": author.get("email") or (item.get("author") or {}).get("email"),
+                        "name": author.get("name") or (item.get("author") or {}).get("login"),
+                    },
+                    "url": item.get("html_url"),
+                }
+            )
         return commits
+
+    def _fetch_github_pull_requests(
+        self, config: ProviderConfig, repo_slug: str
+    ) -> List[Dict[str, Any]]:
+        if not re.match(r"^[a-zA-Z0-9\-_\.]+/[a-zA-Z0-9\-_\.]+$", repo_slug):
+            raise ValueError(f"Invalid repo_slug format: {repo_slug}")
+
+        params: Dict[str, str | int | float | bool | None] = {
+            "per_page": PRS_PER_SYNC,
+            "state": "all",
+        }
+        url = f"{config.api_base}/repos/{repo_slug}/pulls"
+        resp = self._get_session().get(
+            url, headers=config.headers, params=params, timeout=REQUEST_TIMEOUT
+        )
+        if resp.status_code >= 400:
+            raise RuntimeError(
+                f"GitHub pull requests request failed ({resp.status_code}): {resp.text[:200]}"
+            )
+
+        data = resp.json() or []
+        prs: List[Dict[str, Any]] = []
+        for item in data:
+            user = item.get("user") or {}
+            head = item.get("head") or {}
+            prs.append(
+                {
+                    "number": item.get("number"),
+                    "title": item.get("title"),
+                    "body": item.get("body"),
+                    "state": item.get("state"),
+                    "user": {"login": user.get("login")},
+                    "head": {"sha": head.get("sha"), "ref": head.get("ref")},
+                    "created_at": item.get("created_at"),
+                    "merged_at": item.get("merged_at"),
+                    "closed_at": item.get("closed_at"),
+                    "additions": item.get("additions"),
+                    "deletions": item.get("deletions"),
+                    "changed_files": item.get("changed_files"),
+                    "html_url": item.get("html_url"),
+                }
+            )
+
+        return prs
 
     def _fetch_gitlab_commits(
         self,
@@ -323,7 +443,6 @@ class GitImportService:
         project_path = quote(repo_slug, safe="")
         page = 1
         commits: List[Dict[str, Any]] = []
-        total_pages = None
 
         logger.info(f"Starting GitLab commit fetch for {repo_slug}, branch={branch}")
 
@@ -333,9 +452,13 @@ class GitImportService:
                 params["ref_name"] = branch
 
             url = f"{config.api_base}/projects/{project_path}/repository/commits"
-            resp = self._get_session().get(url, headers=config.headers, params=params, timeout=REQUEST_TIMEOUT)
+            resp = self._get_session().get(
+                url, headers=config.headers, params=params, timeout=REQUEST_TIMEOUT
+            )
             if resp.status_code >= 400:
-                raise RuntimeError(f"GitLab commits request failed ({resp.status_code}): {resp.text[:200]}")
+                raise RuntimeError(
+                    f"GitLab commits request failed ({resp.status_code}): {resp.text[:200]}"
+                )
 
             data = resp.json() or []
             page_count = len(data)
@@ -352,26 +475,21 @@ class GitImportService:
                 break
 
             for item in data:
-                commits.append({
-                    "id": item.get("id"),
-                    "sha": item.get("id"),
-                    "message": item.get("message"),
-                    "author": {
-                        "email": item.get("author_email"),
-                        "name": item.get("author_name"),
-                    },
-                    "url": item.get("web_url") or item.get("url"),
-                })
+                commits.append(
+                    {
+                        "id": item.get("id"),
+                        "sha": item.get("id"),
+                        "message": item.get("message"),
+                        "author": {
+                            "email": item.get("author_email"),
+                            "name": item.get("author_name"),
+                        },
+                        "url": item.get("web_url") or item.get("url"),
+                    }
+                )
 
             # Check if there are more pages
             next_page_str = resp.headers.get("X-Next-Page")
-            total_pages_str = resp.headers.get("X-Total-Pages")
-
-            if total_pages_str:
-                try:
-                    total_pages = int(total_pages_str)
-                except (TypeError, ValueError):
-                    pass
 
             # Continue if we got a full page of results
             if page_count == COMMITS_PER_SYNC:
@@ -381,7 +499,9 @@ class GitImportService:
 
             # If we got less than per_page, we're done
             if page_count < COMMITS_PER_SYNC:
-                logger.info(f"Partial page received ({page_count} < {COMMITS_PER_SYNC}), this is the last page")
+                logger.info(
+                    f"Partial page received ({page_count} < {COMMITS_PER_SYNC}), this is the last page"
+                )
                 break
 
             # Fallback: check X-Next-Page header
@@ -397,7 +517,10 @@ class GitImportService:
 
         logger.info(f"GitLab commit fetch complete for {repo_slug}: {len(commits)} total commits")
         return commits
-    def _fetch_gitlab_merge_requests(self, config: ProviderConfig, repo_slug: str) -> List[Dict[str, Any]]:
+
+    def _fetch_gitlab_merge_requests(
+        self, config: ProviderConfig, repo_slug: str
+    ) -> List[Dict[str, Any]]:
         """Fetch all merge requests for a GitLab project (handles pagination)."""
         project_path = quote(repo_slug, safe="")
         page = 1
@@ -406,7 +529,7 @@ class GitImportService:
         logger.info(f"Starting GitLab merge request fetch for {repo_slug}")
 
         while True:
-            params = {
+            params: Dict[str, str | int | float | bool | None] = {
                 "per_page": PRS_PER_SYNC,
                 "state": "all",
                 "order_by": "updated_at",
@@ -414,9 +537,13 @@ class GitImportService:
                 "page": page,
             }
             url = f"{config.api_base}/projects/{project_path}/merge_requests"
-            resp = self._get_session().get(url, headers=config.headers, params=params, timeout=REQUEST_TIMEOUT)
+            resp = self._get_session().get(
+                url, headers=config.headers, params=params, timeout=REQUEST_TIMEOUT
+            )
             if resp.status_code >= 400:
-                raise RuntimeError(f"GitLab MR request failed ({resp.status_code}): {resp.text[:200]}")
+                raise RuntimeError(
+                    f"GitLab MR request failed ({resp.status_code}): {resp.text[:200]}"
+                )
 
             data = resp.json() or []
             page_count = len(data)
@@ -433,19 +560,21 @@ class GitImportService:
                 break
 
             for item in data:
-                prs.append({
-                    "number": item.get("iid"),
-                    "title": item.get("title"),
-                    "state": item.get("state"),
-                    "body": item.get("description"),
-                    "html_url": item.get("web_url"),
-                    "created_at": item.get("created_at"),
-                    "merged_at": item.get("merged_at"),
-                    "closed_at": item.get("closed_at"),
-                    "user": {"login": (item.get("author") or {}).get("username")},
-                    "head": {"ref": item.get("source_branch")},
-                    "changed_files": item.get("changes_count"),
-                })
+                prs.append(
+                    {
+                        "number": item.get("iid"),
+                        "title": item.get("title"),
+                        "state": item.get("state"),
+                        "body": item.get("description"),
+                        "html_url": item.get("web_url"),
+                        "created_at": item.get("created_at"),
+                        "merged_at": item.get("merged_at"),
+                        "closed_at": item.get("closed_at"),
+                        "user": {"login": (item.get("author") or {}).get("username")},
+                        "head": {"ref": item.get("source_branch")},
+                        "changed_files": item.get("changes_count"),
+                    }
+                )
 
             # Continue if we got a full page of results
             if page_count == PRS_PER_SYNC:
@@ -455,7 +584,9 @@ class GitImportService:
 
             # If we got less than per_page, we're done
             if page_count < PRS_PER_SYNC:
-                logger.info(f"Partial page received ({page_count} < {PRS_PER_SYNC}), this is the last page")
+                logger.info(
+                    f"Partial page received ({page_count} < {PRS_PER_SYNC}), this is the last page"
+                )
                 break
 
             # Fallback: check X-Next-Page header
@@ -472,4 +603,6 @@ class GitImportService:
 
         logger.info(f"GitLab MR fetch complete for {repo_slug}: {len(prs)} total merge requests")
         return prs
+
+
 git_import_service = GitImportService()

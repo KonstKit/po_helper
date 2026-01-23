@@ -1,0 +1,4696 @@
+{
+  "path": "",
+  "loc_total": 121841,
+  "loc_nonempty": 105243,
+  "folders": {
+    ".claude": {
+      "path": ".claude",
+      "loc_total": 38,
+      "loc_nonempty": 38,
+      "folders": {},
+      "files": {
+        "settings.local.json": {
+          "path": ".claude/settings.local.json",
+          "target": "prod",
+          "language": "JSON",
+          "loc_total": 38,
+          "loc_nonempty": 38,
+          "types": [],
+          "top_level_methods": []
+        }
+      }
+    },
+    ".playwright-mcp": {
+      "path": ".playwright-mcp",
+      "loc_total": 0,
+      "loc_nonempty": 0,
+      "folders": {},
+      "files": {
+        "execution_history_working.png": {
+          "path": ".playwright-mcp/execution_history_working.png",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 0,
+          "loc_nonempty": 0,
+          "types": [],
+          "top_level_methods": []
+        },
+        "flow-builder-execution-success.png": {
+          "path": ".playwright-mcp/flow-builder-execution-success.png",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 0,
+          "loc_nonempty": 0,
+          "types": [],
+          "top_level_methods": []
+        },
+        "flow-builder-initial.png": {
+          "path": ".playwright-mcp/flow-builder-initial.png",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 0,
+          "loc_nonempty": 0,
+          "types": [],
+          "top_level_methods": []
+        },
+        "flow-builder-with-nodes.png": {
+          "path": ".playwright-mcp/flow-builder-with-nodes.png",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 0,
+          "loc_nonempty": 0,
+          "types": [],
+          "top_level_methods": []
+        },
+        "login_success_dashboard.png": {
+          "path": ".playwright-mcp/login_success_dashboard.png",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 0,
+          "loc_nonempty": 0,
+          "types": [],
+          "top_level_methods": []
+        }
+      }
+    },
+    "backend": {
+      "path": "backend",
+      "loc_total": 46746,
+      "loc_nonempty": 39010,
+      "folders": {
+        "alembic": {
+          "path": "backend/alembic",
+          "loc_total": 2150,
+          "loc_nonempty": 1751,
+          "folders": {
+            "versions": {
+              "path": "backend/alembic/versions",
+              "loc_total": 2057,
+              "loc_nonempty": 1683,
+              "folders": {},
+              "files": {
+                "0001_iter1_extensions.py": {
+                  "path": "backend/alembic/versions/0001_iter1_extensions.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 75,
+                  "loc_nonempty": 59,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "005_add_jira_field_mappings.py": {
+                  "path": "backend/alembic/versions/005_add_jira_field_mappings.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 171,
+                  "loc_nonempty": 144,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "006_add_pr_indexes.py": {
+                  "path": "backend/alembic/versions/006_add_pr_indexes.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 23,
+                  "loc_nonempty": 16,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "007_add_sprint_wip_limit.py": {
+                  "path": "backend/alembic/versions/007_add_sprint_wip_limit.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 31,
+                  "loc_nonempty": 22,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "008_add_business_value_audit.py": {
+                  "path": "backend/alembic/versions/008_add_business_value_audit.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 64,
+                  "loc_nonempty": 50,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "009_add_task_indexes.py": {
+                  "path": "backend/alembic/versions/009_add_task_indexes.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 24,
+                  "loc_nonempty": 16,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "010_add_performance_indexes.py": {
+                  "path": "backend/alembic/versions/010_add_performance_indexes.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 63,
+                  "loc_nonempty": 47,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "011_add_traceability_tables.py": {
+                  "path": "backend/alembic/versions/011_add_traceability_tables.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 118,
+                  "loc_nonempty": 101,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "012_add_sprint_indexes.py": {
+                  "path": "backend/alembic/versions/012_add_sprint_indexes.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 62,
+                  "loc_nonempty": 49,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "013_optimize_tasks_query_indexes.py": {
+                  "path": "backend/alembic/versions/013_optimize_tasks_query_indexes.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 94,
+                  "loc_nonempty": 77,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "014_create_integration_settings_table.py": {
+                  "path": "backend/alembic/versions/014_create_integration_settings_table.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 54,
+                  "loc_nonempty": 42,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "015_add_project_repositories.py": {
+                  "path": "backend/alembic/versions/015_add_project_repositories.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 58,
+                  "loc_nonempty": 45,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "016_add_foreign_key_indexes.py": {
+                  "path": "backend/alembic/versions/016_add_foreign_key_indexes.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 32,
+                  "loc_nonempty": 24,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "017_add_rbac_tables.py": {
+                  "path": "backend/alembic/versions/017_add_rbac_tables.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 161,
+                  "loc_nonempty": 141,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "018_add_traceability_rules.py": {
+                  "path": "backend/alembic/versions/018_add_traceability_rules.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 112,
+                  "loc_nonempty": 94,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "019_add_capacity_health_cfd_tables.py": {
+                  "path": "backend/alembic/versions/019_add_capacity_health_cfd_tables.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 164,
+                  "loc_nonempty": 143,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "020_add_quality_metrics_tables.py": {
+                  "path": "backend/alembic/versions/020_add_quality_metrics_tables.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 103,
+                  "loc_nonempty": 93,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "021_add_coverage_analytics_tables.py": {
+                  "path": "backend/alembic/versions/021_add_coverage_analytics_tables.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 127,
+                  "loc_nonempty": 116,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "022_add_filter_indexes.py": {
+                  "path": "backend/alembic/versions/022_add_filter_indexes.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 94,
+                  "loc_nonempty": 72,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "023_add_composite_performance_indexes.py": {
+                  "path": "backend/alembic/versions/023_add_composite_performance_indexes.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 71,
+                  "loc_nonempty": 54,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "024_add_rule_scheduling_columns.py": {
+                  "path": "backend/alembic/versions/024_add_rule_scheduling_columns.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 137,
+                  "loc_nonempty": 106,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "025_add_oauth_fields.py": {
+                  "path": "backend/alembic/versions/025_add_oauth_fields.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 143,
+                  "loc_nonempty": 114,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "026_add_mfa_fields.py": {
+                  "path": "backend/alembic/versions/026_add_mfa_fields.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 76,
+                  "loc_nonempty": 58,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            }
+          },
+          "files": {
+            "env.py": {
+              "path": "backend/alembic/env.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 69,
+              "loc_nonempty": 51,
+              "types": [],
+              "top_level_methods": []
+            },
+            "script.py.mako": {
+              "path": "backend/alembic/script.py.mako",
+              "target": "prod",
+              "language": "Unknown",
+              "loc_total": 24,
+              "loc_nonempty": 17,
+              "types": [],
+              "top_level_methods": []
+            }
+          }
+        },
+        "app": {
+          "path": "backend/app",
+          "loc_total": 34991,
+          "loc_nonempty": 29095,
+          "folders": {
+            "api": {
+              "path": "backend/app/api",
+              "loc_total": 15050,
+              "loc_nonempty": 12881,
+              "folders": {
+                "api_v1": {
+                  "path": "backend/app/api/api_v1",
+                  "loc_total": 14791,
+                  "loc_nonempty": 12665,
+                  "folders": {
+                    "endpoints": {
+                      "path": "backend/app/api/api_v1/endpoints",
+                      "loc_total": 14743,
+                      "loc_nonempty": 12619,
+                      "folders": {
+                        "git": {
+                          "path": "backend/app/api/api_v1/endpoints/git",
+                          "loc_total": 1465,
+                          "loc_nonempty": 1209,
+                          "folders": {},
+                          "files": {
+                            "__init__.py": {
+                              "path": "backend/app/api/api_v1/endpoints/git/__init__.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 23,
+                              "loc_nonempty": 21,
+                              "types": [],
+                              "top_level_methods": []
+                            },
+                            "ci.py": {
+                              "path": "backend/app/api/api_v1/endpoints/git/ci.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 466,
+                              "loc_nonempty": 390,
+                              "types": [],
+                              "top_level_methods": []
+                            },
+                            "metrics.py": {
+                              "path": "backend/app/api/api_v1/endpoints/git/metrics.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 475,
+                              "loc_nonempty": 391,
+                              "types": [],
+                              "top_level_methods": []
+                            },
+                            "webhooks.py": {
+                              "path": "backend/app/api/api_v1/endpoints/git/webhooks.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 501,
+                              "loc_nonempty": 407,
+                              "types": [],
+                              "top_level_methods": []
+                            }
+                          }
+                        },
+                        "quality": {
+                          "path": "backend/app/api/api_v1/endpoints/quality",
+                          "loc_total": 1415,
+                          "loc_nonempty": 1275,
+                          "folders": {},
+                          "files": {
+                            "__init__.py": {
+                              "path": "backend/app/api/api_v1/endpoints/quality/__init__.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 26,
+                              "loc_nonempty": 20,
+                              "types": [],
+                              "top_level_methods": []
+                            },
+                            "common.py": {
+                              "path": "backend/app/api/api_v1/endpoints/quality/common.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 196,
+                              "loc_nonempty": 180,
+                              "types": [],
+                              "top_level_methods": []
+                            },
+                            "defects.py": {
+                              "path": "backend/app/api/api_v1/endpoints/quality/defects.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 130,
+                              "loc_nonempty": 113,
+                              "types": [],
+                              "top_level_methods": []
+                            },
+                            "gates.py": {
+                              "path": "backend/app/api/api_v1/endpoints/quality/gates.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 308,
+                              "loc_nonempty": 287,
+                              "types": [],
+                              "top_level_methods": []
+                            },
+                            "metrics.py": {
+                              "path": "backend/app/api/api_v1/endpoints/quality/metrics.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 473,
+                              "loc_nonempty": 422,
+                              "types": [],
+                              "top_level_methods": []
+                            },
+                            "reports.py": {
+                              "path": "backend/app/api/api_v1/endpoints/quality/reports.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 282,
+                              "loc_nonempty": 253,
+                              "types": [],
+                              "top_level_methods": []
+                            }
+                          }
+                        },
+                        "traceability": {
+                          "path": "backend/app/api/api_v1/endpoints/traceability",
+                          "loc_total": 3571,
+                          "loc_nonempty": 3025,
+                          "folders": {},
+                          "files": {
+                            "__init__.py": {
+                              "path": "backend/app/api/api_v1/endpoints/traceability/__init__.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 32,
+                              "loc_nonempty": 26,
+                              "types": [],
+                              "top_level_methods": []
+                            },
+                            "analysis.py": {
+                              "path": "backend/app/api/api_v1/endpoints/traceability/analysis.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 419,
+                              "loc_nonempty": 349,
+                              "types": [],
+                              "top_level_methods": []
+                            },
+                            "common.py": {
+                              "path": "backend/app/api/api_v1/endpoints/traceability/common.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 81,
+                              "loc_nonempty": 68,
+                              "types": [],
+                              "top_level_methods": []
+                            },
+                            "health.py": {
+                              "path": "backend/app/api/api_v1/endpoints/traceability/health.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 932,
+                              "loc_nonempty": 798,
+                              "types": [],
+                              "top_level_methods": []
+                            },
+                            "links.py": {
+                              "path": "backend/app/api/api_v1/endpoints/traceability/links.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 514,
+                              "loc_nonempty": 452,
+                              "types": [],
+                              "top_level_methods": []
+                            },
+                            "orphans.py": {
+                              "path": "backend/app/api/api_v1/endpoints/traceability/orphans.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 322,
+                              "loc_nonempty": 269,
+                              "types": [],
+                              "top_level_methods": []
+                            },
+                            "rules.py": {
+                              "path": "backend/app/api/api_v1/endpoints/traceability/rules.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 802,
+                              "loc_nonempty": 669,
+                              "types": [],
+                              "top_level_methods": []
+                            },
+                            "suggestions.py": {
+                              "path": "backend/app/api/api_v1/endpoints/traceability/suggestions.py",
+                              "target": "prod",
+                              "language": "Python",
+                              "loc_total": 469,
+                              "loc_nonempty": 394,
+                              "types": [],
+                              "top_level_methods": []
+                            }
+                          }
+                        }
+                      },
+                      "files": {
+                        "analytics.py": {
+                          "path": "backend/app/api/api_v1/endpoints/analytics.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 1272,
+                          "loc_nonempty": 1128,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "analytics_simple.py": {
+                          "path": "backend/app/api/api_v1/endpoints/analytics_simple.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 42,
+                          "loc_nonempty": 37,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "auth.py": {
+                          "path": "backend/app/api/api_v1/endpoints/auth.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 669,
+                          "loc_nonempty": 552,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "capacity.py": {
+                          "path": "backend/app/api/api_v1/endpoints/capacity.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 751,
+                          "loc_nonempty": 634,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "confluence.py": {
+                          "path": "backend/app/api/api_v1/endpoints/confluence.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 693,
+                          "loc_nonempty": 594,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "git_router.py": {
+                          "path": "backend/app/api/api_v1/endpoints/git_router.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 335,
+                          "loc_nonempty": 280,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "gitlab_projects.py": {
+                          "path": "backend/app/api/api_v1/endpoints/gitlab_projects.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 148,
+                          "loc_nonempty": 119,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "health.py": {
+                          "path": "backend/app/api/api_v1/endpoints/health.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 116,
+                          "loc_nonempty": 98,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "jira.py": {
+                          "path": "backend/app/api/api_v1/endpoints/jira.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 343,
+                          "loc_nonempty": 299,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "jira_fields.py": {
+                          "path": "backend/app/api/api_v1/endpoints/jira_fields.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 350,
+                          "loc_nonempty": 299,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "project_repository.py": {
+                          "path": "backend/app/api/api_v1/endpoints/project_repository.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 340,
+                          "loc_nonempty": 300,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "projects.py": {
+                          "path": "backend/app/api/api_v1/endpoints/projects.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 296,
+                          "loc_nonempty": 265,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "roles.py": {
+                          "path": "backend/app/api/api_v1/endpoints/roles.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 87,
+                          "loc_nonempty": 72,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "settings.py": {
+                          "path": "backend/app/api/api_v1/endpoints/settings.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 666,
+                          "loc_nonempty": 588,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "tasks.py": {
+                          "path": "backend/app/api/api_v1/endpoints/tasks.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 550,
+                          "loc_nonempty": 462,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "tasks_async.py": {
+                          "path": "backend/app/api/api_v1/endpoints/tasks_async.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 61,
+                          "loc_nonempty": 47,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "testing.py": {
+                          "path": "backend/app/api/api_v1/endpoints/testing.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 1216,
+                          "loc_nonempty": 1043,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "usage_analytics.py": {
+                          "path": "backend/app/api/api_v1/endpoints/usage_analytics.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 190,
+                          "loc_nonempty": 154,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "users.py": {
+                          "path": "backend/app/api/api_v1/endpoints/users.py",
+                          "target": "prod",
+                          "language": "Python",
+                          "loc_total": 167,
+                          "loc_nonempty": 139,
+                          "types": [],
+                          "top_level_methods": []
+                        }
+                      }
+                    }
+                  },
+                  "files": {
+                    "api.py": {
+                      "path": "backend/app/api/api_v1/api.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 48,
+                      "loc_nonempty": 46,
+                      "types": [],
+                      "top_level_methods": []
+                    }
+                  }
+                }
+              },
+              "files": {
+                "deps.py": {
+                  "path": "backend/app/api/deps.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 239,
+                  "loc_nonempty": 201,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "ws.py": {
+                  "path": "backend/app/api/ws.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 20,
+                  "loc_nonempty": 15,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            },
+            "core": {
+              "path": "backend/app/core",
+              "loc_total": 2719,
+              "loc_nonempty": 2167,
+              "folders": {},
+              "files": {
+                "cache.py": {
+                  "path": "backend/app/core/cache.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 32,
+                  "loc_nonempty": 28,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "cache_enhanced.py": {
+                  "path": "backend/app/core/cache_enhanced.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 1072,
+                  "loc_nonempty": 871,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "celery_app.py": {
+                  "path": "backend/app/core/celery_app.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 39,
+                  "loc_nonempty": 31,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "config.py": {
+                  "path": "backend/app/core/config.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 192,
+                  "loc_nonempty": 154,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "crypto.py": {
+                  "path": "backend/app/core/crypto.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 73,
+                  "loc_nonempty": 57,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "database.py": {
+                  "path": "backend/app/core/database.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 140,
+                  "loc_nonempty": 119,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "database.py.backup": {
+                  "path": "backend/app/core/database.py.backup",
+                  "target": "prod",
+                  "language": "Unknown",
+                  "loc_total": 49,
+                  "loc_nonempty": 38,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "db_utils.py": {
+                  "path": "backend/app/core/db_utils.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 34,
+                  "loc_nonempty": 26,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "metrics.py": {
+                  "path": "backend/app/core/metrics.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 51,
+                  "loc_nonempty": 40,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "mfa.py": {
+                  "path": "backend/app/core/mfa.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 242,
+                  "loc_nonempty": 184,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "middleware.py": {
+                  "path": "backend/app/core/middleware.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 76,
+                  "loc_nonempty": 58,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "notifications.py": {
+                  "path": "backend/app/core/notifications.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 36,
+                  "loc_nonempty": 27,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "oauth.py": {
+                  "path": "backend/app/core/oauth.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 307,
+                  "loc_nonempty": 241,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "query_metrics.py": {
+                  "path": "backend/app/core/query_metrics.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 199,
+                  "loc_nonempty": 151,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "rate_limit.py": {
+                  "path": "backend/app/core/rate_limit.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 22,
+                  "loc_nonempty": 19,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "rate_limiter.py": {
+                  "path": "backend/app/core/rate_limiter.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 110,
+                  "loc_nonempty": 88,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "security.py": {
+                  "path": "backend/app/core/security.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 45,
+                  "loc_nonempty": 35,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            },
+            "models": {
+              "path": "backend/app/models",
+              "loc_total": 1387,
+              "loc_nonempty": 1119,
+              "folders": {},
+              "files": {
+                "__init__.py": {
+                  "path": "backend/app/models/__init__.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 49,
+                  "loc_nonempty": 48,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "audit.py": {
+                  "path": "backend/app/models/audit.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 20,
+                  "loc_nonempty": 16,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "capacity.py": {
+                  "path": "backend/app/models/capacity.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 135,
+                  "loc_nonempty": 103,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "confluence.py": {
+                  "path": "backend/app/models/confluence.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 23,
+                  "loc_nonempty": 18,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "git.py": {
+                  "path": "backend/app/models/git.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 60,
+                  "loc_nonempty": 50,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "jira_field_mapping.py": {
+                  "path": "backend/app/models/jira_field_mapping.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 21,
+                  "loc_nonempty": 17,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "project.py": {
+                  "path": "backend/app/models/project.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 28,
+                  "loc_nonempty": 24,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "project_repository.py": {
+                  "path": "backend/app/models/project_repository.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 19,
+                  "loc_nonempty": 15,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "quality.py": {
+                  "path": "backend/app/models/quality.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 119,
+                  "loc_nonempty": 91,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "rbac.py": {
+                  "path": "backend/app/models/rbac.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 263,
+                  "loc_nonempty": 232,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "settings.py": {
+                  "path": "backend/app/models/settings.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 16,
+                  "loc_nonempty": 12,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "sprint.py": {
+                  "path": "backend/app/models/sprint.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 68,
+                  "loc_nonempty": 51,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "task.py": {
+                  "path": "backend/app/models/task.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 51,
+                  "loc_nonempty": 42,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "testing.py": {
+                  "path": "backend/app/models/testing.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 174,
+                  "loc_nonempty": 136,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "traceability.py": {
+                  "path": "backend/app/models/traceability.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 161,
+                  "loc_nonempty": 124,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "traceability_rule.py": {
+                  "path": "backend/app/models/traceability_rule.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 85,
+                  "loc_nonempty": 65,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "user.py": {
+                  "path": "backend/app/models/user.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 95,
+                  "loc_nonempty": 75,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            },
+            "schemas": {
+              "path": "backend/app/schemas",
+              "loc_total": 1765,
+              "loc_nonempty": 1378,
+              "folders": {},
+              "files": {
+                "capacity.py": {
+                  "path": "backend/app/schemas/capacity.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 211,
+                  "loc_nonempty": 165,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "pagination.py": {
+                  "path": "backend/app/schemas/pagination.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 386,
+                  "loc_nonempty": 308,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "project.py": {
+                  "path": "backend/app/schemas/project.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 52,
+                  "loc_nonempty": 39,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "project_repository.py": {
+                  "path": "backend/app/schemas/project_repository.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 49,
+                  "loc_nonempty": 33,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "quality.py": {
+                  "path": "backend/app/schemas/quality.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 328,
+                  "loc_nonempty": 260,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "repository.py": {
+                  "path": "backend/app/schemas/repository.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 32,
+                  "loc_nonempty": 21,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "settings.py": {
+                  "path": "backend/app/schemas/settings.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 18,
+                  "loc_nonempty": 13,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "task.py": {
+                  "path": "backend/app/schemas/task.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 104,
+                  "loc_nonempty": 87,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "testing.py": {
+                  "path": "backend/app/schemas/testing.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 312,
+                  "loc_nonempty": 249,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "traceability_rule.py": {
+                  "path": "backend/app/schemas/traceability_rule.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 198,
+                  "loc_nonempty": 153,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "user.py": {
+                  "path": "backend/app/schemas/user.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 75,
+                  "loc_nonempty": 50,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            },
+            "services": {
+              "path": "backend/app/services",
+              "loc_total": 10317,
+              "loc_nonempty": 8541,
+              "folders": {
+                "git": {
+                  "path": "backend/app/services/git",
+                  "loc_total": 470,
+                  "loc_nonempty": 407,
+                  "folders": {},
+                  "files": {
+                    "__init__.py": {
+                      "path": "backend/app/services/git/__init__.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 21,
+                      "loc_nonempty": 20,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "webhook_processor.py": {
+                      "path": "backend/app/services/git/webhook_processor.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 449,
+                      "loc_nonempty": 387,
+                      "types": [],
+                      "top_level_methods": []
+                    }
+                  }
+                },
+                "jira": {
+                  "path": "backend/app/services/jira",
+                  "loc_total": 2464,
+                  "loc_nonempty": 1959,
+                  "folders": {},
+                  "files": {
+                    "__init__.py": {
+                      "path": "backend/app/services/jira/__init__.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 71,
+                      "loc_nonempty": 64,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "auth_strategy.py": {
+                      "path": "backend/app/services/jira/auth_strategy.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 201,
+                      "loc_nonempty": 152,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "board_service.py": {
+                      "path": "backend/app/services/jira/board_service.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 378,
+                      "loc_nonempty": 298,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "circuit_breaker.py": {
+                      "path": "backend/app/services/jira/circuit_breaker.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 176,
+                      "loc_nonempty": 143,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "http_client.py": {
+                      "path": "backend/app/services/jira/http_client.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 216,
+                      "loc_nonempty": 174,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "jira_service.py": {
+                      "path": "backend/app/services/jira/jira_service.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 624,
+                      "loc_nonempty": 491,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "project_service.py": {
+                      "path": "backend/app/services/jira/project_service.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 498,
+                      "loc_nonempty": 400,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "response_handler.py": {
+                      "path": "backend/app/services/jira/response_handler.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 165,
+                      "loc_nonempty": 131,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "version_resolver.py": {
+                      "path": "backend/app/services/jira/version_resolver.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 135,
+                      "loc_nonempty": 106,
+                      "types": [],
+                      "top_level_methods": []
+                    }
+                  }
+                },
+                "sync": {
+                  "path": "backend/app/services/sync",
+                  "loc_total": 1617,
+                  "loc_nonempty": 1339,
+                  "folders": {},
+                  "files": {
+                    "__init__.py": {
+                      "path": "backend/app/services/sync/__init__.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 32,
+                      "loc_nonempty": 29,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "board_sync_service.py": {
+                      "path": "backend/app/services/sync/board_sync_service.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 244,
+                      "loc_nonempty": 195,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "issue_sync_service.py": {
+                      "path": "backend/app/services/sync/issue_sync_service.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 459,
+                      "loc_nonempty": 385,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "project_sync_orchestrator.py": {
+                      "path": "backend/app/services/sync/project_sync_orchestrator.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 349,
+                      "loc_nonempty": 292,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "sprint_snapshot_service.py": {
+                      "path": "backend/app/services/sync/sprint_snapshot_service.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 265,
+                      "loc_nonempty": 215,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "worklog_sync_service.py": {
+                      "path": "backend/app/services/sync/worklog_sync_service.py",
+                      "target": "prod",
+                      "language": "Python",
+                      "loc_total": 268,
+                      "loc_nonempty": 223,
+                      "types": [],
+                      "top_level_methods": []
+                    }
+                  }
+                }
+              },
+              "files": {
+                "analytics_utils.py": {
+                  "path": "backend/app/services/analytics_utils.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 332,
+                  "loc_nonempty": 275,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "bitbucket_client.py": {
+                  "path": "backend/app/services/bitbucket_client.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 495,
+                  "loc_nonempty": 412,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "cache_service.py": {
+                  "path": "backend/app/services/cache_service.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 202,
+                  "loc_nonempty": 165,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "confidence_scoring.py": {
+                  "path": "backend/app/services/confidence_scoring.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 433,
+                  "loc_nonempty": 356,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "confluence_service.py": {
+                  "path": "backend/app/services/confluence_service.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 582,
+                  "loc_nonempty": 541,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "git_import_service.py": {
+                  "path": "backend/app/services/git_import_service.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 530,
+                  "loc_nonempty": 449,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "github_client.py": {
+                  "path": "backend/app/services/github_client.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 73,
+                  "loc_nonempty": 57,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "jira_field_mapper.py": {
+                  "path": "backend/app/services/jira_field_mapper.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 571,
+                  "loc_nonempty": 478,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "jira_service.py": {
+                  "path": "backend/app/services/jira_service.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 41,
+                  "loc_nonempty": 32,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "jira_sync.py": {
+                  "path": "backend/app/services/jira_sync.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 41,
+                  "loc_nonempty": 33,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "report_generator.py": {
+                  "path": "backend/app/services/report_generator.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 593,
+                  "loc_nonempty": 521,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "repository_resolver.py": {
+                  "path": "backend/app/services/repository_resolver.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 113,
+                  "loc_nonempty": 97,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "rule_execution_engine.py": {
+                  "path": "backend/app/services/rule_execution_engine.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 988,
+                  "loc_nonempty": 782,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "task_manager.py": {
+                  "path": "backend/app/services/task_manager.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 313,
+                  "loc_nonempty": 265,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "text_similarity.py": {
+                  "path": "backend/app/services/text_similarity.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 459,
+                  "loc_nonempty": 373,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            },
+            "tasks": {
+              "path": "backend/app/tasks",
+              "loc_total": 543,
+              "loc_nonempty": 462,
+              "folders": {},
+              "files": {
+                "__init__.py": {
+                  "path": "backend/app/tasks/__init__.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 1,
+                  "loc_nonempty": 1,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "confluence_tasks.py": {
+                  "path": "backend/app/tasks/confluence_tasks.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 325,
+                  "loc_nonempty": 277,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "jira_sync.py": {
+                  "path": "backend/app/tasks/jira_sync.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 16,
+                  "loc_nonempty": 11,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "jira_tasks.py": {
+                  "path": "backend/app/tasks/jira_tasks.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 201,
+                  "loc_nonempty": 173,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            },
+            "utils": {
+              "path": "backend/app/utils",
+              "loc_total": 1155,
+              "loc_nonempty": 928,
+              "folders": {},
+              "files": {
+                "__init__.py": {
+                  "path": "backend/app/utils/__init__.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 19,
+                  "loc_nonempty": 17,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "batch_operations.py": {
+                  "path": "backend/app/utils/batch_operations.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 470,
+                  "loc_nonempty": 374,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "datetime_utils.py": {
+                  "path": "backend/app/utils/datetime_utils.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 69,
+                  "loc_nonempty": 52,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "db_operations.py": {
+                  "path": "backend/app/utils/db_operations.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 142,
+                  "loc_nonempty": 117,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "entity.py": {
+                  "path": "backend/app/utils/entity.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 98,
+                  "loc_nonempty": 76,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "error_handling.py": {
+                  "path": "backend/app/utils/error_handling.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 281,
+                  "loc_nonempty": 232,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "pagination.py": {
+                  "path": "backend/app/utils/pagination.py",
+                  "target": "prod",
+                  "language": "Python",
+                  "loc_total": 76,
+                  "loc_nonempty": 60,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            }
+          },
+          "files": {
+            "CODE_DUPLICATION_PROGRESS.md": {
+              "path": "backend/app/CODE_DUPLICATION_PROGRESS.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 1847,
+              "loc_nonempty": 1439,
+              "types": [],
+              "top_level_methods": []
+            },
+            "__init__.py": {
+              "path": "backend/app/__init__.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 1,
+              "loc_nonempty": 1,
+              "types": [],
+              "top_level_methods": []
+            },
+            "main.py": {
+              "path": "backend/app/main.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 207,
+              "loc_nonempty": 179,
+              "types": [],
+              "top_level_methods": []
+            }
+          }
+        },
+        "migrations": {
+          "path": "backend/migrations",
+          "loc_total": 213,
+          "loc_nonempty": 166,
+          "folders": {},
+          "files": {
+            "add_performance_indexes.sql": {
+              "path": "backend/migrations/add_performance_indexes.sql",
+              "target": "prod",
+              "language": "SQL",
+              "loc_total": 213,
+              "loc_nonempty": 166,
+              "types": [],
+              "top_level_methods": []
+            }
+          }
+        },
+        "scripts": {
+          "path": "backend/scripts",
+          "loc_total": 840,
+          "loc_nonempty": 682,
+          "folders": {},
+          "files": {
+            "assign_demo_role.py": {
+              "path": "backend/scripts/assign_demo_role.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 58,
+              "loc_nonempty": 44,
+              "types": [],
+              "top_level_methods": []
+            },
+            "encrypt_existing_credentials.py": {
+              "path": "backend/scripts/encrypt_existing_credentials.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 224,
+              "loc_nonempty": 178,
+              "types": [],
+              "top_level_methods": []
+            },
+            "profile_performance.py": {
+              "path": "backend/scripts/profile_performance.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 453,
+              "loc_nonempty": 376,
+              "types": [],
+              "top_level_methods": []
+            },
+            "seed_roles.py": {
+              "path": "backend/scripts/seed_roles.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 105,
+              "loc_nonempty": 84,
+              "types": [],
+              "top_level_methods": []
+            }
+          }
+        },
+        "tests": {
+          "path": "backend/tests",
+          "loc_total": 3123,
+          "loc_nonempty": 2596,
+          "folders": {},
+          "files": {
+            "conftest.py": {
+              "path": "backend/tests/conftest.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 6,
+              "loc_nonempty": 5,
+              "types": [],
+              "top_level_methods": []
+            },
+            "test_analytics_api.py": {
+              "path": "backend/tests/test_analytics_api.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 482,
+              "loc_nonempty": 423,
+              "types": [],
+              "top_level_methods": []
+            },
+            "test_analytics_dora.py": {
+              "path": "backend/tests/test_analytics_dora.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 58,
+              "loc_nonempty": 46,
+              "types": [],
+              "top_level_methods": []
+            },
+            "test_analytics_more.py": {
+              "path": "backend/tests/test_analytics_more.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 161,
+              "loc_nonempty": 144,
+              "types": [],
+              "top_level_methods": []
+            },
+            "test_analytics_team_health.py": {
+              "path": "backend/tests/test_analytics_team_health.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 94,
+              "loc_nonempty": 79,
+              "types": [],
+              "top_level_methods": []
+            },
+            "test_bitbucket_integration.py": {
+              "path": "backend/tests/test_bitbucket_integration.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 410,
+              "loc_nonempty": 352,
+              "types": [],
+              "top_level_methods": []
+            },
+            "test_crypto.py": {
+              "path": "backend/tests/test_crypto.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 29,
+              "loc_nonempty": 20,
+              "types": [],
+              "top_level_methods": []
+            },
+            "test_git_endpoints.py": {
+              "path": "backend/tests/test_git_endpoints.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 515,
+              "loc_nonempty": 445,
+              "types": [],
+              "top_level_methods": []
+            },
+            "test_git_import_service.py": {
+              "path": "backend/tests/test_git_import_service.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 118,
+              "loc_nonempty": 98,
+              "types": [],
+              "top_level_methods": []
+            },
+            "test_git_metrics.py": {
+              "path": "backend/tests/test_git_metrics.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 101,
+              "loc_nonempty": 80,
+              "types": [],
+              "top_level_methods": []
+            },
+            "test_git_traceability.py": {
+              "path": "backend/tests/test_git_traceability.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 128,
+              "loc_nonempty": 106,
+              "types": [],
+              "top_level_methods": []
+            },
+            "test_github_client.py": {
+              "path": "backend/tests/test_github_client.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 31,
+              "loc_nonempty": 25,
+              "types": [],
+              "top_level_methods": []
+            },
+            "test_jira_api_endpoints.py": {
+              "path": "backend/tests/test_jira_api_endpoints.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 25,
+              "loc_nonempty": 19,
+              "types": [],
+              "top_level_methods": []
+            },
+            "test_jira_service.py": {
+              "path": "backend/tests/test_jira_service.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 54,
+              "loc_nonempty": 38,
+              "types": [],
+              "top_level_methods": []
+            },
+            "test_oauth_mfa.py": {
+              "path": "backend/tests/test_oauth_mfa.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 445,
+              "loc_nonempty": 355,
+              "types": [],
+              "top_level_methods": []
+            },
+            "test_security_input_validation.py": {
+              "path": "backend/tests/test_security_input_validation.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 302,
+              "loc_nonempty": 238,
+              "types": [],
+              "top_level_methods": []
+            },
+            "test_traceability.py": {
+              "path": "backend/tests/test_traceability.py",
+              "target": "prod",
+              "language": "Python",
+              "loc_total": 164,
+              "loc_nonempty": 123,
+              "types": [],
+              "top_level_methods": []
+            }
+          }
+        }
+      },
+      "files": {
+        ".env": {
+          "path": "backend/.env",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 76,
+          "loc_nonempty": 63,
+          "types": [],
+          "top_level_methods": []
+        },
+        ".env.example": {
+          "path": "backend/.env.example",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 161,
+          "loc_nonempty": 136,
+          "types": [],
+          "top_level_methods": []
+        },
+        "README.md": {
+          "path": "backend/README.md",
+          "target": "prod",
+          "language": "Markdown",
+          "loc_total": 121,
+          "loc_nonempty": 104,
+          "types": [],
+          "top_level_methods": []
+        },
+        "TIMEOUT_FIXES_SUMMARY.md": {
+          "path": "backend/TIMEOUT_FIXES_SUMMARY.md",
+          "target": "prod",
+          "language": "Markdown",
+          "loc_total": 181,
+          "loc_nonempty": 147,
+          "types": [],
+          "top_level_methods": []
+        },
+        "alembic.ini": {
+          "path": "backend/alembic.ini",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 90,
+          "loc_nonempty": 69,
+          "types": [],
+          "top_level_methods": []
+        },
+        "app_simple.py": {
+          "path": "backend/app_simple.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 285,
+          "loc_nonempty": 270,
+          "types": [],
+          "top_level_methods": []
+        },
+        "celery_codex.log": {
+          "path": "backend/celery_codex.log",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 2812,
+          "loc_nonempty": 2507,
+          "types": [],
+          "top_level_methods": []
+        },
+        "check_db.py": {
+          "path": "backend/check_db.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 24,
+          "loc_nonempty": 20,
+          "types": [],
+          "top_level_methods": []
+        },
+        "check_prim.py": {
+          "path": "backend/check_prim.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 31,
+          "loc_nonempty": 27,
+          "types": [],
+          "top_level_methods": []
+        },
+        "create_db.py": {
+          "path": "backend/create_db.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 17,
+          "loc_nonempty": 14,
+          "types": [],
+          "top_level_methods": []
+        },
+        "debug_sync.py": {
+          "path": "backend/debug_sync.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 118,
+          "loc_nonempty": 98,
+          "types": [],
+          "top_level_methods": []
+        },
+        "fix_orphaned_tasks.py": {
+          "path": "backend/fix_orphaned_tasks.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 92,
+          "loc_nonempty": 76,
+          "types": [],
+          "top_level_methods": []
+        },
+        "hotfix_task_schema.py": {
+          "path": "backend/hotfix_task_schema.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 40,
+          "loc_nonempty": 31,
+          "types": [],
+          "top_level_methods": []
+        },
+        "inspect_meta.py": {
+          "path": "backend/inspect_meta.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 12,
+          "loc_nonempty": 10,
+          "types": [],
+          "top_level_methods": []
+        },
+        "inspect_project_api.py": {
+          "path": "backend/inspect_project_api.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 20,
+          "loc_nonempty": 16,
+          "types": [],
+          "top_level_methods": []
+        },
+        "inspect_project_schema.py": {
+          "path": "backend/inspect_project_schema.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 39,
+          "loc_nonempty": 37,
+          "types": [],
+          "top_level_methods": []
+        },
+        "pytest.ini": {
+          "path": "backend/pytest.ini",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 4,
+          "loc_nonempty": 4,
+          "types": [],
+          "top_level_methods": []
+        },
+        "requirements-basic.txt": {
+          "path": "backend/requirements-basic.txt",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 8,
+          "loc_nonempty": 8,
+          "types": [],
+          "top_level_methods": []
+        },
+        "requirements-flask.txt": {
+          "path": "backend/requirements-flask.txt",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 3,
+          "loc_nonempty": 3,
+          "types": [],
+          "top_level_methods": []
+        },
+        "requirements-lite.txt": {
+          "path": "backend/requirements-lite.txt",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 35,
+          "loc_nonempty": 29,
+          "types": [],
+          "top_level_methods": []
+        },
+        "requirements-minimal.txt": {
+          "path": "backend/requirements-minimal.txt",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 21,
+          "loc_nonempty": 17,
+          "types": [],
+          "top_level_methods": []
+        },
+        "requirements.txt": {
+          "path": "backend/requirements.txt",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 57,
+          "loc_nonempty": 47,
+          "types": [],
+          "top_level_methods": []
+        },
+        "restart_backend.ps1": {
+          "path": "backend/restart_backend.ps1",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 88,
+          "loc_nonempty": 76,
+          "types": [],
+          "top_level_methods": []
+        },
+        "run_celery_worker.py": {
+          "path": "backend/run_celery_worker.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 50,
+          "loc_nonempty": 39,
+          "types": [],
+          "top_level_methods": []
+        },
+        "start_celery_worker.bat": {
+          "path": "backend/start_celery_worker.bat",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 19,
+          "loc_nonempty": 14,
+          "types": [],
+          "top_level_methods": []
+        },
+        "start_server.bat": {
+          "path": "backend/start_server.bat",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 12,
+          "loc_nonempty": 12,
+          "types": [],
+          "top_level_methods": []
+        },
+        "start_server.ps1": {
+          "path": "backend/start_server.ps1",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 35,
+          "loc_nonempty": 29,
+          "types": [],
+          "top_level_methods": []
+        },
+        "temp.py": {
+          "path": "backend/temp.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 4,
+          "loc_nonempty": 4,
+          "types": [],
+          "top_level_methods": []
+        },
+        "temp_meta_test.py": {
+          "path": "backend/temp_meta_test.py",
+          "target": "test",
+          "language": "Python",
+          "loc_total": 12,
+          "loc_nonempty": 12,
+          "types": [],
+          "top_level_methods": []
+        },
+        "test_api.py": {
+          "path": "backend/test_api.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 26,
+          "loc_nonempty": 21,
+          "types": [],
+          "top_level_methods": []
+        },
+        "test_confluence_auth.py": {
+          "path": "backend/test_confluence_auth.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 105,
+          "loc_nonempty": 82,
+          "types": [],
+          "top_level_methods": []
+        },
+        "test_confluence_pat.py": {
+          "path": "backend/test_confluence_pat.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 89,
+          "loc_nonempty": 72,
+          "types": [],
+          "top_level_methods": []
+        },
+        "test_db_operations.py": {
+          "path": "backend/test_db_operations.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 160,
+          "loc_nonempty": 141,
+          "types": [],
+          "top_level_methods": []
+        },
+        "test_frontend.py": {
+          "path": "backend/test_frontend.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 29,
+          "loc_nonempty": 24,
+          "types": [],
+          "top_level_methods": []
+        },
+        "test_gitlab_sync.py": {
+          "path": "backend/test_gitlab_sync.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 157,
+          "loc_nonempty": 127,
+          "types": [],
+          "top_level_methods": []
+        },
+        "test_jira_api.py": {
+          "path": "backend/test_jira_api.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 66,
+          "loc_nonempty": 55,
+          "types": [],
+          "top_level_methods": []
+        },
+        "test_jira_sync.py": {
+          "path": "backend/test_jira_sync.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 118,
+          "loc_nonempty": 101,
+          "types": [],
+          "top_level_methods": []
+        },
+        "test_meta_update.py": {
+          "path": "backend/test_meta_update.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 56,
+          "loc_nonempty": 45,
+          "types": [],
+          "top_level_methods": []
+        },
+        "test_project_repository.py": {
+          "path": "backend/test_project_repository.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 83,
+          "loc_nonempty": 74,
+          "types": [],
+          "top_level_methods": []
+        },
+        "test_tasks_performance.py": {
+          "path": "backend/test_tasks_performance.py",
+          "target": "prod",
+          "language": "Python",
+          "loc_total": 73,
+          "loc_nonempty": 59,
+          "types": [],
+          "top_level_methods": []
+        }
+      }
+    },
+    "docker": {
+      "path": "docker",
+      "loc_total": 101,
+      "loc_nonempty": 79,
+      "folders": {},
+      "files": {
+        "Dockerfile.backend": {
+          "path": "docker/Dockerfile.backend",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 31,
+          "loc_nonempty": 23,
+          "types": [],
+          "top_level_methods": []
+        },
+        "Dockerfile.frontend": {
+          "path": "docker/Dockerfile.frontend",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 32,
+          "loc_nonempty": 23,
+          "types": [],
+          "top_level_methods": []
+        },
+        "nginx.conf": {
+          "path": "docker/nginx.conf",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 38,
+          "loc_nonempty": 33,
+          "types": [],
+          "top_level_methods": []
+        }
+      }
+    },
+    "docs": {
+      "path": "docs",
+      "loc_total": 8046,
+      "loc_nonempty": 6412,
+      "folders": {
+        "archive": {
+          "path": "docs/archive",
+          "loc_total": 4143,
+          "loc_nonempty": 3324,
+          "folders": {},
+          "files": {
+            "BUG_REPORT.md": {
+              "path": "docs/archive/BUG_REPORT.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 166,
+              "loc_nonempty": 123,
+              "types": [],
+              "top_level_methods": []
+            },
+            "BUG_VERIFICATION_REPORT.md": {
+              "path": "docs/archive/BUG_VERIFICATION_REPORT.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 334,
+              "loc_nonempty": 282,
+              "types": [],
+              "top_level_methods": []
+            },
+            "COMPREHENSIVE_BUG_REPORT.md": {
+              "path": "docs/archive/COMPREHENSIVE_BUG_REPORT.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 358,
+              "loc_nonempty": 295,
+              "types": [],
+              "top_level_methods": []
+            },
+            "CONFLUENCE_AUTH_FIX.md": {
+              "path": "docs/archive/CONFLUENCE_AUTH_FIX.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 130,
+              "loc_nonempty": 101,
+              "types": [],
+              "top_level_methods": []
+            },
+            "FEATURE_RECOMMENDATIONS.md": {
+              "path": "docs/archive/FEATURE_RECOMMENDATIONS.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 209,
+              "loc_nonempty": 173,
+              "types": [],
+              "top_level_methods": []
+            },
+            "FIX_PLAN.md": {
+              "path": "docs/archive/FIX_PLAN.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 343,
+              "loc_nonempty": 280,
+              "types": [],
+              "top_level_methods": []
+            },
+            "GIT_MODULE_RESTORATION.md": {
+              "path": "docs/archive/GIT_MODULE_RESTORATION.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 165,
+              "loc_nonempty": 125,
+              "types": [],
+              "top_level_methods": []
+            },
+            "IMPLEMENTATION_ANALYSIS.md": {
+              "path": "docs/archive/IMPLEMENTATION_ANALYSIS.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 795,
+              "loc_nonempty": 635,
+              "types": [],
+              "top_level_methods": []
+            },
+            "JIRA_AUTH_FIX.md": {
+              "path": "docs/archive/JIRA_AUTH_FIX.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 177,
+              "loc_nonempty": 140,
+              "types": [],
+              "top_level_methods": []
+            },
+            "README.md": {
+              "path": "docs/archive/README.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 42,
+              "loc_nonempty": 33,
+              "types": [],
+              "top_level_methods": []
+            },
+            "development_plan.md": {
+              "path": "docs/archive/development_plan.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 385,
+              "loc_nonempty": 279,
+              "types": [],
+              "top_level_methods": []
+            },
+            "development_plan_release_2.md": {
+              "path": "docs/archive/development_plan_release_2.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 1039,
+              "loc_nonempty": 858,
+              "types": [],
+              "top_level_methods": []
+            }
+          }
+        },
+        "internal": {
+          "path": "docs/internal",
+          "loc_total": 2110,
+          "loc_nonempty": 1670,
+          "folders": {},
+          "files": {
+            "CONSOLIDATED_PROJECT_STATUS.md": {
+              "path": "docs/internal/CONSOLIDATED_PROJECT_STATUS.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 351,
+              "loc_nonempty": 280,
+              "types": [],
+              "top_level_methods": []
+            },
+            "DEVELOPMENT_STATUS_REPORT.md": {
+              "path": "docs/internal/DEVELOPMENT_STATUS_REPORT.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 351,
+              "loc_nonempty": 280,
+              "types": [],
+              "top_level_methods": []
+            },
+            "PROJECT_REPOSITORY_IMPLEMENTATION.md": {
+              "path": "docs/internal/PROJECT_REPOSITORY_IMPLEMENTATION.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 220,
+              "loc_nonempty": 171,
+              "types": [],
+              "top_level_methods": []
+            },
+            "PROJECT_STATUS.md": {
+              "path": "docs/internal/PROJECT_STATUS.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 325,
+              "loc_nonempty": 257,
+              "types": [],
+              "top_level_methods": []
+            },
+            "RBAC_COMPLETION_SUMMARY.md": {
+              "path": "docs/internal/RBAC_COMPLETION_SUMMARY.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 127,
+              "loc_nonempty": 102,
+              "types": [],
+              "top_level_methods": []
+            },
+            "RBAC_IMPLEMENTATION.md": {
+              "path": "docs/internal/RBAC_IMPLEMENTATION.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 362,
+              "loc_nonempty": 292,
+              "types": [],
+              "top_level_methods": []
+            },
+            "REDUX_LOGOUT_COMPLETION.md": {
+              "path": "docs/internal/REDUX_LOGOUT_COMPLETION.md",
+              "target": "prod",
+              "language": "Markdown",
+              "loc_total": 374,
+              "loc_nonempty": 288,
+              "types": [],
+              "top_level_methods": []
+            }
+          }
+        }
+      },
+      "files": {
+        "DEPLOYMENT.md": {
+          "path": "docs/DEPLOYMENT.md",
+          "target": "prod",
+          "language": "Markdown",
+          "loc_total": 129,
+          "loc_nonempty": 109,
+          "types": [],
+          "top_level_methods": []
+        },
+        "PERFORMANCE_OPTIMIZATION_ARCHITECTURE.md": {
+          "path": "docs/PERFORMANCE_OPTIMIZATION_ARCHITECTURE.md",
+          "target": "prod",
+          "language": "Markdown",
+          "loc_total": 533,
+          "loc_nonempty": 392,
+          "types": [],
+          "top_level_methods": []
+        },
+        "RELEASE_NOTES.md": {
+          "path": "docs/RELEASE_NOTES.md",
+          "target": "prod",
+          "language": "Markdown",
+          "loc_total": 27,
+          "loc_nonempty": 22,
+          "types": [],
+          "top_level_methods": []
+        },
+        "TESTING.md": {
+          "path": "docs/TESTING.md",
+          "target": "prod",
+          "language": "Markdown",
+          "loc_total": 26,
+          "loc_nonempty": 22,
+          "types": [],
+          "top_level_methods": []
+        },
+        "architecture-report.md": {
+          "path": "docs/architecture-report.md",
+          "target": "prod",
+          "language": "Markdown",
+          "loc_total": 1078,
+          "loc_nonempty": 873,
+          "types": [],
+          "top_level_methods": []
+        }
+      }
+    },
+    "e2e": {
+      "path": "e2e",
+      "loc_total": 3388,
+      "loc_nonempty": 3012,
+      "folders": {
+        "playwright": {
+          "path": "e2e/playwright",
+          "loc_total": 1969,
+          "loc_nonempty": 1618,
+          "folders": {
+            "tests": {
+              "path": "e2e/playwright/tests",
+              "loc_total": 1848,
+              "loc_nonempty": 1499,
+              "folders": {},
+              "files": {
+                "analytics.spec.ts": {
+                  "path": "e2e/playwright/tests/analytics.spec.ts",
+                  "target": "test",
+                  "language": "TypeScript",
+                  "loc_total": 283,
+                  "loc_nonempty": 226,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "auth.spec.ts": {
+                  "path": "e2e/playwright/tests/auth.spec.ts",
+                  "target": "test",
+                  "language": "TypeScript",
+                  "loc_total": 672,
+                  "loc_nonempty": 533,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "flow-builder.spec.ts": {
+                  "path": "e2e/playwright/tests/flow-builder.spec.ts",
+                  "target": "test",
+                  "language": "TypeScript",
+                  "loc_total": 517,
+                  "loc_nonempty": 432,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "projects.spec.ts": {
+                  "path": "e2e/playwright/tests/projects.spec.ts",
+                  "target": "test",
+                  "language": "TypeScript",
+                  "loc_total": 358,
+                  "loc_nonempty": 294,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "smoke.spec.ts": {
+                  "path": "e2e/playwright/tests/smoke.spec.ts",
+                  "target": "test",
+                  "language": "TypeScript",
+                  "loc_total": 18,
+                  "loc_nonempty": 14,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            }
+          },
+          "files": {
+            "package-lock.json": {
+              "path": "e2e/playwright/package-lock.json",
+              "target": "prod",
+              "language": "JSON",
+              "loc_total": 78,
+              "loc_nonempty": 78,
+              "types": [],
+              "top_level_methods": []
+            },
+            "package.json": {
+              "path": "e2e/playwright/package.json",
+              "target": "prod",
+              "language": "JSON",
+              "loc_total": 13,
+              "loc_nonempty": 13,
+              "types": [],
+              "top_level_methods": []
+            },
+            "playwright.config.ts": {
+              "path": "e2e/playwright/playwright.config.ts",
+              "target": "prod",
+              "language": "TypeScript",
+              "loc_total": 30,
+              "loc_nonempty": 28,
+              "types": [],
+              "top_level_methods": []
+            }
+          }
+        },
+        "puppeteer": {
+          "path": "e2e/puppeteer",
+          "loc_total": 1419,
+          "loc_nonempty": 1394,
+          "folders": {
+            "artifacts": {
+              "path": "e2e/puppeteer/artifacts",
+              "loc_total": 22,
+              "loc_nonempty": 22,
+              "folders": {},
+              "files": {
+                "01-landing.png": {
+                  "path": "e2e/puppeteer/artifacts/01-landing.png",
+                  "target": "prod",
+                  "language": "Unknown",
+                  "loc_total": 0,
+                  "loc_nonempty": 0,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "02-_analytics.png": {
+                  "path": "e2e/puppeteer/artifacts/02-_analytics.png",
+                  "target": "prod",
+                  "language": "Unknown",
+                  "loc_total": 0,
+                  "loc_nonempty": 0,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "02-_dashboard.png": {
+                  "path": "e2e/puppeteer/artifacts/02-_dashboard.png",
+                  "target": "prod",
+                  "language": "Unknown",
+                  "loc_total": 0,
+                  "loc_nonempty": 0,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "02-_projects.png": {
+                  "path": "e2e/puppeteer/artifacts/02-_projects.png",
+                  "target": "prod",
+                  "language": "Unknown",
+                  "loc_total": 0,
+                  "loc_nonempty": 0,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "02-projects.png": {
+                  "path": "e2e/puppeteer/artifacts/02-projects.png",
+                  "target": "prod",
+                  "language": "Unknown",
+                  "loc_total": 0,
+                  "loc_nonempty": 0,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "03-projects-existing.png": {
+                  "path": "e2e/puppeteer/artifacts/03-projects-existing.png",
+                  "target": "prod",
+                  "language": "Unknown",
+                  "loc_total": 0,
+                  "loc_nonempty": 0,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "05-analytics-cards.png": {
+                  "path": "e2e/puppeteer/artifacts/05-analytics-cards.png",
+                  "target": "prod",
+                  "language": "Unknown",
+                  "loc_total": 0,
+                  "loc_nonempty": 0,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "06-analytics-sections.png": {
+                  "path": "e2e/puppeteer/artifacts/06-analytics-sections.png",
+                  "target": "prod",
+                  "language": "Unknown",
+                  "loc_total": 0,
+                  "loc_nonempty": 0,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "error.png": {
+                  "path": "e2e/puppeteer/artifacts/error.png",
+                  "target": "prod",
+                  "language": "Unknown",
+                  "loc_total": 0,
+                  "loc_nonempty": 0,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "links.json": {
+                  "path": "e2e/puppeteer/artifacts/links.json",
+                  "target": "prod",
+                  "language": "JSON",
+                  "loc_total": 1,
+                  "loc_nonempty": 1,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "metrics.json": {
+                  "path": "e2e/puppeteer/artifacts/metrics.json",
+                  "target": "prod",
+                  "language": "JSON",
+                  "loc_total": 15,
+                  "loc_nonempty": 15,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "performance.json": {
+                  "path": "e2e/puppeteer/artifacts/performance.json",
+                  "target": "prod",
+                  "language": "JSON",
+                  "loc_total": 6,
+                  "loc_nonempty": 6,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            }
+          },
+          "files": {
+            "package-lock.json": {
+              "path": "e2e/puppeteer/package-lock.json",
+              "target": "prod",
+              "language": "JSON",
+              "loc_total": 1186,
+              "loc_nonempty": 1186,
+              "types": [],
+              "top_level_methods": []
+            },
+            "package.json": {
+              "path": "e2e/puppeteer/package.json",
+              "target": "prod",
+              "language": "JSON",
+              "loc_total": 16,
+              "loc_nonempty": 16,
+              "types": [],
+              "top_level_methods": []
+            },
+            "sequential_puppeteer.test.backup.js": {
+              "path": "e2e/puppeteer/sequential_puppeteer.test.backup.js",
+              "target": "test",
+              "language": "JavaScript",
+              "loc_total": 84,
+              "loc_nonempty": 71,
+              "types": [],
+              "top_level_methods": []
+            },
+            "sequential_puppeteer.test.js": {
+              "path": "e2e/puppeteer/sequential_puppeteer.test.js",
+              "target": "test",
+              "language": "JavaScript",
+              "loc_total": 111,
+              "loc_nonempty": 99,
+              "types": [],
+              "top_level_methods": []
+            }
+          }
+        }
+      },
+      "files": {}
+    },
+    "frontend": {
+      "path": "frontend",
+      "loc_total": 44340,
+      "loc_nonempty": 41234,
+      "folders": {
+        "public": {
+          "path": "frontend/public",
+          "loc_total": 36,
+          "loc_nonempty": 36,
+          "folders": {},
+          "files": {
+            "favicon.ico": {
+              "path": "frontend/public/favicon.ico",
+              "target": "prod",
+              "language": "Unknown",
+              "loc_total": 1,
+              "loc_nonempty": 1,
+              "types": [],
+              "top_level_methods": []
+            },
+            "index.html": {
+              "path": "frontend/public/index.html",
+              "target": "prod",
+              "language": "HTML",
+              "loc_total": 20,
+              "loc_nonempty": 20,
+              "types": [],
+              "top_level_methods": []
+            },
+            "manifest.json": {
+              "path": "frontend/public/manifest.json",
+              "target": "prod",
+              "language": "JSON",
+              "loc_total": 15,
+              "loc_nonempty": 15,
+              "types": [],
+              "top_level_methods": []
+            }
+          }
+        },
+        "scripts": {
+          "path": "frontend/scripts",
+          "loc_total": 183,
+          "loc_nonempty": 162,
+          "folders": {},
+          "files": {
+            "check-analytics.js": {
+              "path": "frontend/scripts/check-analytics.js",
+              "target": "prod",
+              "language": "JavaScript",
+              "loc_total": 44,
+              "loc_nonempty": 37,
+              "types": [],
+              "top_level_methods": []
+            },
+            "dashboard-smoke.js": {
+              "path": "frontend/scripts/dashboard-smoke.js",
+              "target": "prod",
+              "language": "JavaScript",
+              "loc_total": 139,
+              "loc_nonempty": 125,
+              "types": [],
+              "top_level_methods": []
+            }
+          }
+        },
+        "src": {
+          "path": "frontend/src",
+          "loc_total": 35797,
+          "loc_nonempty": 32790,
+          "folders": {
+            "components": {
+              "path": "frontend/src/components",
+              "loc_total": 13629,
+              "loc_nonempty": 12650,
+              "folders": {
+                "RepositoryStatus": {
+                  "path": "frontend/src/components/RepositoryStatus",
+                  "loc_total": 268,
+                  "loc_nonempty": 247,
+                  "folders": {},
+                  "files": {
+                    "RepositoryStatusChip.tsx": {
+                      "path": "frontend/src/components/RepositoryStatus/RepositoryStatusChip.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 112,
+                      "loc_nonempty": 102,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "RepositorySyncButton.tsx": {
+                      "path": "frontend/src/components/RepositoryStatus/RepositorySyncButton.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 152,
+                      "loc_nonempty": 141,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "index.ts": {
+                      "path": "frontend/src/components/RepositoryStatus/index.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 4,
+                      "loc_nonempty": 4,
+                      "types": [],
+                      "top_level_methods": []
+                    }
+                  }
+                },
+                "capacity": {
+                  "path": "frontend/src/components/capacity",
+                  "loc_total": 1577,
+                  "loc_nonempty": 1496,
+                  "folders": {},
+                  "files": {
+                    "CFDVisualization.tsx": {
+                      "path": "frontend/src/components/capacity/CFDVisualization.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 562,
+                      "loc_nonempty": 533,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "CapacitySettingsPanel.tsx": {
+                      "path": "frontend/src/components/capacity/CapacitySettingsPanel.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 564,
+                      "loc_nonempty": 543,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "TeamHealthDashboard.tsx": {
+                      "path": "frontend/src/components/capacity/TeamHealthDashboard.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 448,
+                      "loc_nonempty": 417,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "index.ts": {
+                      "path": "frontend/src/components/capacity/index.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 3,
+                      "loc_nonempty": 3,
+                      "types": [],
+                      "top_level_methods": []
+                    }
+                  }
+                },
+                "quality": {
+                  "path": "frontend/src/components/quality",
+                  "loc_total": 1146,
+                  "loc_nonempty": 1085,
+                  "folders": {},
+                  "files": {
+                    "QualityDashboard.tsx": {
+                      "path": "frontend/src/components/quality/QualityDashboard.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 704,
+                      "loc_nonempty": 667,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "QualityReportPanel.tsx": {
+                      "path": "frontend/src/components/quality/QualityReportPanel.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 440,
+                      "loc_nonempty": 416,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "index.ts": {
+                      "path": "frontend/src/components/quality/index.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 2,
+                      "loc_nonempty": 2,
+                      "types": [],
+                      "top_level_methods": []
+                    }
+                  }
+                },
+                "security": {
+                  "path": "frontend/src/components/security",
+                  "loc_total": 530,
+                  "loc_nonempty": 489,
+                  "folders": {},
+                  "files": {
+                    "MFASettings.tsx": {
+                      "path": "frontend/src/components/security/MFASettings.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 530,
+                      "loc_nonempty": 489,
+                      "types": [],
+                      "top_level_methods": []
+                    }
+                  }
+                },
+                "testing": {
+                  "path": "frontend/src/components/testing",
+                  "loc_total": 738,
+                  "loc_nonempty": 709,
+                  "folders": {},
+                  "files": {
+                    "TestAnalyticsDashboard.tsx": {
+                      "path": "frontend/src/components/testing/TestAnalyticsDashboard.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 730,
+                      "loc_nonempty": 702,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "index.ts": {
+                      "path": "frontend/src/components/testing/index.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 8,
+                      "loc_nonempty": 7,
+                      "types": [],
+                      "top_level_methods": []
+                    }
+                  }
+                },
+                "traceability": {
+                  "path": "frontend/src/components/traceability",
+                  "loc_total": 4273,
+                  "loc_nonempty": 3993,
+                  "folders": {
+                    "nodes": {
+                      "path": "frontend/src/components/traceability/nodes",
+                      "loc_total": 410,
+                      "loc_nonempty": 386,
+                      "folders": {},
+                      "files": {
+                        "BaseNode.tsx": {
+                          "path": "frontend/src/components/traceability/nodes/BaseNode.tsx",
+                          "target": "prod",
+                          "language": "TypeScript",
+                          "loc_total": 112,
+                          "loc_nonempty": 105,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "CommitSourceNode.tsx": {
+                          "path": "frontend/src/components/traceability/nodes/CommitSourceNode.tsx",
+                          "target": "prod",
+                          "language": "TypeScript",
+                          "loc_total": 42,
+                          "loc_nonempty": 40,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "ConfluenceSourceNode.tsx": {
+                          "path": "frontend/src/components/traceability/nodes/ConfluenceSourceNode.tsx",
+                          "target": "prod",
+                          "language": "TypeScript",
+                          "loc_total": 35,
+                          "loc_nonempty": 33,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "CreateLinkActionNode.tsx": {
+                          "path": "frontend/src/components/traceability/nodes/CreateLinkActionNode.tsx",
+                          "target": "prod",
+                          "language": "TypeScript",
+                          "loc_total": 36,
+                          "loc_nonempty": 34,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "DecisionNode.tsx": {
+                          "path": "frontend/src/components/traceability/nodes/DecisionNode.tsx",
+                          "target": "prod",
+                          "language": "TypeScript",
+                          "loc_total": 75,
+                          "loc_nonempty": 70,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "FilterNode.tsx": {
+                          "path": "frontend/src/components/traceability/nodes/FilterNode.tsx",
+                          "target": "prod",
+                          "language": "TypeScript",
+                          "loc_total": 43,
+                          "loc_nonempty": 41,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "JiraIssueSourceNode.tsx": {
+                          "path": "frontend/src/components/traceability/nodes/JiraIssueSourceNode.tsx",
+                          "target": "prod",
+                          "language": "TypeScript",
+                          "loc_total": 31,
+                          "loc_nonempty": 29,
+                          "types": [],
+                          "top_level_methods": []
+                        },
+                        "JiraKeyExtractorNode.tsx": {
+                          "path": "frontend/src/components/traceability/nodes/JiraKeyExtractorNode.tsx",
+                          "target": "prod",
+                          "language": "TypeScript",
+                          "loc_total": 36,
+                          "loc_nonempty": 34,
+                          "types": [],
+                          "top_level_methods": []
+                        }
+                      }
+                    }
+                  },
+                  "files": {
+                    "DataConsistencyPanel.tsx": {
+                      "path": "frontend/src/components/traceability/DataConsistencyPanel.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 724,
+                      "loc_nonempty": 682,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "ImpactAnalysisPanel.tsx": {
+                      "path": "frontend/src/components/traceability/ImpactAnalysisPanel.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 319,
+                      "loc_nonempty": 299,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "ImportExportDialog.tsx": {
+                      "path": "frontend/src/components/traceability/ImportExportDialog.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 213,
+                      "loc_nonempty": 191,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "OrphanedArtifactsPanel.tsx": {
+                      "path": "frontend/src/components/traceability/OrphanedArtifactsPanel.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 309,
+                      "loc_nonempty": 291,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "PropertiesPanel.tsx": {
+                      "path": "frontend/src/components/traceability/PropertiesPanel.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 167,
+                      "loc_nonempty": 150,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "PropertiesPanelEditable.tsx": {
+                      "path": "frontend/src/components/traceability/PropertiesPanelEditable.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 510,
+                      "loc_nonempty": 478,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "SyncHealthDashboard.tsx": {
+                      "path": "frontend/src/components/traceability/SyncHealthDashboard.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 542,
+                      "loc_nonempty": 516,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "TemplateDialog.tsx": {
+                      "path": "frontend/src/components/traceability/TemplateDialog.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 102,
+                      "loc_nonempty": 94,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "Toolbox.tsx": {
+                      "path": "frontend/src/components/traceability/Toolbox.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 255,
+                      "loc_nonempty": 238,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "TraceabilityGraph.tsx": {
+                      "path": "frontend/src/components/traceability/TraceabilityGraph.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 577,
+                      "loc_nonempty": 529,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "ValidationPanel.tsx": {
+                      "path": "frontend/src/components/traceability/ValidationPanel.tsx",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 145,
+                      "loc_nonempty": 139,
+                      "types": [],
+                      "top_level_methods": []
+                    }
+                  }
+                }
+              },
+              "files": {
+                "AdvancedFieldMapping.tsx": {
+                  "path": "frontend/src/components/AdvancedFieldMapping.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 278,
+                  "loc_nonempty": 266,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "AnalyticsFilters.tsx": {
+                  "path": "frontend/src/components/AnalyticsFilters.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 199,
+                  "loc_nonempty": 186,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "BackendStatusAlert.tsx": {
+                  "path": "frontend/src/components/BackendStatusAlert.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 125,
+                  "loc_nonempty": 112,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "BackfillProgressDialog.test.tsx": {
+                  "path": "frontend/src/components/BackfillProgressDialog.test.tsx",
+                  "target": "test",
+                  "language": "TypeScript",
+                  "loc_total": 203,
+                  "loc_nonempty": 152,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "BackfillProgressDialog.tsx": {
+                  "path": "frontend/src/components/BackfillProgressDialog.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 210,
+                  "loc_nonempty": 192,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "CircularProgressWithLabel.tsx": {
+                  "path": "frontend/src/components/CircularProgressWithLabel.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 44,
+                  "loc_nonempty": 40,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "DashboardFilters.tsx": {
+                  "path": "frontend/src/components/DashboardFilters.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 216,
+                  "loc_nonempty": 202,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "DashboardSkeleton.test.tsx": {
+                  "path": "frontend/src/components/DashboardSkeleton.test.tsx",
+                  "target": "test",
+                  "language": "TypeScript",
+                  "loc_total": 136,
+                  "loc_nonempty": 99,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "DashboardSkeleton.tsx": {
+                  "path": "frontend/src/components/DashboardSkeleton.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 116,
+                  "loc_nonempty": 108,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "EmptyState.test.tsx": {
+                  "path": "frontend/src/components/EmptyState.test.tsx",
+                  "target": "test",
+                  "language": "TypeScript",
+                  "loc_total": 205,
+                  "loc_nonempty": 177,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "EmptyState.tsx": {
+                  "path": "frontend/src/components/EmptyState.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 144,
+                  "loc_nonempty": 134,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "HelpPanel.tsx": {
+                  "path": "frontend/src/components/HelpPanel.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 174,
+                  "loc_nonempty": 163,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "HelpTooltip.test.tsx": {
+                  "path": "frontend/src/components/HelpTooltip.test.tsx",
+                  "target": "test",
+                  "language": "TypeScript",
+                  "loc_total": 164,
+                  "loc_nonempty": 122,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "HelpTooltip.tsx": {
+                  "path": "frontend/src/components/HelpTooltip.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 65,
+                  "loc_nonempty": 60,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "IntegrationCard.tsx": {
+                  "path": "frontend/src/components/IntegrationCard.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 87,
+                  "loc_nonempty": 85,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "KPIBar.tsx": {
+                  "path": "frontend/src/components/KPIBar.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 177,
+                  "loc_nonempty": 167,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "Layout.tsx": {
+                  "path": "frontend/src/components/Layout.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 325,
+                  "loc_nonempty": 307,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "OnboardingWizard.tsx": {
+                  "path": "frontend/src/components/OnboardingWizard.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 720,
+                  "loc_nonempty": 660,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "OptionalIntegrations.tsx": {
+                  "path": "frontend/src/components/OptionalIntegrations.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 94,
+                  "loc_nonempty": 90,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "PageViewTracker.tsx": {
+                  "path": "frontend/src/components/PageViewTracker.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 33,
+                  "loc_nonempty": 28,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "QuickSetupPanel.tsx": {
+                  "path": "frontend/src/components/QuickSetupPanel.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 226,
+                  "loc_nonempty": 214,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "RequireAuth.tsx": {
+                  "path": "frontend/src/components/RequireAuth.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 22,
+                  "loc_nonempty": 17,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "SuggestedLinksPanel.tsx": {
+                  "path": "frontend/src/components/SuggestedLinksPanel.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 558,
+                  "loc_nonempty": 529,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "SyncProgressDialog.tsx": {
+                  "path": "frontend/src/components/SyncProgressDialog.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 189,
+                  "loc_nonempty": 171,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "TableSkeleton.tsx": {
+                  "path": "frontend/src/components/TableSkeleton.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 66,
+                  "loc_nonempty": 62,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "ToastProvider.tsx": {
+                  "path": "frontend/src/components/ToastProvider.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 87,
+                  "loc_nonempty": 74,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "VelocityChart.tsx": {
+                  "path": "frontend/src/components/VelocityChart.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 234,
+                  "loc_nonempty": 214,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            },
+            "hooks": {
+              "path": "frontend/src/hooks",
+              "loc_total": 1132,
+              "loc_nonempty": 997,
+              "folders": {},
+              "files": {
+                "useCapacityCalc.ts": {
+                  "path": "frontend/src/hooks/useCapacityCalc.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 306,
+                  "loc_nonempty": 272,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "useDebounce.ts": {
+                  "path": "frontend/src/hooks/useDebounce.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 286,
+                  "loc_nonempty": 247,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "useParallelLoading.ts": {
+                  "path": "frontend/src/hooks/useParallelLoading.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 287,
+                  "loc_nonempty": 254,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "useTaskStatuses.ts": {
+                  "path": "frontend/src/hooks/useTaskStatuses.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 253,
+                  "loc_nonempty": 224,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            },
+            "pages": {
+              "path": "frontend/src/pages",
+              "loc_total": 12267,
+              "loc_nonempty": 11412,
+              "folders": {
+                "__tests__": {
+                  "path": "frontend/src/pages/__tests__",
+                  "loc_total": 392,
+                  "loc_nonempty": 343,
+                  "folders": {},
+                  "files": {
+                    "Dashboard.test.tsx": {
+                      "path": "frontend/src/pages/__tests__/Dashboard.test.tsx",
+                      "target": "test",
+                      "language": "TypeScript",
+                      "loc_total": 264,
+                      "loc_nonempty": 230,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "Traceability.test.tsx": {
+                      "path": "frontend/src/pages/__tests__/Traceability.test.tsx",
+                      "target": "test",
+                      "language": "TypeScript",
+                      "loc_total": 128,
+                      "loc_nonempty": 113,
+                      "types": [],
+                      "top_level_methods": []
+                    }
+                  }
+                }
+              },
+              "files": {
+                "Analytics.tsx": {
+                  "path": "frontend/src/pages/Analytics.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 840,
+                  "loc_nonempty": 791,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "AnalyticsDashboard.tsx": {
+                  "path": "frontend/src/pages/AnalyticsDashboard.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 366,
+                  "loc_nonempty": 347,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "Dashboard.tsx": {
+                  "path": "frontend/src/pages/Dashboard.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 1086,
+                  "loc_nonempty": 1014,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "JiraFieldsConfig.tsx": {
+                  "path": "frontend/src/pages/JiraFieldsConfig.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 650,
+                  "loc_nonempty": 613,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "Knowledge.tsx": {
+                  "path": "frontend/src/pages/Knowledge.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 698,
+                  "loc_nonempty": 652,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "Login.tsx": {
+                  "path": "frontend/src/pages/Login.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 486,
+                  "loc_nonempty": 434,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "Profile.tsx": {
+                  "path": "frontend/src/pages/Profile.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 198,
+                  "loc_nonempty": 182,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "ProjectDetail.tsx": {
+                  "path": "frontend/src/pages/ProjectDetail.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 2666,
+                  "loc_nonempty": 2449,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "Projects.tsx": {
+                  "path": "frontend/src/pages/Projects.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 619,
+                  "loc_nonempty": 583,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "Quality.tsx": {
+                  "path": "frontend/src/pages/Quality.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 332,
+                  "loc_nonempty": 310,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "Settings.tsx": {
+                  "path": "frontend/src/pages/Settings.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 743,
+                  "loc_nonempty": 710,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "SprintCapacity.tsx": {
+                  "path": "frontend/src/pages/SprintCapacity.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 189,
+                  "loc_nonempty": 177,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "Tasks.tsx": {
+                  "path": "frontend/src/pages/Tasks.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 376,
+                  "loc_nonempty": 353,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "Testing.tsx": {
+                  "path": "frontend/src/pages/Testing.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 474,
+                  "loc_nonempty": 451,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "Traceability.tsx": {
+                  "path": "frontend/src/pages/Traceability.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 1107,
+                  "loc_nonempty": 1036,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "TraceabilityExecutionHistory.tsx": {
+                  "path": "frontend/src/pages/TraceabilityExecutionHistory.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 264,
+                  "loc_nonempty": 247,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "TraceabilityFlowBuilder.tsx": {
+                  "path": "frontend/src/pages/TraceabilityFlowBuilder.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 334,
+                  "loc_nonempty": 304,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "TraceabilityVisualization.tsx": {
+                  "path": "frontend/src/pages/TraceabilityVisualization.tsx",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 447,
+                  "loc_nonempty": 416,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            },
+            "services": {
+              "path": "frontend/src/services",
+              "loc_total": 5304,
+              "loc_nonempty": 4676,
+              "folders": {
+                "api": {
+                  "path": "frontend/src/services/api",
+                  "loc_total": 4776,
+                  "loc_nonempty": 4212,
+                  "folders": {},
+                  "files": {
+                    "analytics.ts": {
+                      "path": "frontend/src/services/api/analytics.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 345,
+                      "loc_nonempty": 290,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "capacity.ts": {
+                      "path": "frontend/src/services/api/capacity.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 187,
+                      "loc_nonempty": 158,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "client.ts": {
+                      "path": "frontend/src/services/api/client.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 153,
+                      "loc_nonempty": 132,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "index.ts": {
+                      "path": "frontend/src/services/api/index.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 360,
+                      "loc_nonempty": 342,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "integrations.ts": {
+                      "path": "frontend/src/services/api/integrations.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 279,
+                      "loc_nonempty": 240,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "knowledge.ts": {
+                      "path": "frontend/src/services/api/knowledge.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 221,
+                      "loc_nonempty": 186,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "projects.ts": {
+                      "path": "frontend/src/services/api/projects.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 272,
+                      "loc_nonempty": 233,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "quality.ts": {
+                      "path": "frontend/src/services/api/quality.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 221,
+                      "loc_nonempty": 197,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "sprints.ts": {
+                      "path": "frontend/src/services/api/sprints.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 203,
+                      "loc_nonempty": 174,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "tasks.ts": {
+                      "path": "frontend/src/services/api/tasks.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 187,
+                      "loc_nonempty": 168,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "testing.ts": {
+                      "path": "frontend/src/services/api/testing.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 207,
+                      "loc_nonempty": 178,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "traceability.ts": {
+                      "path": "frontend/src/services/api/traceability.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 487,
+                      "loc_nonempty": 427,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "types.ts": {
+                      "path": "frontend/src/services/api/types.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 1462,
+                      "loc_nonempty": 1321,
+                      "types": [],
+                      "top_level_methods": []
+                    },
+                    "users.ts": {
+                      "path": "frontend/src/services/api/users.ts",
+                      "target": "prod",
+                      "language": "TypeScript",
+                      "loc_total": 192,
+                      "loc_nonempty": 166,
+                      "types": [],
+                      "top_level_methods": []
+                    }
+                  }
+                }
+              },
+              "files": {
+                "analytics.ts": {
+                  "path": "frontend/src/services/analytics.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 333,
+                  "loc_nonempty": 289,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "jiraFieldsApi.ts": {
+                  "path": "frontend/src/services/jiraFieldsApi.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 195,
+                  "loc_nonempty": 175,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            },
+            "store": {
+              "path": "frontend/src/store",
+              "loc_total": 491,
+              "loc_nonempty": 436,
+              "folders": {},
+              "files": {
+                "authSlice.ts": {
+                  "path": "frontend/src/store/authSlice.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 56,
+                  "loc_nonempty": 51,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "dataThunks.ts": {
+                  "path": "frontend/src/store/dataThunks.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 186,
+                  "loc_nonempty": 159,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "projectSlice.ts": {
+                  "path": "frontend/src/store/projectSlice.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 63,
+                  "loc_nonempty": 57,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "sprintSlice.ts": {
+                  "path": "frontend/src/store/sprintSlice.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 75,
+                  "loc_nonempty": 67,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "store.ts": {
+                  "path": "frontend/src/store/store.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 17,
+                  "loc_nonempty": 15,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "taskSlice.ts": {
+                  "path": "frontend/src/store/taskSlice.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 94,
+                  "loc_nonempty": 87,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            },
+            "test": {
+              "path": "frontend/src/test",
+              "loc_total": 61,
+              "loc_nonempty": 57,
+              "folders": {},
+              "files": {
+                "setup-env.ts": {
+                  "path": "frontend/src/test/setup-env.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 19,
+                  "loc_nonempty": 19,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "setup.ts": {
+                  "path": "frontend/src/test/setup.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 42,
+                  "loc_nonempty": 38,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            },
+            "utils": {
+              "path": "frontend/src/utils",
+              "loc_total": 2133,
+              "loc_nonempty": 1873,
+              "folders": {},
+              "files": {
+                "apiOptimization.ts": {
+                  "path": "frontend/src/utils/apiOptimization.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 589,
+                  "loc_nonempty": 503,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "backendHealth.ts": {
+                  "path": "frontend/src/utils/backendHealth.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 122,
+                  "loc_nonempty": 104,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "env.ts": {
+                  "path": "frontend/src/utils/env.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 7,
+                  "loc_nonempty": 5,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "errorUtils.ts": {
+                  "path": "frontend/src/utils/errorUtils.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 78,
+                  "loc_nonempty": 70,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "logout.ts": {
+                  "path": "frontend/src/utils/logout.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 216,
+                  "loc_nonempty": 189,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "ruleTemplates.ts": {
+                  "path": "frontend/src/utils/ruleTemplates.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 294,
+                  "loc_nonempty": 285,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "ruleValidation.ts": {
+                  "path": "frontend/src/utils/ruleValidation.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 319,
+                  "loc_nonempty": 279,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "smartDefaults.ts": {
+                  "path": "frontend/src/utils/smartDefaults.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 267,
+                  "loc_nonempty": 234,
+                  "types": [],
+                  "top_level_methods": []
+                },
+                "storage.ts": {
+                  "path": "frontend/src/utils/storage.ts",
+                  "target": "prod",
+                  "language": "TypeScript",
+                  "loc_total": 241,
+                  "loc_nonempty": 204,
+                  "types": [],
+                  "top_level_methods": []
+                }
+              }
+            }
+          },
+          "files": {
+            "App.css": {
+              "path": "frontend/src/App.css",
+              "target": "prod",
+              "language": "CSS",
+              "loc_total": 403,
+              "loc_nonempty": 340,
+              "types": [],
+              "top_level_methods": []
+            },
+            "App.tsx": {
+              "path": "frontend/src/App.tsx",
+              "target": "prod",
+              "language": "TypeScript",
+              "loc_total": 186,
+              "loc_nonempty": 167,
+              "types": [],
+              "top_level_methods": []
+            },
+            "chart.ts": {
+              "path": "frontend/src/chart.ts",
+              "target": "prod",
+              "language": "TypeScript",
+              "loc_total": 26,
+              "loc_nonempty": 24,
+              "types": [],
+              "top_level_methods": []
+            },
+            "index.css": {
+              "path": "frontend/src/index.css",
+              "target": "prod",
+              "language": "CSS",
+              "loc_total": 17,
+              "loc_nonempty": 15,
+              "types": [],
+              "top_level_methods": []
+            },
+            "index.tsx": {
+              "path": "frontend/src/index.tsx",
+              "target": "prod",
+              "language": "TypeScript",
+              "loc_total": 30,
+              "loc_nonempty": 28,
+              "types": [],
+              "top_level_methods": []
+            },
+            "theme.ts": {
+              "path": "frontend/src/theme.ts",
+              "target": "prod",
+              "language": "TypeScript",
+              "loc_total": 118,
+              "loc_nonempty": 115,
+              "types": [],
+              "top_level_methods": []
+            }
+          }
+        }
+      },
+      "files": {
+        "analytics-preview.png": {
+          "path": "frontend/analytics-preview.png",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 0,
+          "loc_nonempty": 0,
+          "types": [],
+          "top_level_methods": []
+        },
+        "dashboard-smoke-error.html": {
+          "path": "frontend/dashboard-smoke-error.html",
+          "target": "prod",
+          "language": "HTML",
+          "loc_total": 20,
+          "loc_nonempty": 18,
+          "types": [],
+          "top_level_methods": []
+        },
+        "dashboard-smoke-error.png": {
+          "path": "frontend/dashboard-smoke-error.png",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 0,
+          "loc_nonempty": 0,
+          "types": [],
+          "top_level_methods": []
+        },
+        "index.html": {
+          "path": "frontend/index.html",
+          "target": "prod",
+          "language": "HTML",
+          "loc_total": 15,
+          "loc_nonempty": 15,
+          "types": [],
+          "top_level_methods": []
+        },
+        "package-lock.json": {
+          "path": "frontend/package-lock.json",
+          "target": "prod",
+          "language": "JSON",
+          "loc_total": 7522,
+          "loc_nonempty": 7522,
+          "types": [],
+          "top_level_methods": []
+        },
+        "package-simple.json": {
+          "path": "frontend/package-simple.json",
+          "target": "prod",
+          "language": "JSON",
+          "loc_total": 46,
+          "loc_nonempty": 46,
+          "types": [],
+          "top_level_methods": []
+        },
+        "package.json": {
+          "path": "frontend/package.json",
+          "target": "prod",
+          "language": "JSON",
+          "loc_total": 77,
+          "loc_nonempty": 77,
+          "types": [],
+          "top_level_methods": []
+        },
+        "preview.err": {
+          "path": "frontend/preview.err",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 1,
+          "loc_nonempty": 1,
+          "types": [],
+          "top_level_methods": []
+        },
+        "preview.log": {
+          "path": "frontend/preview.log",
+          "target": "prod",
+          "language": "Unknown",
+          "loc_total": 5,
+          "loc_nonempty": 3,
+          "types": [],
+          "top_level_methods": []
+        },
+        "simple.html": {
+          "path": "frontend/simple.html",
+          "target": "prod",
+          "language": "HTML",
+          "loc_total": 550,
+          "loc_nonempty": 477,
+          "types": [],
+          "top_level_methods": []
+        },
+        "tsconfig.json": {
+          "path": "frontend/tsconfig.json",
+          "target": "prod",
+          "language": "JSON",
+          "loc_total": 26,
+          "loc_nonempty": 26,
+          "types": [],
+          "top_level_methods": []
+        },
+        "vite.config.ts": {
+          "path": "frontend/vite.config.ts",
+          "target": "prod",
+          "language": "TypeScript",
+          "loc_total": 62,
+          "loc_nonempty": 61,
+          "types": [],
+          "top_level_methods": []
+        }
+      }
+    },
+    "plan": {
+      "path": "plan",
+      "loc_total": 269,
+      "loc_nonempty": 219,
+      "folders": {},
+      "files": {
+        "plan_01_Overall_Plan.md": {
+          "path": "plan/plan_01_Overall_Plan.md",
+          "target": "prod",
+          "language": "Markdown",
+          "loc_total": 55,
+          "loc_nonempty": 47,
+          "types": [],
+          "top_level_methods": []
+        },
+        "plan_02_Architecture_and_Data_Model.md": {
+          "path": "plan/plan_02_Architecture_and_Data_Model.md",
+          "target": "prod",
+          "language": "Markdown",
+          "loc_total": 31,
+          "loc_nonempty": 25,
+          "types": [],
+          "top_level_methods": []
+        },
+        "plan_03_Integrations_and_Sync.md": {
+          "path": "plan/plan_03_Integrations_and_Sync.md",
+          "target": "prod",
+          "language": "Markdown",
+          "loc_total": 32,
+          "loc_nonempty": 26,
+          "types": [],
+          "top_level_methods": []
+        },
+        "plan_04_Trace_Links_and_Rule_Engine.md": {
+          "path": "plan/plan_04_Trace_Links_and_Rule_Engine.md",
+          "target": "prod",
+          "language": "Markdown",
+          "loc_total": 30,
+          "loc_nonempty": 24,
+          "types": [],
+          "top_level_methods": []
+        },
+        "plan_05_Analytics_and_RTM_Matrix_API.md": {
+          "path": "plan/plan_05_Analytics_and_RTM_Matrix_API.md",
+          "target": "prod",
+          "language": "Markdown",
+          "loc_total": 31,
+          "loc_nonempty": 25,
+          "types": [],
+          "top_level_methods": []
+        },
+        "plan_06_UI_UX_Matrix_Graph_and_Exports.md": {
+          "path": "plan/plan_06_UI_UX_Matrix_Graph_and_Exports.md",
+          "target": "prod",
+          "language": "Markdown",
+          "loc_total": 32,
+          "loc_nonempty": 26,
+          "types": [],
+          "top_level_methods": []
+        },
+        "plan_07_Security_Governance_and_Audit.md": {
+          "path": "plan/plan_07_Security_Governance_and_Audit.md",
+          "target": "prod",
+          "language": "Markdown",
+          "loc_total": 29,
+          "loc_nonempty": 23,
+          "types": [],
+          "top_level_methods": []
+        },
+        "plan_08_Ops_Performance_and_Observability.md": {
+          "path": "plan/plan_08_Ops_Performance_and_Observability.md",
+          "target": "prod",
+          "language": "Markdown",
+          "loc_total": 29,
+          "loc_nonempty": 23,
+          "types": [],
+          "top_level_methods": []
+        }
+      }
+    }
+  },
+  "files": {
+    ".env": {
+      "path": ".env",
+      "target": "prod",
+      "language": "Unknown",
+      "loc_total": 70,
+      "loc_nonempty": 56,
+      "types": [],
+      "top_level_methods": []
+    },
+    ".env.example": {
+      "path": ".env.example",
+      "target": "prod",
+      "language": "Unknown",
+      "loc_total": 40,
+      "loc_nonempty": 33,
+      "types": [],
+      "top_level_methods": []
+    },
+    ".gitignore": {
+      "path": ".gitignore",
+      "target": "prod",
+      "language": "Unknown",
+      "loc_total": 89,
+      "loc_nonempty": 76,
+      "types": [],
+      "top_level_methods": []
+    },
+    "BACKEND_TIMEOUT_FIX.md": {
+      "path": "BACKEND_TIMEOUT_FIX.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 242,
+      "loc_nonempty": 190,
+      "types": [],
+      "top_level_methods": []
+    },
+    "CODE_DUPLICATION_PROGRESS.md": {
+      "path": "CODE_DUPLICATION_PROGRESS.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 301,
+      "loc_nonempty": 225,
+      "types": [],
+      "top_level_methods": []
+    },
+    "COMPREHENSIVE_REFACTORING_PROGRESS.md": {
+      "path": "COMPREHENSIVE_REFACTORING_PROGRESS.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 520,
+      "loc_nonempty": 393,
+      "types": [],
+      "top_level_methods": []
+    },
+    "CREDENTIALS_ENCRYPTION_VERIFICATION.md": {
+      "path": "CREDENTIALS_ENCRYPTION_VERIFICATION.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 443,
+      "loc_nonempty": 323,
+      "types": [],
+      "top_level_methods": []
+    },
+    "CRITICAL_ISSUE_2_PROGRESS.md": {
+      "path": "CRITICAL_ISSUE_2_PROGRESS.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 357,
+      "loc_nonempty": 281,
+      "types": [],
+      "top_level_methods": []
+    },
+    "CRITICAL_ISSUE_4_SECURITY_COMPLETED.md": {
+      "path": "CRITICAL_ISSUE_4_SECURITY_COMPLETED.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 402,
+      "loc_nonempty": 298,
+      "types": [],
+      "top_level_methods": []
+    },
+    "DEVELOPMENT_COMPLETION_REPORT.md": {
+      "path": "DEVELOPMENT_COMPLETION_REPORT.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 424,
+      "loc_nonempty": 317,
+      "types": [],
+      "top_level_methods": []
+    },
+    "IMPLEMENTATION_STATUS_FINAL.md": {
+      "path": "IMPLEMENTATION_STATUS_FINAL.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 258,
+      "loc_nonempty": 201,
+      "types": [],
+      "top_level_methods": []
+    },
+    "JIRA_ASYNC_CELERY_MIGRATION.md": {
+      "path": "JIRA_ASYNC_CELERY_MIGRATION.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 332,
+      "loc_nonempty": 252,
+      "types": [],
+      "top_level_methods": []
+    },
+    "JIRA_SYNC_OPTIMIZATION.md": {
+      "path": "JIRA_SYNC_OPTIMIZATION.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 186,
+      "loc_nonempty": 138,
+      "types": [],
+      "top_level_methods": []
+    },
+    "MASTER_PLAN_UPDATE_RECOMMENDATION.md": {
+      "path": "MASTER_PLAN_UPDATE_RECOMMENDATION.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 96,
+      "loc_nonempty": 66,
+      "types": [],
+      "top_level_methods": []
+    },
+    "METRICS_AUDIT_REPORT.md": {
+      "path": "METRICS_AUDIT_REPORT.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 1025,
+      "loc_nonempty": 804,
+      "types": [],
+      "top_level_methods": []
+    },
+    "ONBOARDING_GUIDE.md": {
+      "path": "ONBOARDING_GUIDE.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 269,
+      "loc_nonempty": 190,
+      "types": [],
+      "top_level_methods": []
+    },
+    "PERFORMANCE_RECOMMENDATIONS.md": {
+      "path": "PERFORMANCE_RECOMMENDATIONS.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 486,
+      "loc_nonempty": 364,
+      "types": [],
+      "top_level_methods": []
+    },
+    "PHASE_3_3_VELOCITY_CHART_IMPROVEMENTS.md": {
+      "path": "PHASE_3_3_VELOCITY_CHART_IMPROVEMENTS.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 465,
+      "loc_nonempty": 371,
+      "types": [],
+      "top_level_methods": []
+    },
+    "PHASE_3_6_TRACEABILITY_BACKFILL_PROGRESS.md": {
+      "path": "PHASE_3_6_TRACEABILITY_BACKFILL_PROGRESS.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 516,
+      "loc_nonempty": 412,
+      "types": [],
+      "top_level_methods": []
+    },
+    "PHASE_4_ANALYTICS_IMPLEMENTATION.md": {
+      "path": "PHASE_4_ANALYTICS_IMPLEMENTATION.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 408,
+      "loc_nonempty": 313,
+      "types": [],
+      "top_level_methods": []
+    },
+    "PHASE_4_NAVIGATION_PERFORMANCE.md": {
+      "path": "PHASE_4_NAVIGATION_PERFORMANCE.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 440,
+      "loc_nonempty": 351,
+      "types": [],
+      "top_level_methods": []
+    },
+    "PHASE_5_PERFORMANCE_OPTIMIZATION.md": {
+      "path": "PHASE_5_PERFORMANCE_OPTIMIZATION.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 584,
+      "loc_nonempty": 449,
+      "types": [],
+      "top_level_methods": []
+    },
+    "PHASE_5_PROGRESSIVE_DISCLOSURE.md": {
+      "path": "PHASE_5_PROGRESSIVE_DISCLOSURE.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 506,
+      "loc_nonempty": 401,
+      "types": [],
+      "top_level_methods": []
+    },
+    "PHASE_6_LOADING_STATES_FEEDBACK.md": {
+      "path": "PHASE_6_LOADING_STATES_FEEDBACK.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 511,
+      "loc_nonempty": 416,
+      "types": [],
+      "top_level_methods": []
+    },
+    "PHASE_6_TESTING_IMPLEMENTATION.md": {
+      "path": "PHASE_6_TESTING_IMPLEMENTATION.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 675,
+      "loc_nonempty": 516,
+      "types": [],
+      "top_level_methods": []
+    },
+    "PHASE_7_CONTEXTUAL_HELP.md": {
+      "path": "PHASE_7_CONTEXTUAL_HELP.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 442,
+      "loc_nonempty": 351,
+      "types": [],
+      "top_level_methods": []
+    },
+    "README.md": {
+      "path": "README.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 321,
+      "loc_nonempty": 249,
+      "types": [],
+      "top_level_methods": []
+    },
+    "REFACTORING_PLAN.md": {
+      "path": "REFACTORING_PLAN.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 312,
+      "loc_nonempty": 251,
+      "types": [],
+      "top_level_methods": []
+    },
+    "REFACTORING_PROGRESS.md": {
+      "path": "REFACTORING_PROGRESS.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 314,
+      "loc_nonempty": 239,
+      "types": [],
+      "top_level_methods": []
+    },
+    "REFACTORING_REPORT.md": {
+      "path": "REFACTORING_REPORT.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 1500,
+      "loc_nonempty": 1193,
+      "types": [],
+      "top_level_methods": []
+    },
+    "SESSION_SUMMARY.md": {
+      "path": "SESSION_SUMMARY.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 398,
+      "loc_nonempty": 302,
+      "types": [],
+      "top_level_methods": []
+    },
+    "TRACEABILITY_FLOW_BUILDER_PHASE1.md": {
+      "path": "TRACEABILITY_FLOW_BUILDER_PHASE1.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 306,
+      "loc_nonempty": 248,
+      "types": [],
+      "top_level_methods": []
+    },
+    "TRACEABILITY_FLOW_BUILDER_PHASE2.md": {
+      "path": "TRACEABILITY_FLOW_BUILDER_PHASE2.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 487,
+      "loc_nonempty": 380,
+      "types": [],
+      "top_level_methods": []
+    },
+    "TRACEABILITY_RULES_DESIGN.md": {
+      "path": "TRACEABILITY_RULES_DESIGN.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 820,
+      "loc_nonempty": 697,
+      "types": [],
+      "top_level_methods": []
+    },
+    "TRACEABILITY_RULES_DESIGN_V2.md": {
+      "path": "TRACEABILITY_RULES_DESIGN_V2.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 689,
+      "loc_nonempty": 550,
+      "types": [],
+      "top_level_methods": []
+    },
+    "VISUAL_FLOW_BUILDER_DESIGN.md": {
+      "path": "VISUAL_FLOW_BUILDER_DESIGN.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 1117,
+      "loc_nonempty": 1006,
+      "types": [],
+      "top_level_methods": []
+    },
+    "celery_research_analysis.md": {
+      "path": "celery_research_analysis.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 381,
+      "loc_nonempty": 311,
+      "types": [],
+      "top_level_methods": []
+    },
+    "check_users.py": {
+      "path": "check_users.py",
+      "target": "prod",
+      "language": "Python",
+      "loc_total": 19,
+      "loc_nonempty": 17,
+      "types": [],
+      "top_level_methods": []
+    },
+    "docker-compose.dev.yml": {
+      "path": "docker-compose.dev.yml",
+      "target": "prod",
+      "language": "YAML",
+      "loc_total": 143,
+      "loc_nonempty": 134,
+      "types": [],
+      "top_level_methods": []
+    },
+    "docker-compose.local.yml": {
+      "path": "docker-compose.local.yml",
+      "target": "prod",
+      "language": "YAML",
+      "loc_total": 37,
+      "loc_nonempty": 34,
+      "types": [],
+      "top_level_methods": []
+    },
+    "docker-compose.yml": {
+      "path": "docker-compose.yml",
+      "target": "prod",
+      "language": "YAML",
+      "loc_total": 103,
+      "loc_nonempty": 96,
+      "types": [],
+      "top_level_methods": []
+    },
+    "firebase-debug.log": {
+      "path": "firebase-debug.log",
+      "target": "prod",
+      "language": "Unknown",
+      "loc_total": 204,
+      "loc_nonempty": 204,
+      "types": [],
+      "top_level_methods": []
+    },
+    "frontend_src_pages_TraceabilityRules_MOCKUP.tsx": {
+      "path": "frontend_src_pages_TraceabilityRules_MOCKUP.tsx",
+      "target": "prod",
+      "language": "TypeScript",
+      "loc_total": 605,
+      "loc_nonempty": 547,
+      "types": [],
+      "top_level_methods": []
+    },
+    "gitlab_api_authentication_research.md": {
+      "path": "gitlab_api_authentication_research.md",
+      "target": "prod",
+      "language": "Markdown",
+      "loc_total": 311,
+      "loc_nonempty": 245,
+      "types": [],
+      "top_level_methods": []
+    },
+    "patch_git_endpoints.py": {
+      "path": "patch_git_endpoints.py",
+      "target": "prod",
+      "language": "Python",
+      "loc_total": 0,
+      "loc_nonempty": 0,
+      "types": [],
+      "top_level_methods": []
+    },
+    "po_helper.iml": {
+      "path": "po_helper.iml",
+      "target": "prod",
+      "language": "Unknown",
+      "loc_total": 8,
+      "loc_nonempty": 8,
+      "types": [],
+      "top_level_methods": []
+    },
+    "research.txt": {
+      "path": "research.txt",
+      "target": "prod",
+      "language": "Unknown",
+      "loc_total": 449,
+      "loc_nonempty": 449,
+      "types": [],
+      "top_level_methods": []
+    },
+    "temp_commits_func.txt": {
+      "path": "temp_commits_func.txt",
+      "target": "prod",
+      "language": "Unknown",
+      "loc_total": 94,
+      "loc_nonempty": 85,
+      "types": [],
+      "top_level_methods": []
+    },
+    "ticket_structure.xml": {
+      "path": "ticket_structure.xml",
+      "target": "prod",
+      "language": "Unknown",
+      "loc_total": 208,
+      "loc_nonempty": 207,
+      "types": [],
+      "top_level_methods": []
+    }
+  }
+}

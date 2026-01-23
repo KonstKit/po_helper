@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, Suspense, lazy } from 'react';
+import { useEffect, useState, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { Box, CircularProgress } from '@mui/material';
@@ -32,7 +32,9 @@ const JiraFieldsConfig = lazy(() => import('./pages/JiraFieldsConfig'));
 const Traceability = lazy(() => import('./pages/Traceability'));
 const TraceabilityFlowBuilder = lazy(() => import('./pages/TraceabilityFlowBuilder'));
 const TraceabilityExecutionHistory = lazy(() => import('./pages/TraceabilityExecutionHistory'));
+const TraceabilityVisualization = lazy(() => import('./pages/TraceabilityVisualization'));
 const AnalyticsDashboard = lazy(() => import('./pages/AnalyticsDashboard'));
+const SprintCapacity = lazy(() => import('./pages/SprintCapacity'));
 
 const LazyFallback = () => (
   <Box
@@ -52,7 +54,7 @@ function App() {
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
   const isAuthenticated = useSelector((state: RootState) => state.auth.isAuthenticated);
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
   useEffect(() => {
     // Clean up expired cache on startup
@@ -80,15 +82,9 @@ function App() {
     analytics.track('app_loaded');
   }, []);
 
-  useEffect(() => {
-    // Check if user has completed onboarding
-    if (isAuthenticated) {
-      const onboardingCompleted = localStorage.getItem('onboarding_completed');
-      if (!onboardingCompleted) {
-        setShowOnboarding(true);
-      }
-    }
-  }, [isAuthenticated]);
+  const showOnboarding = isAuthenticated
+    && !localStorage.getItem('onboarding_completed')
+    && !onboardingDismissed;
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -114,13 +110,12 @@ function App() {
   }, [dispatch, navigate]);
 
   const handleOnboardingComplete = async () => {
-    setShowOnboarding(false);
+    setOnboardingDismissed(true);
 
     // Generate and save smart defaults after onboarding
     try {
       const defaults = await generateSmartDefaults();
       saveSmartDefaults(defaults);
-      console.log('Smart defaults generated:', defaults);
     } catch (error) {
       console.error('Failed to generate smart defaults:', error);
     }
@@ -130,7 +125,7 @@ function App() {
 
   const handleOnboardingSkip = () => {
     localStorage.setItem('onboarding_completed', 'true');
-    setShowOnboarding(false);
+    setOnboardingDismissed(true);
   };
 
   return (
@@ -169,7 +164,9 @@ function App() {
               <Route path="traceability" element={<Traceability />} />
               <Route path="traceability/flow-builder" element={<TraceabilityFlowBuilder />} />
               <Route path="traceability/history" element={<TraceabilityExecutionHistory />} />
+              <Route path="traceability/visualization" element={<TraceabilityVisualization />} />
               <Route path="usage-analytics" element={<AnalyticsDashboard />} />
+              <Route path="sprint-capacity" element={<SprintCapacity />} />
               <Route path="profile" element={<Profile />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>

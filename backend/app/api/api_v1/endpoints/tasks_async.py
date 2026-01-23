@@ -1,11 +1,13 @@
 """
 API endpoints for managing asynchronous tasks with progress tracking.
 """
-from typing import List, Optional
+
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from app.services.task_manager import task_manager
 
 router = APIRouter()
+
 
 @router.get("/tasks/{task_id}")
 async def get_task_status(task_id: str):
@@ -30,7 +32,7 @@ async def cancel_task(task_id: str):
 @router.get("/tasks")
 async def list_tasks(
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
-    include_completed: bool = Query(False, description="Include completed tasks")
+    include_completed: bool = Query(False, description="Include completed tasks"),
 ):
     """List background tasks."""
     if user_id:

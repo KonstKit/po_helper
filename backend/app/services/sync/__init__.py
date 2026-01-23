@@ -19,14 +19,14 @@ from app.services.sync.sprint_snapshot_service import SprintSnapshotService, Sna
 from app.services.sync.board_sync_service import BoardSyncService, BoardSyncResult
 
 __all__ = [
-    'ProjectSyncOrchestrator',
-    'ProjectSyncResult',
-    'IssueSyncService',
-    'IssueSyncResult',
-    'WorklogSyncService',
-    'WorklogSyncResult',
-    'SprintSnapshotService',
-    'SnapshotResult',
-    'BoardSyncService',
-    'BoardSyncResult',
+    "ProjectSyncOrchestrator",
+    "ProjectSyncResult",
+    "IssueSyncService",
+    "IssueSyncResult",
+    "WorklogSyncService",
+    "WorklogSyncResult",
+    "SprintSnapshotService",
+    "SnapshotResult",
+    "BoardSyncService",
+    "BoardSyncResult",
 ]

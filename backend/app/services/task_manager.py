@@ -2,6 +2,7 @@
 Task manager for handling long-running operations with progress tracking.
 Supports background task execution, progress reporting, and cancellation.
 """
+
 import uuid
 import asyncio
 import logging
@@ -13,12 +14,14 @@ import json
 
 logger = logging.getLogger(__name__)
 
+
 class TaskStatus(Enum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
 
 class TaskInfo:
     def __init__(self, task_id: str, name: str, user_id: Optional[str] = None):
@@ -50,9 +53,11 @@ class TaskInfo:
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "duration_seconds": (
                 (self.completed_at - self.started_at).total_seconds()
-                if self.started_at and self.completed_at else None
+                if self.started_at and self.completed_at
+                else None
             ),
         }
+
 
 class TaskManager:
     def __init__(self):
@@ -67,11 +72,12 @@ class TaskManager:
         try:
             if settings.REDIS_URL:
                 import redis
+
                 self._redis_client = redis.from_url(
                     settings.REDIS_URL,
                     decode_responses=True,
                     socket_connect_timeout=2,
-                    socket_timeout=2
+                    socket_timeout=2,
                 )
                 self._redis_client.ping()
                 logger.info("Task manager Redis initialized")
@@ -92,7 +98,7 @@ class TaskManager:
                 self._redis_client.setex(
                     key,
                     86400,  # 24 hours TTL
-                    json.dumps(task.to_dict())
+                    json.dumps(task.to_dict()),
                 )
             except Exception as e:
                 logger.debug(f"Failed to store task in Redis: {e}")
@@ -148,7 +154,7 @@ class TaskManager:
                 self._redis_client.setex(
                     key,
                     86400,  # 24 hours TTL
-                    json.dumps(task.to_dict())
+                    json.dumps(task.to_dict()),
                 )
             except Exception as e:
                 logger.debug(f"Failed to update task in Redis: {e}")
@@ -167,16 +173,13 @@ class TaskManager:
             status=TaskStatus.COMPLETED,
             progress=100.0,
             result=result,
-            completed_at=datetime.utcnow()
+            completed_at=datetime.utcnow(),
         )
 
     def fail_task(self, task_id: str, error: Any):
         """Mark task as failed."""
         self.update_task(
-            task_id,
-            status=TaskStatus.FAILED,
-            error=error,
-            completed_at=datetime.utcnow()
+            task_id, status=TaskStatus.FAILED, error=error, completed_at=datetime.utcnow()
         )
 
     def cancel_task(self, task_id: str) -> bool:
@@ -198,11 +201,7 @@ class TaskManager:
         return task.cancellation_token.is_set() if task else False
 
     async def run_async(
-        self,
-        task_id: str,
-        func: Callable[..., Awaitable[Any]],
-        *args,
-        **kwargs
+        self, task_id: str, func: Callable[..., Awaitable[Any]], *args, **kwargs
     ) -> Any:
         """Run an async function with progress tracking."""
         task = self.get_task(task_id)
@@ -211,11 +210,7 @@ class TaskManager:
 
         try:
             # Mark as running
-            self.update_task(
-                task_id,
-                status=TaskStatus.RUNNING,
-                started_at=datetime.utcnow()
-            )
+            self.update_task(task_id, status=TaskStatus.RUNNING, started_at=datetime.utcnow())
 
             # Inject task_id into kwargs for progress updates
             kwargs["task_id"] = task_id
@@ -223,10 +218,7 @@ class TaskManager:
 
             # Run the function with timeout
             timeout = kwargs.pop("timeout", 300)  # Default 5 minutes
-            result = await asyncio.wait_for(
-                func(*args, **kwargs),
-                timeout=timeout
-            )
+            result = await asyncio.wait_for(func(*args, **kwargs), timeout=timeout)
 
             # Mark as completed
             self.complete_task(task_id, result)
@@ -280,11 +272,9 @@ class TaskManager:
         """Send progress update via WebSocket if available."""
         try:
             from app.core.notifications import connections
+
             asyncio.create_task(
-                connections.broadcast_json({
-                    "type": "task_progress",
-                    "task": task.to_dict()
-                })
+                connections.broadcast_json({"type": "task_progress", "task": task.to_dict()})
             )
         except Exception:
             pass  # Notifications are optional
@@ -292,22 +282,3 @@ class TaskManager:
 
 # Global task manager instance
 task_manager = TaskManager()
-
-
-# Helper decorator for background tasks
-def background_task(name: str):
-    """Decorator to run a function as a background task with progress tracking."""
-    def decorator(func):
-        async def wrapper(*args, **kwargs):
-            user_id = kwargs.pop("user_id", None)
-            task_id = task_manager.create_task(name, user_id)
-
-            # Run in background
-            asyncio.create_task(
-                task_manager.run_async(task_id, func, *args, **kwargs)
-            )
-
-            return {"task_id": task_id, "status": "started"}
-
-        return wrapper
-    return decorator

@@ -1,4 +1,4 @@
-﻿"""add jira field mappings table
+"""add jira field mappings table
 
 Revision ID: 005
 Revises: 0001

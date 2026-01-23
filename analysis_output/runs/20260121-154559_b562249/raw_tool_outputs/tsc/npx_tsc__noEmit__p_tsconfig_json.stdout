@@ -1,0 +1,265 @@
+src/components/AdvancedFieldMapping.tsx(165,43): error TS2551: Property 'jira_field_name' does not exist on type 'FieldMapping'. Did you mean 'field_name'?
+src/components/AdvancedFieldMapping.tsx(168,36): error TS2339: Property 'jira_field_id' does not exist on type 'FieldMapping'.
+src/components/AdvancedFieldMapping.tsx(172,34): error TS2339: Property 'confidence' does not exist on type 'FieldMapping'.
+src/components/AdvancedFieldMapping.tsx(174,58): error TS2339: Property 'confidence' does not exist on type 'FieldMapping'.
+src/components/AdvancedFieldMapping.tsx(176,63): error TS2339: Property 'confidence' does not exist on type 'FieldMapping'.
+src/components/AdvancedFieldMapping.tsx(184,58): error TS2345: Argument of type 'number | undefined' is not assignable to parameter of type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+src/components/capacity/CapacitySettingsPanel.tsx(93,9): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(props: { component: ElementType<any, keyof IntrinsicElements>; } & SliderOwnProps & CommonProps & Omit<any, "name" | ... 31 more ... | "valueLabelFormat">): Element | null', gave the following error.
+    Type 'CapacityColor' is not assignable to type 'OverridableStringUnion<"error" | "warning" | "success" | "primary" | "secondary" | "info", SliderPropsColorOverrides> | undefined'.
+      Type '"default"' is not assignable to type 'OverridableStringUnion<"error" | "warning" | "success" | "primary" | "secondary" | "info", SliderPropsColorOverrides> | undefined'.
+  Overload 2 of 2, '(props: DefaultComponentProps<SliderTypeMap<"span", {}>>): Element | null', gave the following error.
+    Type 'CapacityColor' is not assignable to type 'OverridableStringUnion<"error" | "warning" | "success" | "primary" | "secondary" | "info", SliderPropsColorOverrides> | undefined'.
+      Type '"default"' is not assignable to type 'OverridableStringUnion<"error" | "warning" | "success" | "primary" | "secondary" | "info", SliderPropsColorOverrides> | undefined'.
+src/components/capacity/CapacitySettingsPanel.tsx(113,9): error TS2322: Type 'CapacityColor' is not assignable to type 'OverridableStringUnion<"error" | "warning" | "success" | "inherit" | "primary" | "secondary" | "info", LinearProgressPropsColorOverrides> | undefined'.
+  Type '"default"' is not assignable to type 'OverridableStringUnion<"error" | "warning" | "success" | "inherit" | "primary" | "secondary" | "info", LinearProgressPropsColorOverrides> | undefined'.
+src/components/capacity/CapacitySettingsPanel.tsx(152,57): error TS2353: Object literal may only specify known properties, and 'sprintWeeks' does not exist in type '{ sprintId?: number | undefined; asOfDate?: string | undefined; }'.
+src/components/capacity/CFDVisualization.tsx(154,43): error TS2353: Object literal may only specify known properties, and 'limit' does not exist in type '{ sprintId?: number | undefined; startDate?: string | undefined; endDate?: string | undefined; }'.
+src/components/capacity/TeamHealthDashboard.tsx(217,37): error TS2345: Argument of type '{ limit: number; }' is not assignable to parameter of type 'number'.
+src/components/EmptyState.test.tsx(109,9): error TS2322: Type '{ icon: Element; title: string; description: string; docsUrl: string; }' is not assignable to type 'IntrinsicAttributes & EmptyStateProps'.
+  Property 'docsUrl' does not exist on type 'IntrinsicAttributes & EmptyStateProps'.
+src/components/EmptyState.test.tsx(192,9): error TS2322: Type '{ icon: Element; title: string; description: string; primaryAction: { label: string; onClick: Mock<Procedure>; variant: "contained"; }; secondaryAction: { label: string; onClick: Mock<...>; variant: "outlined"; }; benefits: string[]; docsUrl: string; }' is not assignable to type 'IntrinsicAttributes & EmptyStateProps'.
+  Property 'docsUrl' does not exist on type 'IntrinsicAttributes & EmptyStateProps'.
+src/components/OnboardingWizard.tsx(152,24): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/components/OnboardingWizard.tsx(165,59): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/components/OnboardingWizard.tsx(195,51): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/components/RepositoryStatus/RepositorySyncButton.tsx(16,3): error TS2305: Module '"@mui/icons-material"' has no exported member 'PullRequest'.
+src/components/SuggestedLinksPanel.tsx(121,32): error TS2345: Argument of type '{ projectId: number | undefined; }' is not assignable to parameter of type 'number'.
+src/components/SuggestedLinksPanel.tsx(156,48): error TS2554: Expected 1 arguments, but got 2.
+src/components/SuggestedLinksPanel.tsx(166,47): error TS2554: Expected 1 arguments, but got 2.
+src/hooks/useParallelLoading.ts(9,24): error TS2459: Module '"../utils/apiOptimization"' declares 'ParallelLoadResult' locally, but it is not exported.
+src/pages/__tests__/Dashboard.test.tsx(182,18): error TS2339: Property 'mockResolvedValue' does not exist on type '(pagination?: PaginationParams | undefined) => Promise<Project[]>'.
+src/pages/__tests__/Dashboard.test.tsx(183,15): error TS2339: Property 'mockResolvedValue' does not exist on type '(filters?: { status?: string | undefined; assignee?: string | undefined; project_id?: number | undefined; skip?: number | undefined; limit?: number | undefined; } | undefined, config?: AxiosRequestConfig<...> | undefined) => Promise<...>'.
+src/pages/__tests__/Dashboard.test.tsx(184,17): error TS2339: Property 'mockResolvedValue' does not exist on type '(filters?: { project_id?: number | undefined; } | undefined, config?: AxiosRequestConfig<any> | undefined) => Promise<Sprint[]>'.
+src/pages/__tests__/Dashboard.test.tsx(185,27): error TS2339: Property 'mockResolvedValue' does not exist on type '(projectId: number) => Promise<BudgetHoursResponse>'.
+src/pages/__tests__/Dashboard.test.tsx(191,28): error TS2339: Property 'mockResolvedValue' does not exist on type '(projectId: number) => Promise<ValueMetricsResponse>'.
+src/pages/__tests__/Dashboard.test.tsx(192,20): error TS2339: Property 'mockResolvedValue' does not exist on type '(id: number) => Promise<Project>'.
+src/pages/__tests__/Dashboard.test.tsx(193,24): error TS2339: Property 'mockResolvedValue' does not exist on type '(sprintId: number) => Promise<SprintWipStatus>'.
+src/pages/__tests__/Dashboard.test.tsx(194,27): error TS2339: Property 'mockResolvedValue' does not exist on type '() => Promise<IntegrationStatusResponse>'.
+src/pages/__tests__/Dashboard.test.tsx(244,41): error TS2339: Property 'mock' does not exist on type '(filters?: { status?: string | undefined; assignee?: string | undefined; project_id?: number | undefined; skip?: number | undefined; limit?: number | undefined; } | undefined, config?: AxiosRequestConfig<...> | undefined) => Promise<...>'.
+src/pages/__tests__/Dashboard.test.tsx(245,54): error TS2339: Property 'mock' does not exist on type '(projectId: number) => Promise<BudgetHoursResponse>'.
+src/pages/__tests__/Dashboard.test.tsx(251,42): error TS2339: Property 'mock' does not exist on type '(filters?: { status?: string | undefined; assignee?: string | undefined; project_id?: number | undefined; skip?: number | undefined; limit?: number | undefined; } | undefined, config?: AxiosRequestConfig<...> | undefined) => Promise<...>'.
+src/pages/__tests__/Dashboard.test.tsx(252,54): error TS2339: Property 'mock' does not exist on type '(projectId: number) => Promise<BudgetHoursResponse>'.
+src/pages/__tests__/Traceability.test.tsx(28,18): error TS2339: Property 'mockResolvedValue' does not exist on type '(pagination?: PaginationParams | undefined) => Promise<Project[]>'.
+src/pages/__tests__/Traceability.test.tsx(37,27): error TS2339: Property 'mockResolvedValue' does not exist on type '(projectId: number, opts?: { timeout?: number | undefined; } | undefined) => Promise<TraceabilityMatrixSummary>'.
+src/pages/__tests__/Traceability.test.tsx(81,29): error TS2339: Property 'mockResolvedValue' does not exist on type '(projectId: number) => Promise<TraceabilityBackfillResult>'.
+src/pages/__tests__/Traceability.test.tsx(88,24): error TS2339: Property 'mockResolvedValue' does not exist on type '(opts?: { search?: string | undefined; page?: number | undefined; per_page?: number | undefined; } | undefined) => Promise<GitlabProjectsResponse>'.
+src/pages/__tests__/Traceability.test.tsx(90,36): error TS2339: Property 'mockResolvedValue' does not exist on type '(artifactId: number, opts?: { depth?: number | undefined; timeoutMs?: number | undefined; } | undefined) => Promise<TraceabilityRequirementFlow>'.
+src/pages/__tests__/Traceability.test.tsx(100,34): error TS2339: Property 'mockResolvedValue' does not exist on type '(jiraKey: string, config?: AxiosRequestConfig<any> | undefined) => Promise<TraceabilityTaskArtifacts>'.
+src/pages/Analytics.tsx(191,24): error TS2339: Property 'updated_date' does not exist on type 'TaskItem'.
+src/pages/Analytics.tsx(191,40): error TS2339: Property 'resolved_date' does not exist on type 'TaskItem'.
+src/pages/Analytics.tsx(191,57): error TS2339: Property 'created_date' does not exist on type 'TaskItem'.
+src/pages/Analytics.tsx(211,40): error TS2339: Property 'updated_date' does not exist on type 'TaskItem'.
+src/pages/Analytics.tsx(212,28): error TS2339: Property 'updated_date' does not exist on type 'TaskItem'.
+src/pages/Analytics.tsx(262,14): error TS2339: Property 'resolved_date' does not exist on type 'TaskItem'.
+src/pages/Analytics.tsx(263,35): error TS2339: Property 'resolved_date' does not exist on type 'TaskItem'.
+src/pages/Analytics.tsx(268,35): error TS2339: Property 'resolved_date' does not exist on type 'TaskItem'.
+src/pages/Analytics.tsx(269,23): error TS2339: Property 'created_date' does not exist on type 'TaskItem'.
+src/pages/Analytics.tsx(269,41): error TS2339: Property 'updated_date' does not exist on type 'TaskItem'.
+src/pages/Dashboard.tsx(763,23): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Type 'boolean' is not assignable to type 'false'.
+src/pages/Dashboard.tsx(907,57): error TS2339: Property 'limit' does not exist on type 'SprintWipStatus'.
+src/pages/JiraFieldsConfig.tsx(135,18): error TS2339: Property 'warning' does not exist on type 'CalibrationResult'.
+src/pages/JiraFieldsConfig.tsx(136,29): error TS2339: Property 'warning' does not exist on type 'CalibrationResult'.
+src/pages/Knowledge.tsx(190,58): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/Knowledge.tsx(401,15): error TS2345: Argument of type 'unknown[]' is not assignable to parameter of type 'SetStateAction<TreeNode[] | null>'.
+  Type 'unknown[]' is not assignable to type 'TreeNode[]'.
+    Type 'unknown' is not assignable to type 'TreeNode'.
+src/pages/Knowledge.tsx(403,58): error TS18046: 'n' is of type 'unknown'.
+src/pages/Knowledge.tsx(404,131): error TS2345: Argument of type 'unknown[]' is not assignable to parameter of type 'TreeNode[]'.
+  Type 'unknown' is not assignable to type 'TreeNode'.
+src/pages/Knowledge.tsx(465,35): error TS2345: Argument of type 'TreeNode[] | undefined' is not assignable to parameter of type 'TreeNode[]'.
+  Type 'undefined' is not assignable to type 'TreeNode[]'.
+src/pages/ProjectDetail.tsx(274,7): error TS2353: Object literal may only specify known properties, and 'spent_budget' does not exist in type 'Project | ((prevState: Project | null) => Project | null)'.
+src/pages/ProjectDetail.tsx(274,26): error TS2339: Property 'spent_budget' does not exist on type 'Project'.
+src/pages/ProjectDetail.tsx(287,51): error TS2554: Expected 1 arguments, but got 3.
+src/pages/ProjectDetail.tsx(354,20): error TS2339: Property 'response' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(355,20): error TS2339: Property 'message' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(381,11): error TS2353: Object literal may only specify known properties, and 'groupPath' does not exist in type '{ search?: string | undefined; page?: number | undefined; per_page?: number | undefined; }'.
+src/pages/ProjectDetail.tsx(396,18): error TS2339: Property 'response' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(397,18): error TS2339: Property 'message' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(448,55): error TS2339: Property 'has_token' does not exist on type '{ configured: boolean; base_url?: string | null | undefined; status?: string | undefined; }'.
+src/pages/ProjectDetail.tsx(470,47): error TS2554: Expected 1 arguments, but got 2.
+src/pages/ProjectDetail.tsx(481,26): error TS2339: Property 'response' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(481,55): error TS2339: Property 'message' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(544,16): error TS2339: Property 'response' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(545,16): error TS2339: Property 'message' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(566,16): error TS2339: Property 'response' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(567,16): error TS2339: Property 'message' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(588,16): error TS2339: Property 'response' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(589,16): error TS2339: Property 'message' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(627,71): error TS2339: Property 'has_token' does not exist on type '{ configured: boolean; base_url?: string | null | undefined; auth_mode?: string | undefined; }'.
+src/pages/ProjectDetail.tsx(628,71): error TS2339: Property 'has_token' does not exist on type '{ configured: boolean; base_url?: string | null | undefined; auth_mode?: string | undefined; }'.
+src/pages/ProjectDetail.tsx(656,20): error TS2339: Property 'response' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(657,20): error TS2339: Property 'message' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(685,71): error TS2339: Property 'has_token' does not exist on type '{ configured: boolean; base_url?: string | null | undefined; auth_mode?: string | undefined; }'.
+src/pages/ProjectDetail.tsx(686,71): error TS2339: Property 'has_token' does not exist on type '{ configured: boolean; base_url?: string | null | undefined; auth_mode?: string | undefined; }'.
+src/pages/ProjectDetail.tsx(770,21): error TS2345: Argument of type 'unknown[]' is not assignable to parameter of type 'SetStateAction<QualityHistoryItem[]>'.
+  Type 'unknown[]' is not assignable to type 'QualityHistoryItem[]'.
+    Type 'unknown' is not assignable to type 'QualityHistoryItem'.
+src/pages/ProjectDetail.tsx(805,22): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'SetStateAction<RisksData | null>'.
+src/pages/ProjectDetail.tsx(813,25): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'SetStateAction<BurndownData | null>'.
+src/pages/ProjectDetail.tsx(822,31): error TS2339: Property 'average_velocity' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(849,28): error TS2345: Argument of type '{}' is not assignable to parameter of type 'SetStateAction<TeamMemberActivity[]>'.
+src/pages/ProjectDetail.tsx(879,40): error TS2339: Property 'sprint_id' does not exist on type 'Sprint'.
+src/pages/ProjectDetail.tsx(886,35): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'SetStateAction<BurndownData | null>'.
+src/pages/ProjectDetail.tsx(886,66): error TS2339: Property 'sprint_id' does not exist on type 'Sprint'.
+src/pages/ProjectDetail.tsx(894,34): error TS2345: Argument of type 'SprintQuality' is not assignable to parameter of type 'SetStateAction<SprintQualityData | null>'.
+src/pages/ProjectDetail.tsx(894,64): error TS2339: Property 'sprint_id' does not exist on type 'Sprint'.
+src/pages/ProjectDetail.tsx(902,35): error TS2345: Argument of type 'SprintCapacity' is not assignable to parameter of type 'SetStateAction<SprintCapacityData | null>'.
+  Type 'SprintCapacity' is not assignable to type 'SprintCapacityData'.
+    Types of property 'assignees' are incompatible.
+      Type '{ assignee: string; planned_hours: number; capacity_hours: number; utilization_pct: number; }[]' is not assignable to type '{ assignee: string; capacity_hours: number; planned_hours: number; completed_hours: number; }[]'.
+        Property 'completed_hours' is missing in type '{ assignee: string; planned_hours: number; capacity_hours: number; utilization_pct: number; }' but required in type '{ assignee: string; capacity_hours: number; planned_hours: number; completed_hours: number; }'.
+src/pages/ProjectDetail.tsx(902,66): error TS2339: Property 'sprint_id' does not exist on type 'Sprint'.
+src/pages/ProjectDetail.tsx(910,36): error TS2339: Property 'meta' does not exist on type 'Project'.
+src/pages/ProjectDetail.tsx(911,31): error TS2339: Property 'meta' does not exist on type 'Project'.
+src/pages/ProjectDetail.tsx(924,70): error TS2339: Property 'has_token' does not exist on type '{ configured: boolean; base_url?: string | null | undefined; status?: string | undefined; }'.
+src/pages/ProjectDetail.tsx(954,58): error TS2554: Expected 1 arguments, but got 2.
+src/pages/ProjectDetail.tsx(1037,50): error TS2339: Property 'response' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(1037,76): error TS18046: 'e' is of type 'unknown'.
+src/pages/ProjectDetail.tsx(1077,14): error TS2339: Property 'response' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(1078,14): error TS2339: Property 'message' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(1111,60): error TS2339: Property 'has_token' does not exist on type '{ configured: boolean; base_url?: string | null | undefined; status?: string | undefined; }'.
+src/pages/ProjectDetail.tsx(1278,21): error TS2339: Property 'meta' does not exist on type 'Project'.
+src/pages/ProjectDetail.tsx(1280,53): error TS2339: Property 'meta' does not exist on type 'Project'.
+src/pages/ProjectDetail.tsx(1330,18): error TS18048: 'project.total_tasks' is possibly 'undefined'.
+src/pages/ProjectDetail.tsx(1330,40): error TS18048: 'project.completed_tasks' is possibly 'undefined'.
+src/pages/ProjectDetail.tsx(1412,28): error TS2339: Property 'spent_budget' does not exist on type 'Project'.
+src/pages/ProjectDetail.tsx(1457,36): error TS2339: Property 'ideal_burndown' does not exist on type 'BurndownData'.
+src/pages/ProjectDetail.tsx(1463,38): error TS2339: Property 'ideal_burndown' does not exist on type 'BurndownData'.
+src/pages/ProjectDetail.tsx(1473,33): error TS2339: Property 'actual_burndown' does not exist on type 'BurndownData'.
+src/pages/ProjectDetail.tsx(1474,33): error TS2339: Property 'ideal_burndown' does not exist on type 'BurndownData'.
+src/pages/ProjectDetail.tsx(1535,27): error TS18048: 'member.days_since_activity' is possibly 'undefined'.
+src/pages/ProjectDetail.tsx(1536,27): error TS18048: 'member.days_since_activity' is possibly 'undefined'.
+src/pages/ProjectDetail.tsx(1614,39): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'SetStateAction<BurndownData | null>'.
+src/pages/ProjectDetail.tsx(1617,38): error TS2345: Argument of type 'SprintQuality' is not assignable to parameter of type 'SetStateAction<SprintQualityData | null>'.
+src/pages/ProjectDetail.tsx(1620,39): error TS2345: Argument of type 'SprintCapacity' is not assignable to parameter of type 'SetStateAction<SprintCapacityData | null>'.
+  Type 'SprintCapacity' is not assignable to type 'SprintCapacityData'.
+    Types of property 'assignees' are incompatible.
+      Type '{ assignee: string; planned_hours: number; capacity_hours: number; utilization_pct: number; }[]' is not assignable to type '{ assignee: string; capacity_hours: number; planned_hours: number; completed_hours: number; }[]'.
+        Property 'completed_hours' is missing in type '{ assignee: string; planned_hours: number; capacity_hours: number; utilization_pct: number; }' but required in type '{ assignee: string; capacity_hours: number; planned_hours: number; completed_hours: number; }'.
+src/pages/ProjectDetail.tsx(1625,36): error TS2339: Property 'sprint_id' does not exist on type 'Sprint'.
+src/pages/ProjectDetail.tsx(1625,56): error TS2339: Property 'sprint_id' does not exist on type 'Sprint'.
+src/pages/ProjectDetail.tsx(1637,26): error TS2339: Property 'sprint_id' does not exist on type 'Sprint'.
+src/pages/ProjectDetail.tsx(1643,25): error TS2339: Property 'commitment_hours' does not exist on type 'Sprint'.
+src/pages/ProjectDetail.tsx(1643,53): error TS2339: Property 'commitment' does not exist on type 'Sprint'.
+src/pages/ProjectDetail.tsx(1645,25): error TS2339: Property 'completed_hours' does not exist on type 'Sprint'.
+src/pages/ProjectDetail.tsx(1645,52): error TS2339: Property 'completed' does not exist on type 'Sprint'.
+src/pages/ProjectDetail.tsx(1646,47): error TS2339: Property 'scope_added_hours' does not exist on type 'Sprint'.
+src/pages/ProjectDetail.tsx(1648,25): error TS2339: Property 'predictability_pct' does not exist on type 'Sprint'.
+src/pages/ProjectDetail.tsx(1652,46): error TS2339: Property 'carryover_hours' does not exist on type 'Sprint'.
+src/pages/ProjectDetail.tsx(1657,37): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.
+    Argument of type 'string | undefined' is not assignable to parameter of type 'string | number | Date'.
+      Type 'undefined' is not assignable to type 'string | number | Date'.
+  Overload 2 of 4, '(value: string | number): Date', gave the following error.
+    Argument of type 'string | undefined' is not assignable to parameter of type 'string | number'.
+      Type 'undefined' is not assignable to type 'string | number'.
+src/pages/ProjectDetail.tsx(1658,37): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.
+    Argument of type 'string | undefined' is not assignable to parameter of type 'string | number | Date'.
+      Type 'undefined' is not assignable to type 'string | number | Date'.
+  Overload 2 of 4, '(value: string | number): Date', gave the following error.
+    Argument of type 'string | undefined' is not assignable to parameter of type 'string | number'.
+      Type 'undefined' is not assignable to type 'string | number'.
+src/pages/ProjectDetail.tsx(1725,44): error TS2339: Property 'ideal_burndown' does not exist on type 'BurndownData'.
+src/pages/ProjectDetail.tsx(1731,46): error TS2339: Property 'ideal_burndown' does not exist on type 'BurndownData'.
+src/pages/ProjectDetail.tsx(1741,41): error TS2339: Property 'actual_burndown' does not exist on type 'BurndownData'.
+src/pages/ProjectDetail.tsx(1742,41): error TS2339: Property 'ideal_burndown' does not exist on type 'BurndownData'.
+src/pages/ProjectDetail.tsx(1766,40): error TS2339: Property 'weeks' does not exist on type 'SprintCapacityData'.
+src/pages/ProjectDetail.tsx(1767,44): error TS2339: Property 'capacity_hours_per_person' does not exist on type 'SprintCapacityData'.
+src/pages/ProjectDetail.tsx(1803,33): error TS2339: Property 'utilization_pct' does not exist on type '{ assignee: string; capacity_hours: number; planned_hours: number; completed_hours: number; }'.
+src/pages/ProjectDetail.tsx(1805,37): error TS2339: Property 'utilization_pct' does not exist on type '{ assignee: string; capacity_hours: number; planned_hours: number; completed_hours: number; }'.
+src/pages/ProjectDetail.tsx(1810,30): error TS2339: Property 'utilization_pct' does not exist on type '{ assignee: string; capacity_hours: number; planned_hours: number; completed_hours: number; }'.
+src/pages/ProjectDetail.tsx(1833,40): error TS2339: Property 'dod_pct' does not exist on type 'SprintQualityData'.
+src/pages/ProjectDetail.tsx(1845,39): error TS2339: Property 'blockers' does not exist on type 'SprintQualityData'.
+src/pages/ProjectDetail.tsx(1857,39): error TS2339: Property 'bugs_by_priority' does not exist on type 'SprintQualityData'.
+src/pages/ProjectDetail.tsx(1858,56): error TS2339: Property 'bugs_by_priority' does not exist on type 'SprintQualityData'.
+src/pages/ProjectDetail.tsx(1939,31): error TS2339: Property 'message' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(1982,34): error TS2339: Property 'created_at' does not exist on type 'QualityHistoryItem'.
+src/pages/ProjectDetail.tsx(1987,58): error TS2551: Property 'passed' does not exist on type 'QualityHistoryItem'. Did you mean 'pass'?
+src/pages/ProjectDetail.tsx(2019,52): error TS2551: Property 'passed' does not exist on type 'QualityHistoryItem'. Did you mean 'pass'?
+src/pages/ProjectDetail.tsx(2056,36): error TS18046: 'prs' is of type 'unknown'.
+src/pages/ProjectDetail.tsx(2080,31): error TS2345: Argument of type 'unknown[]' is not assignable to parameter of type 'SetStateAction<QualityHistoryItem[]>'.
+  Type 'unknown[]' is not assignable to type 'QualityHistoryItem[]'.
+    Type 'unknown' is not assignable to type 'QualityHistoryItem'.
+src/pages/ProjectDetail.tsx(2086,33): error TS2339: Property 'message' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(2594,67): error TS2339: Property 'has_token' does not exist on type '{ configured: boolean; base_url?: string | null | undefined; status?: string | undefined; }'.
+src/pages/ProjectDetail.tsx(2629,37): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(timeout: string | number | Timeout | undefined): void', gave the following error.
+    Argument of type 'Timeout | null' is not assignable to parameter of type 'string | number | Timeout | undefined'.
+      Type 'null' is not assignable to type 'string | number | Timeout | undefined'.
+  Overload 2 of 2, '(id: number | undefined): void', gave the following error.
+    Argument of type 'Timeout | null' is not assignable to parameter of type 'number | undefined'.
+      Type 'null' is not assignable to type 'number | undefined'.
+src/pages/ProjectDetail.tsx(2651,53): error TS2339: Property 'response' does not exist on type '{}'.
+src/pages/ProjectDetail.tsx(2651,79): error TS18046: 'e' is of type 'unknown'.
+src/pages/Projects.tsx(126,50): error TS2554: Expected 1 arguments, but got 2.
+src/pages/Projects.tsx(183,46): error TS2554: Expected 1 arguments, but got 2.
+src/pages/Projects.tsx(265,47): error TS2353: Object literal may only specify known properties, and 'owner_id' does not exist in type '{ jira_key: string; name: string; description?: string | undefined; status?: string | undefined; start_date?: string | undefined; end_date?: string | undefined; }'.
+src/pages/Projects.tsx(286,53): error TS2554: Expected 1 arguments, but got 2.
+src/pages/Quality.tsx(65,16): error TS18046: 'pr' is of type 'unknown'.
+src/pages/Quality.tsx(76,29): error TS18046: 'pr' is of type 'unknown'.
+src/pages/Quality.tsx(78,64): error TS2559: Type 'number' has no properties in common with type '{ project_id?: number | undefined; min_line?: number | undefined; min_branch?: number | undefined; }'.
+src/pages/Quality.tsx(79,13): error TS2322: Type 'unknown' is not assignable to type 'QualityGateResult'.
+src/pages/Quality.tsx(82,84): error TS18046: 'pr' is of type 'unknown'.
+src/pages/Quality.tsx(82,154): error TS18046: 'pr' is of type 'unknown'.
+src/pages/Quality.tsx(96,28): error TS2339: Property 'jira' does not exist on type '{}'.
+src/pages/Quality.tsx(96,56): error TS2339: Property 'github' does not exist on type '{}'.
+src/pages/Quality.tsx(177,12): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(props: { href: string; } & ButtonOwnProps & Omit<ButtonBaseOwnProps, "classes"> & CommonProps & Omit<Omit<DetailedHTMLProps<AnchorHTMLAttributes<HTMLAnchorElement>, HTMLAnchorElement>, "ref"> & { ...; }, "children" | ... 24 more ... | "startIcon">): Element', gave the following error.
+    Type 'string | undefined' is not assignable to type 'string'.
+      Type 'undefined' is not assignable to type 'string'.
+  Overload 2 of 3, '(props: { component: ElementType<any, keyof IntrinsicElements>; } & ButtonOwnProps & Omit<ButtonBaseOwnProps, "classes"> & CommonProps & Omit<...>): Element | null', gave the following error.
+    Property 'component' is missing in type '{ children: string; size: "small"; href: string | undefined; target: string; }' but required in type '{ component: ElementType<any, keyof IntrinsicElements>; }'.
+  Overload 3 of 3, '(props: DefaultComponentProps<ExtendButtonBaseTypeMap<ButtonTypeMap<{}, "button">>>): Element | null', gave the following error.
+    Type '{ children: string; size: "small"; href: string | undefined; target: string; }' is not assignable to type 'IntrinsicAttributes & ButtonOwnProps & Omit<ButtonBaseOwnProps, "classes"> & CommonProps & Omit<...>'.
+      Property 'target' does not exist on type 'IntrinsicAttributes & ButtonOwnProps & Omit<ButtonBaseOwnProps, "classes"> & CommonProps & Omit<...>'.
+src/pages/Quality.tsx(177,38): error TS2532: Object is possibly 'undefined'.
+src/pages/Quality.tsx(177,38): error TS2532: Object is possibly 'undefined'.
+src/pages/Quality.tsx(177,38): error TS2532: Object is possibly 'undefined'.
+src/pages/Quality.tsx(285,42): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/pages/Settings.tsx(166,9): error TS2353: Object literal may only specify known properties, and 'use_pat' does not exist in type '{ base_url?: string | undefined; email?: string | undefined; api_token?: string | undefined; }'.
+src/pages/Settings.tsx(211,30): error TS2339: Property 'username' does not exist on type '{ status: string; message?: string | undefined; }'.
+src/pages/Settings.tsx(211,52): error TS2339: Property 'name' does not exist on type '{ status: string; message?: string | undefined; }'.
+src/pages/Settings.tsx(228,42): error TS2339: Property 'status_count' does not exist on type '{ status: string; message?: string | undefined; }'.
+src/pages/Settings.tsx(228,94): error TS2339: Property 'status_count' does not exist on type '{ status: string; message?: string | undefined; }'.
+src/pages/Settings.tsx(455,19): error TS2353: Object literal may only specify known properties, and 'webhook_secret' does not exist in type '{ base_url?: string | undefined; api_token?: string | undefined; }'.
+src/pages/SprintCapacity.tsx(73,38): error TS2559: Type 'number' has no properties in common with type '{ project_id?: number | undefined; }'.
+src/pages/SprintCapacity.tsx(166,15): error TS2322: Type '{ projectId: number; sprintId: number | undefined; }' is not assignable to type 'IntrinsicAttributes & CapacitySettingsPanelProps'.
+  Property 'sprintId' does not exist on type 'IntrinsicAttributes & CapacitySettingsPanelProps'.
+src/pages/Tasks.tsx(105,33): error TS2339: Property 'project_id' does not exist on type 'TaskItem'.
+src/pages/Tasks.tsx(137,67): error TS2339: Property 'business_value' does not exist on type 'TaskRow'.
+src/pages/Tasks.tsx(137,104): error TS2339: Property 'business_value' does not exist on type 'TaskRow'.
+src/pages/Testing.tsx(446,33): error TS2322: Type 'number | undefined' is not assignable to type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+src/pages/Traceability.tsx(157,48): error TS2345: Argument of type '{ projectId: number | undefined; force: boolean | undefined; }' is not assignable to parameter of type 'number'.
+src/pages/Traceability.tsx(305,63): error TS2554: Expected 1 arguments, but got 2.
+src/store/dataThunks.ts(46,48): error TS2554: Expected 1 arguments, but got 2.
+src/store/dataThunks.ts(97,25): error TS2322: Type 'TaskItem[]' is not assignable to type 'Task[]'.
+  Property 'project_id' is missing in type 'TaskItem' but required in type 'Task'.
+src/store/dataThunks.ts(125,25): error TS2345: Argument of type 'import("/Users/kkitanin/Documents/MyApps/po_copilot/po_helper/frontend/src/services/api/sprints").Sprint[]' is not assignable to parameter of type 'Sprint[]'.
+  Type 'Sprint' is missing the following properties from type 'Sprint': project_id, status
+src/utils/apiOptimization.ts(236,38): error TS2802: Type 'Map<TKey, { resolve: (result: TResult) => void; reject: (error: Error) => void; }[]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/utils/apiOptimization.ts(239,29): error TS7006: Parameter 'cb' implicitly has an 'any' type.
+src/utils/apiOptimization.ts(241,29): error TS7006: Parameter 'cb' implicitly has an 'any' type.
+src/utils/apiOptimization.ts(247,31): error TS2802: Type 'MapIterator<{ resolve: (result: TResult) => void; reject: (error: Error) => void; }[]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/utils/apiOptimization.ts(248,27): error TS7006: Parameter 'cb' implicitly has an 'any' type.
+src/utils/apiOptimization.ts(415,23): error TS2802: Type 'MapIterator<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/utils/apiOptimization.ts(580,31): error TS2344: Type 'AnalyticsData' does not satisfy the constraint 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'AnalyticsData'.
+src/utils/backendHealth.ts(43,21): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(timeout: string | number | Timeout | undefined): void', gave the following error.
+    Argument of type 'Timer' is not assignable to parameter of type 'string | number | Timeout | undefined'.
+      Type 'Timer' is missing the following properties from type 'Timeout': close, _onTimeout, [Symbol.dispose]
+  Overload 2 of 2, '(id: number | undefined): void', gave the following error.
+    Argument of type 'Timer' is not assignable to parameter of type 'number'.
+src/utils/env.ts(1,26): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/utils/env.ts(7,39): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/utils/logout.ts(28,7): error TS7034: Variable 'PRESERVED_KEYS' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/utils/logout.ts(73,32): error TS7005: Variable 'PRESERVED_KEYS' implicitly has an 'any[]' type.
+src/utils/logout.ts(187,32): error TS7005: Variable 'PRESERVED_KEYS' implicitly has an 'any[]' type.

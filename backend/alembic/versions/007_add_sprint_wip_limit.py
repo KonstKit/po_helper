@@ -1,4 +1,4 @@
-﻿"""add sprint wip limit column
+"""add sprint wip limit column
 
 Revision ID: 007
 Revises: 006

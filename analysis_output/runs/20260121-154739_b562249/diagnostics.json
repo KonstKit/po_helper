@@ -1,0 +1,32 @@
+{
+  "encodings_stats": {
+    "binary": 17,
+    "utf-8": 456
+  },
+  "entrypoints_ambiguity": [],
+  "line_endings_stats": {
+    "LF": 454,
+    "mixed": 17,
+    "none": 2
+  },
+  "long_signature_samples": [],
+  "mode_warnings": [],
+  "path_normalization_issues": [],
+  "removed_edges_stats": {
+    "comment_string_filtered": 0,
+    "non_call_pattern_filtered": 0,
+    "self_edges": 3,
+    "signature_line_edges": 34,
+    "stoplist_filtered_edges": 12
+  },
+  "run_environment": {
+    "arch": "arm64",
+    "os": "Darwin",
+    "python_version": "3.9.6"
+  },
+  "signatures_final_max_len": 156,
+  "signatures_final_multiline_count": 0,
+  "signatures_raw_max_len": 84129,
+  "signatures_raw_multiline_count": 428,
+  "unattributed_issues": []
+}

@@ -1,27 +1,98 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, Grid, Paper, Typography, Card, CardContent, Chip, Button, FormControl, InputLabel, Select, MenuItem, TextField, ToggleButtonGroup, ToggleButton } from '@mui/material';
+import { Box, Paper, Typography, Chip, Button, FormControl, InputLabel, Select, MenuItem, TextField, ToggleButtonGroup, ToggleButton, Tabs, Tab } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
-import { VerifiedUser as VerifiedUserIcon } from '@mui/icons-material';
-import { listProjects, getProjectById, updateProject, listPullRequests, getQualityGateStatus, evaluateQualityGateAndCheck, getIntegrationsHealth, getMetricsText } from '../services/api';
+import { VerifiedUser as VerifiedUserIcon, BugReport as BugReportIcon, Shield as ShieldIcon, Assessment as AssessmentIcon } from '@mui/icons-material';
+import type { SelectChangeEvent } from '@mui/material/Select';
+import {
+  listProjects,
+  getProjectById,
+  updateProject,
+  listPullRequests,
+  getQualityGateStatus,
+  evaluateQualityGateAndCheck,
+  getIntegrationsHealth,
+  getMetricsText,
+  type Project,
+  type QualityPullRequest,
+  type QualityGateResult,
+  type QualityGateProvider,
+} from '../services/api';
 import CircularProgressWithLabel from '../components/CircularProgressWithLabel';
 import EmptyState from '../components/EmptyState';
+import { QualityDashboard, QualityReportPanel } from '../components/quality';
+import { normalizeQualityGateProvider } from '../utils/qualityGate';
+import { getErrorMessage } from '../utils/errorUtils';
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+const parseProjectId = (value: string): number | '' => {
+  if (value === '') {
+    return '';
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : '';
+};
+
+const isQualityGateProvider = (value: string): value is QualityGateProvider =>
+  value === 'github' || value === 'gitlab' || value === 'generic';
+
+const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => (
+  <Box role="tabpanel" hidden={value !== index} sx={{ py: 2 }}>
+    {value === index && children}
+  </Box>
+);
 
 const Quality: React.FC = () => {
-  const [projects, setProjects] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState(0);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState<number | ''>('');
-  const [prs, setPRs] = useState<any[]>([]);
+  const [prs, setPRs] = useState<QualityPullRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<{ active: boolean; percent: number; step: string }>({ active: false, percent: 0, step: '' });
   const [thresholds, setThresholds] = useState<{ min_line?: number; min_branch?: number }>({});
-  const [gateMap, setGateMap] = useState<Record<number, any>>({});
-  const [provider, setProvider] = useState<'all'|'github'|'gitlab'|'generic'>('all');
+  const [gateMap, setGateMap] = useState<Record<number, QualityGateResult>>({});
+  const [provider, setProvider] = useState<'all' | QualityGateProvider>('all');
   const [statusFilter, setStatusFilter] = useState<'all'|'pass'|'fail'>('all');
   const [days, setDays] = useState<30|90>(30);
   const [webhookInfo, setWebhookInfo] = useState<string>('');
 
+  const handleStatusFilterChange = (event: SelectChangeEvent<string>) => {
+    const value = event.target.value;
+    if (value === 'all' || value === 'pass' || value === 'fail') {
+      setStatusFilter(value);
+    }
+  };
+
+  const handleDaysChange = (event: SelectChangeEvent<string>) => {
+    const parsed = Number(event.target.value);
+    if (parsed === 30 || parsed === 90) {
+      setDays(parsed);
+    }
+  };
+
+  const handleProjectChange = (event: SelectChangeEvent<string>) => {
+    setProjectId(parseProjectId(event.target.value));
+  };
+  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+  };
+  const handleProviderChange = (_: React.MouseEvent<HTMLElement>, value: string | null) => {
+    if (!value) {
+      return;
+    }
+    if (value === 'all' || isQualityGateProvider(value)) {
+      setProvider(value);
+    }
+  };
+
   useEffect(() => {
     (async () => {
-      const ps = await listProjects();
+      const psResp = await listProjects();
+      const ps = psResp.data;
       setProjects(ps);
       if (ps.length) setProjectId(ps[0].id);
     })();
@@ -33,23 +104,27 @@ const Quality: React.FC = () => {
       try {
         setLoading(true);
         setProgress({ active: true, percent: 5, step: 'Loading Pull Requests...' });
-        const pr = await listPullRequests({ project_id: Number(projectId), limit: 100 });
+        const pr = await listPullRequests({ projectId: Number(projectId), limit: 100 });
         setPRs(pr.pull_requests || []);
         setProgress({ active: true, percent: 35, step: 'Loading project thresholds...' });
         try {
           const p = await getProjectById(Number(projectId));
-          const t = (p as any).quality_thresholds || {};
+          const t = p.quality_thresholds || {};
           setThresholds({ min_line: t.min_line ?? 0.8, min_branch: t.min_branch ?? undefined });
-        } catch {}
+        } catch (err) {
+          console.warn('Failed to load project thresholds', err);
+        }
         // Preload gate status for each PR
         setProgress({ active: true, percent: 60, step: 'Evaluating current gate statuses...' });
-        const gm: Record<number, any> = {};
+        const gm: Record<number, QualityGateResult> = {};
         let done = 0;
         for (const item of (pr.pull_requests || [])) {
           try {
-            const st = await getQualityGateStatus(item.number, Number(projectId));
+            const st = await getQualityGateStatus(item.number, { projectId: Number(projectId) });
             gm[item.number] = st;
-          } catch {}
+          } catch (err) {
+            console.debug('Failed to load gate status', err);
+          }
           done++;
           setProgress({ active: true, percent: 60 + Math.round((done / Math.max(1, pr.pull_requests.length)) * 35), step: `Evaluating gates... ${done}/${pr.pull_requests.length}` });
         }
@@ -73,31 +148,35 @@ const Quality: React.FC = () => {
         while ((match = m.exec(txt)) !== null) { total += Number(match[2] || 0); }
         info = `GitHub Webhooks: ${total}`;
         setWebhookInfo(info);
-      } catch {}
+      } catch (err) {
+        console.warn('Failed to load integration metrics', err);
+      }
     })();
   }, []);
 
   const handleSaveThresholds = async () => {
     if (!projectId) return;
     try {
-      await updateProject(Number(projectId), { quality_thresholds: thresholds as any } as any);
+      await updateProject(Number(projectId), { quality_thresholds: thresholds });
     } catch (e) {
       console.error(e);
     }
   };
 
-  const checkGate = async (number: number, provider: string) => {
+  const checkGate = async (number: number, provider?: QualityGateProvider) => {
     if (!projectId) return;
     setGateMap((m) => ({ ...m, [number]: { ...m[number], checking: true } }));
     try {
-      const res = await evaluateQualityGateAndCheck({ pr_number: number, project_id: Number(projectId), provider: (provider || 'github') as any });
+      const providerType = normalizeQualityGateProvider(provider);
+      const res = await evaluateQualityGateAndCheck({ prNumber: number, projectId: Number(projectId), provider: providerType });
       setGateMap((m) => ({ ...m, [number]: { ...(m[number] || {}), checking: false, result: res } }));
     } catch (e) {
-      setGateMap((m) => ({ ...m, [number]: { ...(m[number] || {}), checking: false, error: (e as any)?.message } }));
+      const errorMessage = getErrorMessage(e, 'Failed to evaluate quality gate');
+      setGateMap((m) => ({ ...m, [number]: { ...(m[number] || {}), checking: false, error: errorMessage } }));
     }
   };
 
-  const GateChip: React.FC<{ st: any }> = ({ st }) => {
+  const GateChip: React.FC<{ st: QualityGateResult | undefined }> = ({ st }) => {
     if (!st) return <Chip size="small" label="N/A" />;
     const pass = st.pass ?? st?.result?.pass;
     const label = pass ? 'PASS' : 'FAIL';
@@ -140,25 +219,28 @@ const Quality: React.FC = () => {
     ) },
     { field: 'files_changed', headerName: 'Files', width: 90 },
     { field: 'lines', headerName: 'Lines', width: 140, valueGetter: (p)=> `+${p.row.lines_added||0}/-${p.row.lines_deleted||0}` },
-    { field: 'actions', headerName: 'Actions', width: 160, sortable: false, renderCell: (params) => (
-      <Box display="flex" gap={1}>
-        <Button size="small" variant="outlined" onClick={() => checkGate(params.row.number, params.row.provider)} disabled={gateMap[params.row.number]?.checking}>Check</Button>
-        {gateMap[params.row.number]?.result?.github_check?.response?.html_url && (
-          <Button size="small" href={gateMap[params.row.number].result.github_check.response.html_url} target="_blank">Check Run</Button>
-        )}
-      </Box>
-    ) },
+    { field: 'actions', headerName: 'Actions', width: 160, sortable: false, renderCell: (params) => {
+      const checkUrl = gateMap[params.row.number]?.result?.github_check?.response?.html_url;
+      return (
+        <Box display="flex" gap={1}>
+          <Button size="small" variant="outlined" onClick={() => checkGate(params.row.number, params.row.provider)} disabled={gateMap[params.row.number]?.checking}>Check</Button>
+          {checkUrl && (
+            <Button size="small" href={checkUrl} target="_blank">Check Run</Button>
+          )}
+        </Box>
+      );
+    } },
   ];
 
   const showEmptyState = !loading && prs.length === 0 && projectId;
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4">Quality Gates</Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Typography variant="h4">Quality & Testing</Typography>
         <FormControl size="small" sx={{ minWidth: 220 }}>
           <InputLabel>Project</InputLabel>
-          <Select label="Project" value={projectId} onChange={(e)=> setProjectId(e.target.value as any)}>
+          <Select label="Project" value={projectId} onChange={handleProjectChange}>
             {projects.map((p)=> (
               <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
             ))}
@@ -166,6 +248,16 @@ const Quality: React.FC = () => {
         </FormControl>
       </Box>
 
+      <Paper sx={{ mb: 3 }}>
+        <Tabs value={activeTab} onChange={handleTabChange} variant="fullWidth">
+          <Tab icon={<VerifiedUserIcon />} label="PR Quality Gates" iconPosition="start" />
+          <Tab icon={<BugReportIcon />} label="Escaped Defects" iconPosition="start" />
+          <Tab icon={<ShieldIcon />} label="Quality Dashboard" iconPosition="start" />
+          <Tab icon={<AssessmentIcon />} label="Reports" iconPosition="start" />
+        </Tabs>
+      </Paper>
+
+      <TabPanel value={activeTab} index={0}>
       {showEmptyState && (
         <Box sx={{ my: 4 }}>
           <EmptyState
@@ -220,13 +312,13 @@ const Quality: React.FC = () => {
         <Box display="flex" gap={2} alignItems="center" flexWrap="wrap" mb={2}>
           <FormControl size="small" sx={{ minWidth: 160 }}>
             <InputLabel>Status</InputLabel>
-            <Select label="Status" value={statusFilter} onChange={(e)=> setStatusFilter(e.target.value as any)}>
+            <Select label="Status" value={statusFilter} onChange={handleStatusFilterChange}>
               <MenuItem value="all">All</MenuItem>
               <MenuItem value="pass">PASS</MenuItem>
               <MenuItem value="fail">FAIL</MenuItem>
             </Select>
           </FormControl>
-          <ToggleButtonGroup size="small" exclusive value={provider} onChange={(_, v)=> v && setProvider(v)}>
+          <ToggleButtonGroup size="small" exclusive value={provider} onChange={handleProviderChange}>
             <ToggleButton value="all">All</ToggleButton>
             <ToggleButton value="github">GitHub</ToggleButton>
             <ToggleButton value="gitlab">GitLab</ToggleButton>
@@ -234,7 +326,7 @@ const Quality: React.FC = () => {
           </ToggleButtonGroup>
           <FormControl size="small" sx={{ minWidth: 140 }}>
             <InputLabel>Range</InputLabel>
-            <Select label="Range" value={days} onChange={(e)=> setDays(e.target.value as any)}>
+            <Select label="Range" value={days} onChange={handleDaysChange}>
               <MenuItem value={30}>Last 30 days</MenuItem>
               <MenuItem value={90}>Last 90 days</MenuItem>
             </Select>
@@ -258,6 +350,33 @@ const Quality: React.FC = () => {
           />
         </div>
       </Paper>
+      </TabPanel>
+
+      <TabPanel value={activeTab} index={1}>
+        {projectId ? (
+          <QualityDashboard projectId={Number(projectId)} />
+        ) : (
+          <Paper sx={{ p: 4, textAlign: 'center' }}>
+            <Typography color="text.secondary">Select a project to view escaped defects</Typography>
+          </Paper>
+        )}
+      </TabPanel>
+
+      <TabPanel value={activeTab} index={2}>
+        {projectId ? (
+          <QualityDashboard projectId={Number(projectId)} />
+        ) : (
+          <Paper sx={{ p: 4, textAlign: 'center' }}>
+            <Typography color="text.secondary">Select a project to view quality dashboard</Typography>
+          </Paper>
+        )}
+      </TabPanel>
+
+      <TabPanel value={activeTab} index={3}>
+        <QualityReportPanel
+          projectId={projectId ? Number(projectId) : undefined}
+        />
+      </TabPanel>
     </Box>
   );
 };

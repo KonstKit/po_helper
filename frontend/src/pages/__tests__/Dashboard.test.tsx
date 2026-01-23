@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import '../../test/setup-env';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
@@ -39,6 +39,15 @@ vi.mock('react-chartjs-2', () => ({
   Doughnut: () => null,
 }));
 
+const mockedListProjects = vi.mocked(listProjects);
+const mockedListTasks = vi.mocked(listTasks);
+const mockedListSprints = vi.mocked(listSprints);
+const mockedGetProjectBudgetHours = vi.mocked(getProjectBudgetHours);
+const mockedGetProjectValueMetrics = vi.mocked(getProjectValueMetrics);
+const mockedGetProjectById = vi.mocked(getProjectById);
+const mockedGetSprintWipStatus = vi.mocked(getSprintWipStatus);
+const mockedGetIntegrationsStatus = vi.mocked(getIntegrationsStatus);
+
 const DAY = 24 * 60 * 60 * 1000;
 
 const sampleProject = {
@@ -54,6 +63,7 @@ const baseNow = Date.now();
 const sampleTasks = [
   {
     id: 1,
+    jira_id: 'WAB-1',
     key: 'WAB-1',
     summary: 'Overdue risk',
     status: 'In Progress',
@@ -64,6 +74,7 @@ const sampleTasks = [
   },
   {
     id: 2,
+    jira_id: 'WAB-2',
     key: 'WAB-2',
     summary: 'Blocking issue',
     status: 'Blocked',
@@ -74,6 +85,7 @@ const sampleTasks = [
   },
   {
     id: 3,
+    jira_id: 'WAB-3',
     key: 'WAB-3',
     summary: 'Stale progress',
     status: 'In Progress',
@@ -82,6 +94,7 @@ const sampleTasks = [
   },
   {
     id: 4,
+    jira_id: 'WAB-4',
     key: 'WAB-4',
     summary: 'Completed feature',
     status: 'Done',
@@ -92,6 +105,7 @@ const sampleTasks = [
   },
   {
     id: 5,
+    jira_id: 'WAB-5',
     key: 'WAB-5',
     summary: 'Upcoming refinement',
     status: 'Todo',
@@ -128,30 +142,52 @@ const preloadedState = {
   },
 };
 
-class MockSocket {
+class MockSocket extends EventTarget implements WebSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
   static instances: MockSocket[] = [];
-  onopen: ((event?: any) => void) | null = null;
-  onmessage: ((event: { data: string }) => void) | null = null;
-  onerror: ((event?: any) => void) | null = null;
-  onclose: ((event?: any) => void) | null = null;
-  readyState = 1;
+
+  binaryType: 'blob' | 'arraybuffer' = 'blob';
+  bufferedAmount = 0;
+  extensions = '';
+  protocol = '';
+  onopen: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onclose: ((event: Event) => void) | null = null;
+  readyState = MockSocket.OPEN;
   url: string;
 
-  constructor(url: string) {
-    this.url = url;
+  constructor(url: string | URL) {
+    super();
+    this.url = String(url);
     MockSocket.instances.push(this);
-    setTimeout(() => this.onopen?.({ target: this }), 0);
+    setTimeout(() => {
+      const event = new Event('open');
+      this.onopen?.(event);
+      this.dispatchEvent(event);
+    }, 0);
   }
 
-  close() {
-    this.readyState = 3;
-    this.onclose?.({ target: this });
+  close(code?: number, reason?: string) {
+    this.readyState = MockSocket.CLOSED;
+    const event = new CloseEvent('close', {
+      code: code ?? 1000,
+      reason: reason ?? '',
+      wasClean: true,
+    });
+    this.onclose?.(event);
+    this.dispatchEvent(event);
   }
 
   send() {}
 
-  triggerMessage(payload: any) {
-    this.onmessage?.({ data: JSON.stringify(payload) });
+  triggerMessage(payload: unknown) {
+    const event = new MessageEvent('message', { data: JSON.stringify(payload) });
+    this.onmessage?.(event);
+    this.dispatchEvent(event);
   }
 
   static last() {
@@ -168,30 +204,47 @@ let originalWebSocket: typeof WebSocket;
 describe('Dashboard smoke scenarios', () => {
   beforeAll(() => {
     originalWebSocket = globalThis.WebSocket;
-    (globalThis as any).WebSocket = MockSocket as unknown as typeof WebSocket;
+    globalThis.WebSocket = MockSocket;
   });
 
   afterAll(() => {
-    (globalThis as any).WebSocket = originalWebSocket;
+    globalThis.WebSocket = originalWebSocket;
   });
 
   beforeEach(() => {
     MockSocket.reset();
     vi.clearAllMocks();
 
-    listProjects.mockResolvedValue([sampleProject]);
-    listTasks.mockResolvedValue(sampleTasks);
-    listSprints.mockResolvedValue([]);
-    getProjectBudgetHours.mockResolvedValue({
+    mockedListProjects.mockResolvedValue({
+      data: [sampleProject],
+      meta: {
+        total: 1,
+        page: 1,
+        per_page: 50,
+        total_pages: 1,
+        has_next: false,
+        has_prev: false,
+      },
+    });
+    mockedListTasks.mockResolvedValue(sampleTasks);
+    mockedListSprints.mockResolvedValue([]);
+    mockedGetProjectBudgetHours.mockResolvedValue({
       remaining_hours: 12,
       total_spent_hours: 18,
       total_estimate_hours: 30,
       overrun: false,
+      overrun_hours: 0,
+      top_overruns: [],
     });
-    getProjectValueMetrics.mockResolvedValue({ value_delivered: 42, roi: 1.6 });
-    getProjectById.mockResolvedValue(sampleProject);
-    getSprintWipStatus.mockResolvedValue({ total_active: 3, limit: 6, assignees: [] });
-    getIntegrationsStatus.mockResolvedValue({ jira: { configured: true, has_token: true } });
+    mockedGetProjectValueMetrics.mockResolvedValue({ value_delivered: 42, total_spent_hours: 18, roi: 1.6 });
+    mockedGetProjectById.mockResolvedValue(sampleProject);
+    mockedGetSprintWipStatus.mockResolvedValue({ total_active: 3, limit: 6, limit_default: 6, assignees: [] });
+    mockedGetIntegrationsStatus.mockResolvedValue({
+      jira: { configured: true, has_token: true },
+      confluence: { configured: false },
+      github: { configured: false },
+      gitlab: { configured: false },
+    });
   });
 
   const renderDashboard = () => {
@@ -207,7 +260,9 @@ describe('Dashboard smoke scenarios', () => {
 
     return render(
       <Provider store={store}>
-        <MemoryRouter>
+        <MemoryRouter
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
           <Dashboard />
         </MemoryRouter>
       </Provider>
@@ -222,7 +277,9 @@ describe('Dashboard smoke scenarios', () => {
     await waitFor(() => {
       expect(document.querySelectorAll('[data-testid^="risk-item-"]').length).toBeGreaterThan(0);
     });
-    const riskBoxes = Array.from(document.querySelectorAll('[data-testid^="risk-item-"]')) as HTMLElement[];
+    const riskBoxes = Array.from(document.querySelectorAll('[data-testid^="risk-item-"]')).filter(
+      (node): node is HTMLElement => node instanceof HTMLElement
+    );
     expect(riskBoxes.length).toBeGreaterThan(0);
 
     fireEvent.click(riskBoxes[0]);
@@ -241,23 +298,28 @@ describe('Dashboard smoke scenarios', () => {
   it('refreshes data when websocket announces sync completion', async () => {
     renderDashboard();
     await waitFor(() => expect(listTasks).toHaveBeenCalled());
-    const initialTasksCalls = listTasks.mock.calls.length;
-    const initialBudgetCalls = getProjectBudgetHours.mock.calls.length;
+    const initialTasksCalls = mockedListTasks.mock.calls.length;
+    const initialBudgetCalls = mockedGetProjectBudgetHours.mock.calls.length;
 
+    await waitFor(() => expect(MockSocket.last()?.onmessage).toBeTypeOf('function'));
     const socket = MockSocket.last();
-    expect(socket).toBeTruthy();
-    socket?.triggerMessage({ type: 'jira_sync_complete', project_id: sampleProject.id });
+    await act(async () => {
+      socket?.triggerMessage({ type: 'jira_sync_complete', project_id: sampleProject.id });
+    });
 
-    await waitFor(() => expect(listTasks.mock.calls.length).toBeGreaterThan(initialTasksCalls));
-    await waitFor(() => expect(getProjectBudgetHours.mock.calls.length).toBeGreaterThan(initialBudgetCalls));
+    await waitFor(() => expect(mockedListTasks.mock.calls.length).toBeGreaterThan(initialTasksCalls));
+    await waitFor(() => expect(mockedGetProjectBudgetHours.mock.calls.length).toBeGreaterThan(initialBudgetCalls));
   });
 
   it('surfaces error when websocket indicates sync failure', async () => {
     renderDashboard();
     await waitFor(() => expect(listTasks).toHaveBeenCalled());
 
+    await waitFor(() => expect(MockSocket.last()?.onmessage).toBeTypeOf('function'));
     const socket = MockSocket.last();
-    socket?.triggerMessage({ type: 'jira_sync_failed', project_id: sampleProject.id, detail: 'auth' });
+    await act(async () => {
+      socket?.triggerMessage({ type: 'jira_sync_failed', project_id: sampleProject.id, detail: 'auth' });
+    });
 
     await screen.findByText(/Background sync failed/i);
   });

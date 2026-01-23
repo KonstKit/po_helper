@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -49,7 +49,7 @@ async def fetch_pull_requests(
         "X-GitHub-Api-Version": "2022-11-28",
     }
 
-    params = {"state": state, "per_page": per_page}
+    params: Dict[str, str | int | float | bool | None] = {"state": state, "per_page": per_page}
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.get(url, headers=headers, params=params)

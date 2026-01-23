@@ -7,7 +7,6 @@ from app.api.api_v1.endpoints import (
     tasks,
     jira,
     analytics,
-    analytics_simple,
     usage_analytics,
     settings,
     confluence,
@@ -20,6 +19,7 @@ from app.api.api_v1.endpoints import (
     tasks_async,
     project_repository,
     gitlab_projects,
+    capacity,
 )
 
 api_router = APIRouter()
@@ -32,8 +32,9 @@ api_router.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
 api_router.include_router(jira.router, prefix="/jira", tags=["jira"])
 api_router.include_router(jira_fields.router, prefix="/jira-fields", tags=["jira-fields"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
-api_router.include_router(analytics_simple.router, prefix="/analytics", tags=["analytics"])
-api_router.include_router(usage_analytics.router, prefix="/usage-analytics", tags=["usage-analytics"])
+api_router.include_router(
+    usage_analytics.router, prefix="/usage-analytics", tags=["usage-analytics"]
+)
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
 api_router.include_router(confluence.router, prefix="/confluence", tags=["confluence"])
 api_router.include_router(traceability.router, prefix="/traceability", tags=["traceability"])
@@ -44,3 +45,4 @@ api_router.include_router(gitlab_projects.router, prefix="", tags=["gitlab"])
 api_router.include_router(quality.router, prefix="/quality", tags=["quality"])
 api_router.include_router(testing.router, prefix="/testing", tags=["testing"])
 api_router.include_router(tasks_async.router, prefix="/async-tasks", tags=["async-tasks"])
+api_router.include_router(capacity.router, prefix="/capacity", tags=["capacity"])

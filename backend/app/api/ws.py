@@ -17,4 +17,3 @@ async def websocket_updates(ws: WebSocket):
         pass
     finally:
         await connections.remove(ws)
-

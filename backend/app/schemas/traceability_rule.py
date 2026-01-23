@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -35,6 +35,10 @@ class TraceabilityRuleBase(BaseModel):
     category: str = Field(default="custom", pattern="^(basic|advanced|custom)$")
     tags: List[str] = Field(default_factory=list)
     project_id: Optional[int] = None
+    # Scheduling fields
+    schedule_cron: Optional[str] = Field(None, max_length=100)
+    schedule_enabled: bool = False
+    trigger_on_webhook: bool = False
 
 
 class TraceabilityRuleCreate(TraceabilityRuleBase):
@@ -49,6 +53,10 @@ class TraceabilityRuleUpdate(BaseModel):
     category: Optional[str] = Field(None, pattern="^(basic|advanced|custom)$")
     tags: Optional[List[str]] = None
     project_id: Optional[int] = None
+    # Scheduling fields
+    schedule_cron: Optional[str] = Field(None, max_length=100)
+    schedule_enabled: Optional[bool] = None
+    trigger_on_webhook: Optional[bool] = None
 
 
 class TraceabilityRuleInDB(TraceabilityRuleBase):
@@ -61,12 +69,12 @@ class TraceabilityRuleInDB(TraceabilityRuleBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TraceabilityRuleResponse(TraceabilityRuleInDB):
     """Response schema with additional computed fields"""
+
     success_rate: Optional[float] = None
 
     @classmethod
@@ -117,8 +125,7 @@ class TraceabilityRuleExecutionResponse(BaseModel):
     error_message: Optional[str]
     error_details: Optional[Dict[str, Any]]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # List responses
@@ -130,3 +137,76 @@ class TraceabilityRuleListResponse(BaseModel):
 class TraceabilityRuleExecutionListResponse(BaseModel):
     total: int
     items: List[TraceabilityRuleExecutionResponse]
+
+
+# =============================================================================
+# Validation Schemas (mirroring frontend ruleValidation.ts)
+# =============================================================================
+
+
+class ValidationError(BaseModel):
+    """Single validation error."""
+
+    type: str = "error"
+    message: str
+    node_id: Optional[str] = None
+    edge_id: Optional[str] = None
+
+
+class ValidationWarning(BaseModel):
+    """Single validation warning."""
+
+    type: str = "warning"
+    message: str
+    node_id: Optional[str] = None
+    edge_id: Optional[str] = None
+
+
+class ValidationResult(BaseModel):
+    """Result of flow validation - matches frontend ValidationResult interface."""
+
+    valid: bool
+    errors: List[ValidationError]
+    warnings: List[ValidationWarning]
+
+
+class FlowValidationRequest(BaseModel):
+    """Request body for flow validation endpoint."""
+
+    flow_json: FlowJSON
+
+
+# =============================================================================
+# Scheduling Schemas
+# =============================================================================
+
+
+class RuleScheduleUpdate(BaseModel):
+    """Request body for updating rule schedule settings."""
+
+    schedule_cron: Optional[str] = Field(
+        None, max_length=100, description="Cron expression (e.g., '0 */6 * * *')"
+    )
+    schedule_enabled: Optional[bool] = Field(None, description="Enable/disable scheduled execution")
+
+
+class RuleScheduleResponse(BaseModel):
+    """Response for rule schedule settings."""
+
+    rule_id: int
+    schedule_cron: Optional[str]
+    schedule_enabled: bool
+    next_scheduled_run: Optional[datetime]
+
+
+class RuleWebhookResponse(BaseModel):
+    """Response for rule webhook settings."""
+
+    rule_id: int
+    trigger_on_webhook: bool
+    webhook_token: Optional[str] = Field(
+        None, description="Webhook token (only shown once on generation)"
+    )
+    webhook_url: Optional[str] = Field(
+        None, description="Full webhook URL for triggering this rule"
+    )

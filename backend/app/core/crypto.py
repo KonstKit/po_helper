@@ -1,4 +1,4 @@
-﻿import base64
+import base64
 import hashlib
 import os
 from typing import Optional
@@ -48,7 +48,7 @@ def decrypt_str(ciphertext: Optional[str]) -> Optional[str]:
         return None
 
     if ciphertext.startswith(AES_GCM_PREFIX):
-        token = ciphertext[len(AES_GCM_PREFIX):]
+        token = ciphertext[len(AES_GCM_PREFIX) :]
         try:
             data = base64.urlsafe_b64decode(token.encode("utf-8"))
             nonce, encrypted = data[:12], data[12:]
@@ -61,7 +61,7 @@ def decrypt_str(ciphertext: Optional[str]) -> Optional[str]:
             return None
 
     if ciphertext.startswith(LEGACY_FERNET_PREFIX):
-        token = ciphertext[len(LEGACY_FERNET_PREFIX):]
+        token = ciphertext[len(LEGACY_FERNET_PREFIX) :]
         try:
             fernet = _get_legacy_fernet()
             if not fernet:

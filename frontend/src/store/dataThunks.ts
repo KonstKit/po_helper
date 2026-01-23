@@ -9,6 +9,7 @@ import { setProjects, setLoading, setError, setCurrentProject } from './projectS
 import { setTasks, setTasksLoading, setTasksError } from './taskSlice';
 import { setSprints, setSprintsLoading, setSprintsError } from './sprintSlice';
 import { AppDispatch, RootState } from './store';
+import { getErrorMessage } from '../utils/errorUtils';
 
 const CACHE_TTL = 60000; // 1 minute cache
 
@@ -26,26 +27,23 @@ export const loadAllProjects = createAsyncThunk<
 
   // Check cache validity
   if (!force && lastLoadedAt && Date.now() - lastLoadedAt < CACHE_TTL) {
-    console.log('[Redux] Using cached projects data');
     return;
   }
 
   // If already loading, wait for the existing promise
   if (projectsLoadingPromise) {
-    console.log('[Redux] Projects already loading, waiting for completion');
     return projectsLoadingPromise;
   }
 
   const loadProjects = async () => {
     dispatch(setLoading(true));
     try {
-      console.log('[Redux] Loading projects list...');
-      const projects = await listProjects({ timeout: 30000 });
+      const projectsResp = await listProjects();
+      const projects = projectsResp.data;
 
       dispatch(setProjects(projects));
 
       // Load project details in parallel for dashboard stats
-      console.log('[Redux] Loading project details...');
       const projectDetails = await Promise.allSettled(
         projects.map(p => getProjectById(p.id, { timeout: 30000 }))
       );
@@ -61,9 +59,9 @@ export const loadAllProjects = createAsyncThunk<
 
       dispatch(setProjects(enhancedProjects));
       dispatch(setError(null));
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[Redux] Failed to load projects:', err);
-      dispatch(setError(err.message || 'Failed to load projects'));
+      dispatch(setError(getErrorMessage(err, 'Failed to load projects')));
     } finally {
       dispatch(setLoading(false));
       projectsLoadingPromise = null;
@@ -87,25 +85,22 @@ export const loadAllTasks = createAsyncThunk<
     if (typeof projectId === 'number') {
       const lastProjectLoad = lastLoadedAtByProject[projectId];
       if (lastProjectLoad && Date.now() - lastProjectLoad < CACHE_TTL) {
-        console.log(`[Redux] Using cached tasks data for project ${projectId}`);
         return;
       }
     } else if (lastLoadedAllAt && Date.now() - lastLoadedAllAt < CACHE_TTL) {
-      console.log('[Redux] Using cached tasks data (all projects)');
       return;
     }
   }
 
   dispatch(setTasksLoading(true));
   try {
-    console.log('[Redux] Loading tasks...');
-    const tasks = await listTasks({ project_id: projectId }, { timeout: 30000 });
+    const tasks = await listTasks({ projectId }, { timeout: 30000 });
 
     dispatch(setTasks({ tasks, projectId }));
     dispatch(setTasksError(null));
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[Redux] Failed to load tasks:', err);
-    dispatch(setTasksError(err.message || 'Failed to load tasks'));
+    dispatch(setTasksError(getErrorMessage(err, 'Failed to load tasks')));
   } finally {
     dispatch(setTasksLoading(false));
   }
@@ -122,20 +117,18 @@ export const loadAllSprints = createAsyncThunk<
 
   // Check cache validity
   if (!force && lastLoadedAt && Date.now() - lastLoadedAt < CACHE_TTL) {
-    console.log('[Redux] Using cached sprints data');
     return;
   }
 
   dispatch(setSprintsLoading(true));
   try {
-    console.log('[Redux] Loading sprints...');
-    const sprints = await listSprints({ project_id: projectId }, { timeout: 30000 });
+    const sprints = await listSprints({ projectId }, { timeout: 30000 });
 
     dispatch(setSprints(sprints));
     dispatch(setSprintsError(null));
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[Redux] Failed to load sprints:', err);
-    dispatch(setSprintsError(err.message || 'Failed to load sprints'));
+    dispatch(setSprintsError(getErrorMessage(err, 'Failed to load sprints')));
   } finally {
     dispatch(setSprintsLoading(false));
   }
@@ -147,7 +140,6 @@ export const loadProjectData = createAsyncThunk<
   { projectId: number; force?: boolean },
   { dispatch: AppDispatch; state: RootState }
 >('data/loadProjectData', async ({ projectId, force = false }, { dispatch, getState }) => {
-  console.log(`[Redux] Loading all data for project ${projectId}`);
 
   // Load all data in parallel
   await Promise.all([
@@ -175,12 +167,10 @@ export const initializeAppData = createAsyncThunk<
 >('data/initialize', async (_, { dispatch }) => {
   // Prevent duplicate initialization
   if (initializationInProgress) {
-    console.log('[Redux] Initialization already in progress, skipping');
     return;
   }
 
   initializationInProgress = true;
-  console.log('[Redux] Initializing app data...');
 
   try {
     // Load projects first
@@ -195,6 +185,4 @@ export const initializeAppData = createAsyncThunk<
   } finally {
     initializationInProgress = false;
   }
-
-  console.log('[Redux] App data initialization started');
 });

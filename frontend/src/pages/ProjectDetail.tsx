@@ -8,9 +8,6 @@ import {
   CardContent,
   Chip,
   LinearProgress,
-  Tab,
-  Tabs,
-  Paper,
   Button,
   FormControl,
   InputLabel,
@@ -31,11 +28,11 @@ import {
   FormControlLabel,
   Stack,
 } from "@mui/material";
-import { DataGrid, GridColDef } from "@mui/x-data-grid";
-import { Line } from "react-chartjs-2";
+import type { SelectChangeEvent } from "@mui/material/Select";
+import { GridColDef, GridPaginationModel } from "@mui/x-data-grid";
 import {
   getProjectById,
-  listTasksByProject,
+  listTasksByProjectPaginated,
   syncJiraProject,
   getBurndown,
   getRisks,
@@ -59,40 +56,30 @@ import {
   listGitlabProjects,
   purgeProject,
   getTeamMembersActivity,
-  getVelocity,
 } from "../services/api";
 import type {
   ProjectRepositoryLink,
   RepositoryProvider,
   GitlabProjectSummary,
+  Project,
+  Sprint,
+  TaskItem,
+  BurndownResponse,
+  RisksResponse,
+  SprintQuality,
+  SprintCapacity,
+  TeamMemberActivity,
+  QualityHistoryItem,
+  BudgetHoursResponse,
+  ValueMetricsResponse,
+  Board,
 } from "../services/api";
-import { CircularProgress, Snackbar, Alert, Tooltip } from "@mui/material";
+import { Snackbar, Alert, Tooltip } from "@mui/material";
 import CircularProgressWithLabel from "../components/CircularProgressWithLabel";
 import { isDevelopment } from "../utils/env";
-import GitHubIcon from '@mui/icons-material/GitHub';
-import GitlabIcon from '@mui/icons-material/GitHub';
-
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
-
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`project-tabpanel-${index}`}
-      aria-labelledby={`project-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
-    </div>
-  );
-}
+import { getErrorMessage, getErrorCode } from "../utils/errorUtils";
+import { normalizeQualityGateProvider } from "../utils/qualityGate";
+import ProjectDetailTabs from "./projectDetail/ProjectDetailTabs";
 
 const cacheKeyForTasks = (projectId: number) =>
   `project_tasks_cache_${projectId}`;
@@ -102,7 +89,6 @@ const ProjectDetail = () => {
   const navigate = useNavigate();
   const logDebug = (...args: unknown[]) => {
     if (isDevelopment) {
-      // eslint-disable-next-line no-console
       console.log(...args);
     }
   };
@@ -114,56 +100,55 @@ const ProjectDetail = () => {
     percent: number;
     step: string;
   }>({ loading: true, percent: 0, step: "Loading project..." });
-  const [reloadToken, setReloadToken] = useState(0);
-  const [project, setProject] = useState<any | null>(null);
-  const [rows, setRows] = useState<any[]>([]);
-  const lastRowsRef = useRef<any[]>([]);
-  const [risks, setRisks] = useState<any>(null);
-  const [burndown, setBurndown] = useState<any>(null);
+  const [project, setProject] = useState<Project | null>(null);
+  const [rows, setRows] = useState<TaskItem[]>([]);
+  const lastRowsRef = useRef<TaskItem[]>([]);
+  // Server-side pagination state for tasks
+  const [taskPaginationModel, setTaskPaginationModel] = useState<GridPaginationModel>({ page: 0, pageSize: 25 });
+  const [taskRowCount, setTaskRowCount] = useState(0);
+  const [risks, setRisks] = useState<RisksResponse | null>(null);
+  const [burndown, setBurndown] = useState<BurndownResponse | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [sprints, setSprints] = useState<any[]>([]);
+  const [sprints, setSprints] = useState<Sprint[]>([]);
   const [selectedSprint, setSelectedSprint] = useState<number | "">("");
-  const [sprintBurndown, setSprintBurndown] = useState<any>(null);
-  const [sprintQuality, setSprintQuality] = useState<any>(null);
-  const [sprintCapacity, setSprintCapacity] = useState<any>(null);
-  const [velocityAvg, setVelocityAvg] = useState<number>(0);
-  const [budgetHours, setBudgetHours] = useState<{
-    total_estimate_hours: number;
-    total_spent_hours: number;
-    remaining_hours: number;
-    overrun: boolean;
-    overrun_hours: number;
-    top_overruns: any[];
-  } | null>(null);
-  const [valueMetrics, setValueMetrics] = useState<{
-    value_delivered: number;
-    total_spent_hours: number;
-    roi: number;
-  } | null>(null);
-  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [sprintBurndown, setSprintBurndown] = useState<BurndownResponse | null>(null);
+  const [sprintQuality, setSprintQuality] = useState<SprintQuality | null>(null);
+  const [sprintCapacity, setSprintCapacity] = useState<SprintCapacity | null>(null);
+  const [budgetHours, setBudgetHours] = useState<BudgetHoursResponse | null>(null);
+  const [valueMetrics, setValueMetrics] = useState<ValueMetricsResponse | null>(null);
+  const [teamMembers, setTeamMembers] = useState<TeamMemberActivity[]>([]);
   const [toast, setToast] = useState<{
     open: boolean;
     type: "success" | "error" | "info" | "warning";
     msg: string;
   }>({ open: false, type: "info", msg: "" });
   const [error, setError] = useState<string | null>(null);
-  const [boards, setBoards] = useState<any[]>([]);
+  const [boards, setBoards] = useState<Board[]>([]);
   const [boardId, setBoardId] = useState<number | "">("");
+  const taskPaginationRef = useRef(taskPaginationModel);
+  const boardIdRef = useRef(boardId);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{
     active: boolean;
     percent: number;
     step: string;
   }>({ active: false, percent: 0, step: "" });
-  const syncTimerRef = useRef<any>(null);
-  const purgePollRef = useRef<any>(null);
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const purgePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const purgeReqCtrlRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    taskPaginationRef.current = taskPaginationModel;
+  }, [taskPaginationModel]);
+
+  useEffect(() => {
+    boardIdRef.current = boardId;
+  }, [boardId]);
   const [thresholds, setThresholds] = useState<{
     min_line?: number | "";
 
     min_branch?: number | "";
   }>({});
-  const applyProjectData = useCallback((data: any) => {
+  const applyProjectData = useCallback((data: Project | null) => {
     if (!data) {
       return;
     }
@@ -176,7 +161,7 @@ const ProjectDetail = () => {
       in_progress_tasks: data.in_progress_tasks ?? 0,
       spent_budget: data.spent_budget ?? 0,
     });
-    const qt = (data as any)?.quality_thresholds || {};
+    const qt = data?.quality_thresholds || {};
     setThresholds({
       min_line: typeof qt.min_line === "number" ? qt.min_line : "",
       min_branch: typeof qt.min_branch === "number" ? qt.min_branch : "",
@@ -192,7 +177,26 @@ const ProjectDetail = () => {
     return data;
   }, [id, applyProjectData]);
 
-  const [hist, setHist] = useState<any[]>([]);
+  // Load tasks with server-side pagination
+  const loadTasksPage = useCallback(async () => {
+    if (!id || Number.isNaN(Number(id))) {
+      return;
+    }
+    try {
+      const { page, pageSize } = taskPaginationRef.current;
+      const response = await listTasksByProjectPaginated(Number(id), {
+        skip: page * pageSize,
+        limit: pageSize,
+      });
+      setRows(response.data);
+      setTaskRowCount(response.meta.total);
+      lastRowsRef.current = response.data;
+    } catch (err) {
+      console.error('Failed to load tasks page', err);
+    }
+  }, [id]);
+
+  const [hist, setHist] = useState<QualityHistoryItem[]>([]);
   const [qualityLoading, setQualityLoading] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{
     active: boolean;
@@ -210,7 +214,7 @@ const ProjectDetail = () => {
     isPrimary: boolean;
   }>({
     repositoryUrl: "",
-    provider: 'github' as RepositoryProvider,
+    provider: 'github',
     repoSlug: "",
     isPrimary: true,
   });
@@ -233,12 +237,9 @@ const ProjectDetail = () => {
       try {
         const updated = await getProjectRepositories(Number(id));
         setRepoBindings(updated);
-      } catch (error: any) {
+      } catch (error) {
         if (showError) {
-          const message =
-            error?.response?.data?.detail ||
-            error?.message ||
-            "Failed to refresh repositories";
+          const message = getErrorMessage(error, "Failed to refresh repositories");
           setToast({ open: true, type: "error", msg: message });
         }
       } finally {
@@ -276,12 +277,8 @@ const ProjectDetail = () => {
         const hasNext = Boolean(nextRaw && String(nextRaw).trim() && String(nextRaw) !== '0');
         gitlabHasNextPageRef.current = hasNext;
         setGitlabPage(page);
-      } catch (error: any) {
-        const message =
-          error?.response?.data?.detail ||
-          error?.message ||
-          'Failed to fetch GitLab projects';
-        setGitlabError(message);
+      } catch (error) {
+        setGitlabError(getErrorMessage(error, 'Failed to fetch GitLab projects'));
       } finally {
         setGitlabLoading(false);
       }
@@ -313,9 +310,9 @@ const ProjectDetail = () => {
   const autoSyncTriedRef = useRef<boolean>(false);
   const autoSyncDisabledRef = useRef<boolean>(false);
   const autoSyncTimeoutRef = useRef<number | null>(null);
-  const timedOut = (e: any) => {
-    const msg = (e?.message || "").toLowerCase();
-    return e?.code === "ECONNABORTED" || msg.includes("timeout");
+  const timedOut = (e: unknown) => {
+    const msg = getErrorMessage(e, "").toLowerCase();
+    return getErrorCode(e) === "ECONNABORTED" || msg.includes("timeout");
   };
   const handleManualSync = async () => {
     if (!project?.jira_key) {
@@ -337,7 +334,7 @@ const ProjectDetail = () => {
           });
           return;
         }
-      } catch {}
+      } catch (err) { void err; }
       setSyncing(true);
       setSyncProgress({
         active: true,
@@ -352,18 +349,16 @@ const ProjectDetail = () => {
         }));
       }, 300);
       await syncJiraProject(project.jira_key, { timeout: 15000 });
-      const list = await listTasksByProject(Number(id));
-      updateTaskRows(list);
+      // Reload current page with paginated API after sync
+      await loadTasksPage();
       await loadProjectDetails(true);
-      setReloadToken((token) => token + 1);
       setSyncProgress({ active: false, percent: 100, step: "Sync complete" });
       setSyncing(false);
       setToast({ open: true, type: "success", msg: "Sync completed" });
-    } catch (e: any) {
+    } catch (e) {
       setSyncing(false);
       setSyncProgress({ active: false, percent: 0, step: "" });
-      const message = e?.response?.data?.detail || e?.message || "Sync failed";
-      setToast({ open: true, type: "error", msg: message });
+      setToast({ open: true, type: "error", msg: getErrorMessage(e, "Sync failed") });
     } finally {
       if (syncTimerRef.current) {
         clearInterval(syncTimerRef.current);
@@ -382,8 +377,17 @@ const ProjectDetail = () => {
     setRepoError(null);
   };
 
-  const handleRetry = () => {
-    setReloadToken((token) => token + 1);
+  const handleRetry = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      await loadProjectDetails(true);
+      await loadTasksPage();
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to reload project data'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleRepoSubmit = async () => {
@@ -423,12 +427,8 @@ const ProjectDetail = () => {
         msg: 'Repository linked to project.',
       });
       await reloadRepositories();
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.detail ||
-        error?.message ||
-        'Failed to link repository';
-      setRepoError(message);
+    } catch (error) {
+      setRepoError(getErrorMessage(error, 'Failed to link repository'));
     } finally {
       setRepoSaving(false);
     }
@@ -445,12 +445,12 @@ const ProjectDetail = () => {
         msg: 'Primary repository updated.',
       });
       await reloadRepositories();
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.detail ||
-        error?.message ||
-        'Failed to update primary repository';
-      setToast({ open: true, type: 'error', msg: message });
+    } catch (error) {
+      setToast({
+        open: true,
+        type: 'error',
+        msg: getErrorMessage(error, 'Failed to update primary repository'),
+      });
     } finally {
       setRepoAction(null);
     }
@@ -467,19 +467,19 @@ const ProjectDetail = () => {
         msg: 'Repository unlinked from project.',
       });
       await reloadRepositories();
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.detail ||
-        error?.message ||
-        'Failed to remove repository';
-      setToast({ open: true, type: 'error', msg: message });
+    } catch (error) {
+      setToast({
+        open: true,
+        type: 'error',
+        msg: getErrorMessage(error, 'Failed to remove repository'),
+      });
     } finally {
       setRepoAction(null);
     }
   };
 
   const updateTaskRows = useCallback(
-    (list: any[]) => {
+    (list: TaskItem[]) => {
       setRows(list);
       lastRowsRef.current = list;
       if (id && !Number.isNaN(Number(id))) {
@@ -493,12 +493,125 @@ const ProjectDetail = () => {
         }
       }
     },
-    [id, reloadToken],
+    [id],
   );
 
   const handleChange = (event: React.SyntheticEvent, newValue: number) => {
     setValue(newValue);
   };
+
+  const handleBoardChange = useCallback(
+    async (nextBoardId: number) => {
+      if (!id) return;
+      setBoardId(nextBoardId);
+      try {
+        const sp = await getProjectSprints(Number(id), 10, nextBoardId);
+        setSprints(sp.sprints || []);
+      } catch (err) {
+        void err;
+      }
+    },
+    [id],
+  );
+
+  const handleSprintChange = useCallback(
+    async (nextSprintId: number) => {
+      setSelectedSprint(nextSprintId);
+      try {
+        setSprintBurndown(await getSprintBurndown(nextSprintId));
+      } catch (err) {
+        void err;
+      }
+      try {
+        setSprintQuality(await getSprintQuality(nextSprintId));
+      } catch (err) {
+        void err;
+      }
+      try {
+        setSprintCapacity(await getSprintCapacity(nextSprintId));
+      } catch (err) {
+        void err;
+      }
+    },
+    [],
+  );
+
+  const handleSaveThresholds = useCallback(async () => {
+    if (!id) return;
+    try {
+      setQualityLoading(true);
+      await updateProject(Number(id), {
+        quality_thresholds: {
+          min_line:
+            thresholds.min_line === "" ? undefined : thresholds.min_line,
+          min_branch:
+            thresholds.min_branch === "" ? undefined : thresholds.min_branch,
+        },
+      });
+      setToast({
+        open: true,
+        type: "success",
+        msg: "Thresholds saved",
+      });
+    } catch (e) {
+      setToast({
+        open: true,
+        type: "error",
+        msg: getErrorMessage(e, "Save failed"),
+      });
+    } finally {
+      setQualityLoading(false);
+    }
+  }, [id, thresholds.min_branch, thresholds.min_line]);
+
+  const handleBulkQualityCheck = useCallback(async () => {
+    if (!id) return;
+    try {
+      setBulkProgress({
+        active: true,
+        percent: 0,
+        step: "Fetching PRs...",
+      });
+      const prs = await listPullRequests({
+        projectId: Number(id),
+        limit: 500,
+      });
+      const list = prs.pull_requests || [];
+      for (let i = 0; i < list.length; i++) {
+        setBulkProgress({
+          active: true,
+          percent: Math.round((i / list.length) * 100),
+          step: `Checking ${i + 1}/${list.length}`,
+        });
+        try {
+          await evaluateQualityGateAndCheck({
+            prNumber: list[i].number,
+            projectId: Number(id),
+            provider: normalizeQualityGateProvider(list[i].provider),
+          });
+        } catch (err) {
+          void err;
+        }
+      }
+      setBulkProgress({
+        active: false,
+        percent: 100,
+        step: "Done",
+      });
+      const h = await getQualityHistory({
+        projectId: Number(id),
+        limit: 20,
+      });
+      setHist(h.history || []);
+    } catch (e) {
+      setBulkProgress({ active: false, percent: 0, step: "" });
+      setToast({
+        open: true,
+        type: "error",
+        msg: getErrorMessage(e, "Bulk check failed"),
+      });
+    }
+  }, [id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -534,13 +647,13 @@ const ProjectDetail = () => {
         if (!cancelled) {
           setRepoBindings(data);
         }
-      } catch (error: any) {
+      } catch (error) {
         if (!cancelled) {
-          const message =
-            error?.response?.data?.detail ||
-            error?.message ||
-            'Failed to load repositories';
-          setToast({ open: true, type: 'error', msg: message });
+          setToast({
+            open: true,
+            type: 'error',
+            msg: getErrorMessage(error, 'Failed to load repositories'),
+          });
         }
       } finally {
         if (!cancelled) {
@@ -554,7 +667,7 @@ const ProjectDetail = () => {
     return () => {
       cancelled = true;
     };
-  }, [id, reloadToken, loadProjectDetails]);
+  }, [id, updateTaskRows]);
 
   useEffect(() => {
     if (!repoDialogOpen) return;
@@ -610,7 +723,17 @@ const ProjectDetail = () => {
         console.warn("Failed to restore cached tasks", err);
       }
     }
-  }, [id, reloadToken, loadProjectDetails]);
+  }, [id, updateTaskRows]);
+
+  // Reload tasks when pagination changes (not on initial mount, handled by main effect)
+  const paginationMountedRef = useRef(false);
+  useEffect(() => {
+    if (!paginationMountedRef.current) {
+      paginationMountedRef.current = true;
+      return; // Skip initial load - handled by main effect
+    }
+    loadTasksPage();
+  }, [loadTasksPage]);
 
   useEffect(() => {
     logDebug(
@@ -638,11 +761,11 @@ const ProjectDetail = () => {
           // Load thresholds and initial history
           try {
             const h = await getQualityHistory({
-              project_id: Number(id),
+              projectId: Number(id),
               limit: 20,
             });
             setHist(h.history || []);
-          } catch {}
+          } catch (err) { void err; }
           try {
             logDebug("ProjectDetail: Loading tasks for project:", id);
             setProgress({
@@ -650,16 +773,22 @@ const ProjectDetail = () => {
               percent: 20,
               step: "Loading tasks...",
             });
-            const list = await listTasksByProject(Number(id));
-            logDebug("ProjectDetail: Tasks loaded:", list?.length);
-            if (list.length === 0 && lastRowsRef.current.length > 0) {
+            // Use paginated API for server-side pagination
+            const response = await listTasksByProjectPaginated(Number(id), {
+              skip: 0,
+              limit: 25, // Initial page size
+            });
+            logDebug("ProjectDetail: Tasks loaded:", response.data?.length, "of", response.meta.total);
+            if (response.data.length === 0 && lastRowsRef.current.length > 0) {
               setToast({
                 open: true,
                 type: "warning",
                 msg: "No tasks returned from Jira; keeping cached data.",
               });
             } else {
-              updateTaskRows(list);
+              setRows(response.data);
+              setTaskRowCount(response.meta.total);
+              lastRowsRef.current = response.data;
             }
           } catch (e) {
             console.error("ProjectDetail: Failed to load tasks:", e);
@@ -671,7 +800,7 @@ const ProjectDetail = () => {
               step: "Analyzing risks...",
             });
             setRisks(await getRisks(Number(id)));
-          } catch {}
+          } catch (err) { void err; }
           try {
             setProgress({
               loading: true,
@@ -679,16 +808,7 @@ const ProjectDetail = () => {
               step: "Loading burndown...",
             });
             setBurndown(await getBurndown(Number(id)));
-          } catch {}
-          try {
-            setProgress({
-              loading: true,
-              percent: 65,
-              step: "Calculating velocity...",
-            });
-            const v = await getVelocity(Number(id));
-            setVelocityAvg(v?.average_velocity || 0);
-          } catch {}
+          } catch (err) { void err; }
           try {
             setProgress({
               loading: true,
@@ -697,7 +817,7 @@ const ProjectDetail = () => {
             });
             const b = await getProjectBudgetHours(Number(id));
             setBudgetHours(b);
-          } catch {}
+          } catch (err) { void err; }
           try {
             setProgress({
               loading: true,
@@ -706,7 +826,7 @@ const ProjectDetail = () => {
             });
             const vm = await getProjectValueMetrics(Number(id));
             setValueMetrics(vm);
-          } catch {}
+          } catch (err) { void err; }
           try {
             setProgress({
               loading: true,
@@ -715,7 +835,7 @@ const ProjectDetail = () => {
             });
             const tm = await getTeamMembersActivity(Number(id));
             setTeamMembers(tm || []);
-          } catch {}
+          } catch (err) { void err; }
           try {
             if (data?.jira_key) {
               setProgress({
@@ -725,9 +845,13 @@ const ProjectDetail = () => {
               });
               const b = await getBoardsForProject(data.jira_key);
               setBoards(b.boards || []);
-              if ((b.boards || []).length) setBoardId(b.boards[0].id);
+              if ((b.boards || []).length) {
+                const primaryBoardId = b.boards[0].id;
+                setBoardId(primaryBoardId);
+                boardIdRef.current = primaryBoardId;
+              }
             }
-          } catch {}
+          } catch (err) { void err; }
           try {
             setProgress({
               loading: true,
@@ -737,38 +861,39 @@ const ProjectDetail = () => {
             const sp = await getProjectSprints(
               Number(id),
               10,
-              typeof boardId === "number" ? boardId : undefined,
+              typeof boardIdRef.current === "number" ? boardIdRef.current : undefined,
             );
             setSprints(sp.sprints || []);
             const active =
-              (sp.sprints || []).find((s: any) => s.state === "active") ||
+              (sp.sprints || []).find((s) => s.state === "active") ||
               (sp.sprints || [])[0];
-            if (active) {
-              setSelectedSprint(active.sprint_id);
+            const activeSprintId = active?.sprint_id ?? active?.id;
+            if (typeof activeSprintId === "number") {
+              setSelectedSprint(activeSprintId);
               try {
                 setProgress({
                   loading: true,
                   percent: 92,
                   step: "Loading sprint burndown...",
                 });
-                setSprintBurndown(await getSprintBurndown(active.sprint_id));
-              } catch {}
+                setSprintBurndown(await getSprintBurndown(activeSprintId));
+              } catch (err) { void err; }
               try {
                 setProgress({
                   loading: true,
                   percent: 95,
                   step: "Computing sprint quality...",
                 });
-                setSprintQuality(await getSprintQuality(active.sprint_id));
-              } catch {}
+                setSprintQuality(await getSprintQuality(activeSprintId));
+              } catch (err) { void err; }
               try {
                 setProgress({
                   loading: true,
                   percent: 98,
                   step: "Calculating sprint capacity...",
                 });
-                setSprintCapacity(await getSprintCapacity(active.sprint_id));
-              } catch {}
+                setSprintCapacity(await getSprintCapacity(activeSprintId));
+              } catch (err) { void err; }
             }
           } catch (e) {
             console.error(e);
@@ -820,7 +945,7 @@ const ProjectDetail = () => {
 
                   try {
                     await syncJiraProject(data.jira_key, { timeout: 10000 });
-                  } catch (e: any) {
+                  } catch (e) {
                     if (!timedOut(e)) throw e;
                   }
 
@@ -828,12 +953,21 @@ const ProjectDetail = () => {
                     ...p,
                     step: "Applying updates...",
                   }));
-                  let list2: any[] = [];
+                  // Use paginated API for polling after auto-sync
+                  let taskTotal = 0;
                   try {
-                    list2 = await listTasksByProject(Number(id), {
-                      timeout: 120000,
+                    const { page, pageSize } = taskPaginationRef.current;
+                    const response = await listTasksByProjectPaginated(Number(id), {
+                      skip: page * pageSize,
+                      limit: pageSize,
                     });
-                  } catch (e: any) {
+                    taskTotal = response.meta.total;
+                    if (taskTotal > 0) {
+                      setRows(response.data);
+                      setTaskRowCount(taskTotal);
+                      lastRowsRef.current = response.data;
+                    }
+                  } catch (e) {
                     if (timedOut(e)) {
                       let attempts = 0;
                       const maxAttempts = 30;
@@ -841,14 +975,19 @@ const ProjectDetail = () => {
                         const iv = setInterval(async () => {
                           attempts++;
                           try {
-                            list2 = await listTasksByProject(Number(id), {
-                              timeout: 8000,
+                            const { page, pageSize } = taskPaginationRef.current;
+                            const response = await listTasksByProjectPaginated(Number(id), {
+                              skip: page * pageSize,
+                              limit: pageSize,
                             });
-                          } catch {}
-                          if (
-                            (list2 && list2.length > 0) ||
-                            attempts >= maxAttempts
-                          ) {
+                            taskTotal = response.meta.total;
+                            if (taskTotal > 0) {
+                              setRows(response.data);
+                              setTaskRowCount(taskTotal);
+                              lastRowsRef.current = response.data;
+                            }
+                          } catch (err) { void err; }
+                          if (taskTotal > 0 || attempts >= maxAttempts) {
                             clearInterval(iv);
                             resolve();
                           }
@@ -859,8 +998,7 @@ const ProjectDetail = () => {
                     }
                   }
 
-                  if (list2.length > 0) {
-                    updateTaskRows(list2);
+                  if (taskTotal > 0) {
                     await loadProjectDetails(true);
                     setToast({
                       open: true,
@@ -883,7 +1021,7 @@ const ProjectDetail = () => {
                     step: "Sync complete",
                   });
                   setSyncing(false);
-                } catch (e: any) {
+                } catch (e) {
                   if (syncTimerRef.current) clearInterval(syncTimerRef.current);
                   syncTimerRef.current = null;
                   setSyncing(false);
@@ -891,11 +1029,11 @@ const ProjectDetail = () => {
                   setToast({
                     open: true,
                     type: "error",
-                    msg: `Auto-sync failed: ${e?.response?.data?.detail || e.message}`,
+                    msg: `Auto-sync failed: ${getErrorMessage(e, "Unknown error")}`,
                   });
                   try {
                     wsRef.current?.close();
-                  } catch {}
+                  } catch (err) { void err; }
                   clearIntegrationStatusCache();
                   autoSyncDisabledRef.current = true;
                 } finally {
@@ -914,27 +1052,23 @@ const ProjectDetail = () => {
                 );
               }, 0);
             }
-          } catch (e: any) {
+          } catch {
             if (syncTimerRef.current) clearInterval(syncTimerRef.current);
             syncTimerRef.current = null;
             setSyncing(false);
             setSyncProgress({ active: false, percent: 0, step: "" });
             try {
               wsRef.current?.close();
-            } catch {}
+            } catch (err) { void err; }
             clearIntegrationStatusCache();
             autoSyncDisabledRef.current = true;
           }
         }
-      } catch (e: any) {
+      } catch (e) {
         if (isDevelopment) {
           console.error('[ProjectDetail] Failed to load project', e);
         }
-        const message =
-          e?.response?.data?.detail ||
-          e?.message ||
-          'Failed to load project details';
-        setError(message);
+        setError(getErrorMessage(e, 'Failed to load project details'));
         setProject(null);
       } finally {
         setLoading(false);
@@ -956,7 +1090,7 @@ const ProjectDetail = () => {
       if (purgeReqCtrlRef.current) purgeReqCtrlRef.current.abort();
       purgeReqCtrlRef.current = null;
     };
-  }, [id]);
+  }, [id, loadProjectDetails, loadTasksPage]);
 
   // WebSocket: listen for backend sync completion and refresh tasks (only if Jira configured and auto-sync not disabled)
   useEffect(() => {
@@ -979,10 +1113,8 @@ const ProjectDetail = () => {
               typeof id === "string" &&
               Number(id) === Number(msg?.project_id)
             ) {
-              const list = await listTasksByProject(Number(id), {
-                timeout: 120000,
-              });
-              updateTaskRows(list);
+              // Reload current page with paginated API after sync
+              await loadTasksPage();
               await loadProjectDetails(true);
               setToast({
                 open: true,
@@ -1010,49 +1142,23 @@ const ProjectDetail = () => {
                 msg: detail ? `${message}: ${detail}` : message,
               });
             }
-          } catch {}
+          } catch (err) { void err; }
         };
         ws.onclose = () => {
           if (!closed) wsRef.current = null;
         };
-      } catch {}
+      } catch (err) { void err; }
     })();
     return () => {
       closed = true;
       try {
         wsRef.current?.close();
-      } catch {}
+      } catch (err) { void err; }
       wsRef.current = null;
     };
-  }, [id]);
+  }, [id, loadProjectDetails, loadTasksPage]);
 
-  const tasks = [
-    {
-      id: 1,
-      key: "ECOM-123",
-      summary: "Implement user authentication",
-      status: "In Progress",
-      assignee: "John Doe",
-      estimate_hours: 16,
-      spent_hours: 12,
-      priority: "High",
-    },
-    // ... more tasks
-  ];
-
-  const burndownData = {
-    labels: ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5", "Week 6"],
-    datasets: [
-      {
-        label: "Remaining Work",
-        data: [320, 280, 240, 200, 160, 120],
-        borderColor: "rgb(75, 192, 192)",
-        backgroundColor: "rgba(75, 192, 192, 0.2)",
-      },
-    ],
-  };
-
-  const taskColumns: GridColDef[] = [
+  const taskColumns: GridColDef<TaskItem>[] = [
     { field: "key", headerName: "Key", width: 120 },
     { field: "summary", headerName: "Summary", width: 300, flex: 1 },
     {
@@ -1183,10 +1289,10 @@ const ProjectDetail = () => {
                 Tasks
               </Typography>
               <Typography variant="h5">
-                {project.completed_tasks}/{project.total_tasks}
+                {project.completed_tasks ?? 0}/{project.total_tasks ?? 0}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {project.total_tasks - project.completed_tasks} remaining
+                {(project.total_tasks ?? 0) - (project.completed_tasks ?? 0)} remaining
               </Typography>
             </CardContent>
           </Card>
@@ -1279,791 +1385,41 @@ const ProjectDetail = () => {
       </Grid>
 
       {/* Tabs */}
-      <Paper>
-        <Tabs value={value} onChange={handleChange}>
-          <Tab label="Tasks" />
-          <Tab label="Progress" />
-          <Tab label="Team" />
-          <Tab label="Risks" />
-          <Tab label="Sprints" />
-          <Tab label="Quality" />
-          <Tab label="Repositories" />
-        </Tabs>
-
-        <TabPanel value={value} index={0}>
-          <Box height={500}>
-            <DataGrid
-              rows={rows}
-              columns={taskColumns}
-              checkboxSelection
-              disableRowSelectionOnClick
-              initialState={{
-                pagination: { paginationModel: { page: 0, pageSize: 25 } },
-              }}
-              pageSizeOptions={[25, 50, 100]}
-            />
-          </Box>
-        </TabPanel>
-
-        <TabPanel value={value} index={1}>
-          <Box height={400}>
-            <Typography variant="h6" gutterBottom>
-              Project Burndown
-            </Typography>
-            <Line
-              data={{
-                labels: (burndown?.ideal_burndown || []).map(
-                  (p: any) => `Day ${p.day}`,
-                ),
-                datasets: [
-                  {
-                    label: "Ideal",
-                    data: (burndown?.ideal_burndown || []).map(
-                      (p: any) => p.ideal_remaining,
-                    ),
-                    borderColor: "rgba(255,99,132,0.8)",
-                    backgroundColor: "rgba(255,99,132,0.1)",
-                    borderDash: [5, 5],
-                  },
-                  {
-                    label: "Actual",
-                    data: (
-                      burndown?.actual_burndown ||
-                      burndown?.ideal_burndown ||
-                      []
-                    ).map((p: any) => p.remaining || p.ideal_remaining),
-                    borderColor: "rgba(54,162,235,0.8)",
-                    backgroundColor: "rgba(54,162,235,0.1)",
-                  },
-                ],
-              }}
-              options={{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: "top" } },
-              }}
-            />
-          </Box>
-        </TabPanel>
-
-        <TabPanel value={value} index={2}>
-          <Typography variant="h6" gutterBottom>
-            Team Members
-          </Typography>
-          <Grid container spacing={2}>
-            {(teamMembers.length > 0 ? teamMembers : Array.from(
-              new Map(
-                rows
-                  .filter((r) => r.assignee_name)
-                  .map((r) => [r.assignee_email || r.assignee_name, r]),
-              ).values(),
-            ).map((r: any) => ({
-              name: r.assignee_name,
-              email: r.assignee_email,
-              active_tasks: rows.filter((x) => x.assignee_name === r.assignee_name).length,
-              total_tasks: rows.filter((x) => x.assignee_name === r.assignee_name).length,
-              completed_tasks: 0,
-              last_activity: null,
-              days_since_activity: null,
-            }))).map((member: any) => (
-              <Grid
-                item
-                xs={12}
-                sm={6}
-                md={3}
-                key={member.email || member.name}
-              >
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6">{member.name}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {member.active_tasks} active tasks
-                    </Typography>
-                    {member.last_activity && (
-                      <Typography
-                        variant="caption"
-                        color={
-                          member.days_since_activity === null ? "text.disabled" :
-                          member.days_since_activity === 0 ? "success.main" :
-                          member.days_since_activity <= 3 ? "info.main" :
-                          member.days_since_activity <= 7 ? "warning.main" :
-                          "error.main"
-                        }
-                      >
-                        Last activity: {
-                          member.days_since_activity === 0 ? "today" :
-                          member.days_since_activity === 1 ? "yesterday" :
-                          `${member.days_since_activity} days ago`
-                        }
-                      </Typography>
-                    )}
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-        </TabPanel>
-
-        <TabPanel value={value} index={3}>
-          <Typography variant="h6" gutterBottom>
-            Risk Assessment
-          </Typography>
-          <Box>
-            {(risks?.risks || []).map((risk: any, index: number) => (
-              <Card key={index} sx={{ mb: 2 }}>
-                <CardContent>
-                  <Box display="flex" alignItems="center" gap={2}>
-                    <Chip
-                      label={risk.type}
-                      color={
-                        risk.severity === "high"
-                          ? "error"
-                          : risk.severity === "medium"
-                            ? "warning"
-                            : "success"
-                      }
-                    />
-                    <Typography>{risk.message}</Typography>
-                  </Box>
-                </CardContent>
-              </Card>
-            ))}
-          </Box>
-        </TabPanel>
-
-        {/* Sprints Tab */}
-        <TabPanel value={value} index={4}>
-          <Box mb={2} display="flex" alignItems="center" gap={2}>
-            <FormControl size="small" sx={{ minWidth: 220 }}>
-              <InputLabel>Board</InputLabel>
-              <Select
-                label="Board"
-                value={boardId}
-                onChange={async (e) => {
-                  const bid = Number(e.target.value);
-                  setBoardId(bid);
-                  try {
-                    const sp = await getProjectSprints(Number(id), 10, bid);
-                    setSprints(sp.sprints || []);
-                  } catch {}
-                }}
-              >
-                {boards.map((b: any) => (
-                  <MenuItem key={b.id} value={b.id}>
-                    {b.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl size="small" sx={{ minWidth: 220 }}>
-              <InputLabel>Sprint</InputLabel>
-              <Select
-                label="Sprint"
-                value={selectedSprint}
-                onChange={async (e) => {
-                  const sid = Number(e.target.value);
-                  setSelectedSprint(sid);
-                  try {
-                    setSprintBurndown(await getSprintBurndown(sid));
-                  } catch {}
-                  try {
-                    setSprintQuality(await getSprintQuality(sid));
-                  } catch {}
-                  try {
-                    setSprintCapacity(await getSprintCapacity(sid));
-                  } catch {}
-                }}
-              >
-                {sprints.map((s: any) => (
-                  <MenuItem key={s.sprint_id} value={s.sprint_id}>
-                    {s.name} ({s.state})
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Box>
-
-          {/* KPI cards */}
-          <Grid container spacing={2} mb={2}>
-            {(() => {
-              const current = sprints.find(
-                (s: any) => s.sprint_id === selectedSprint,
-              );
-              if (!current) return null;
-
-              // Map backend fields to expected frontend fields with safe defaults
-              const commitmentHours =
-                current.commitment_hours ?? current.commitment ?? 0;
-              const completedHours =
-                current.completed_hours ?? current.completed ?? 0;
-              const scopeAddedHours = current.scope_added_hours ?? 0;
-              const predictabilityPct =
-                current.predictability_pct ??
-                (commitmentHours > 0
-                  ? (completedHours / commitmentHours) * 100
-                  : 0);
-              const carryoverHours = current.carryover_hours ?? 0;
-
-              // Forecast KPI
-              let forecastLabel = "N/A";
-              try {
-                const sd = new Date(current.start_date).getTime();
-                const ed = new Date(current.end_date).getTime();
-                const now = Date.now();
-                const totalDays = Math.max(1, (ed - sd) / (1000 * 3600 * 24));
-                const elapsedDays = Math.max(
-                  0,
-                  Math.min(totalDays, (now - sd) / (1000 * 3600 * 24)),
-                );
-                const commit = Number(commitmentHours);
-                const completed = Number(completedHours);
-                const remaining = Math.max(commit - completed, 0);
-                const daysLeft = Math.max(0.1, totalDays - elapsedDays);
-                const paceNeeded = remaining / daysLeft;
-                const paceCurrent =
-                  elapsedDays > 0 ? completed / elapsedDays : 0;
-                const onTrack =
-                  paceCurrent + 0.01 >=
-                  (commit / totalDays) * (elapsedDays / totalDays)
-                    ? completed / commit >= elapsedDays / totalDays - 0.05
-                    : completed / commit >= elapsedDays / totalDays - 0.05;
-                forecastLabel = `${onTrack ? "On track" : "At risk"} — need ${Math.round(paceNeeded * 10) / 10}h/day`;
-              } catch {}
-              const cards = [
-                {
-                  title: "Commitment",
-                  value: `${typeof commitmentHours === "number" ? commitmentHours.toFixed(1) : commitmentHours}h`,
-                },
-                {
-                  title: "Completed",
-                  value: `${typeof completedHours === "number" ? completedHours.toFixed(1) : completedHours}h`,
-                },
-                {
-                  title: "Scope Change",
-                  value: `${typeof scopeAddedHours === "number" ? scopeAddedHours.toFixed(1) : scopeAddedHours}h`,
-                },
-                {
-                  title: "Predictability",
-                  value: `${typeof predictabilityPct === "number" ? predictabilityPct.toFixed(1) : predictabilityPct}%`,
-                },
-                {
-                  title: "Carryover",
-                  value: `${typeof carryoverHours === "number" ? carryoverHours.toFixed(1) : carryoverHours}h`,
-                },
-                { title: "Forecast", value: forecastLabel },
-              ];
-              return cards.map((c, idx) => (
-                <Grid item xs={12} sm={6} md={2.4} key={idx}>
-                  <Card>
-                    <CardContent>
-                      <Typography color="textSecondary" gutterBottom>
-                        {c.title}
-                      </Typography>
-                      <Typography variant="h5">{c.value}</Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ));
-            })()}
-          </Grid>
-
-          {/* Sprint Burndown */}
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Burndown
-            </Typography>
-            <Box height={300}>
-              <Line
-                data={{
-                  labels: (sprintBurndown?.ideal_burndown || []).map(
-                    (p: any) => `Day ${p.day}`,
-                  ),
-                  datasets: [
-                    {
-                      label: "Ideal",
-                      data: (sprintBurndown?.ideal_burndown || []).map(
-                        (p: any) => p.ideal_remaining,
-                      ),
-                      borderColor: "rgba(255,99,132,0.8)",
-                      backgroundColor: "rgba(255,99,132,0.1)",
-                      borderDash: [5, 5],
-                    },
-                    {
-                      label: "Actual",
-                      data: (
-                        sprintBurndown?.actual_burndown ||
-                        sprintBurndown?.ideal_burndown ||
-                        []
-                      ).map((p: any) => p.remaining || p.ideal_remaining),
-                      borderColor: "rgba(54,162,235,0.8)",
-                      backgroundColor: "rgba(54,162,235,0.1)",
-                    },
-                  ],
-                }}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: { legend: { position: "top" } },
-                }}
-              />
-            </Box>
-          </Paper>
-
-          {/* Sprint Capacity */}
-          {sprintCapacity && (
-            <Paper sx={{ p: 2, mb: 2 }}>
-              <Typography variant="h6" gutterBottom>
-                Capacity
-              </Typography>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Weeks: {sprintCapacity.weeks}, Capacity per person:{" "}
-                {Math.round(sprintCapacity.capacity_hours_per_person * 10) / 10}
-                h
-              </Typography>
-              <Box sx={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: "left", padding: 8 }}>
-                        Assignee
-                      </th>
-                      <th style={{ textAlign: "right", padding: 8 }}>
-                        Planned (h)
-                      </th>
-                      <th style={{ textAlign: "right", padding: 8 }}>
-                        Capacity (h)
-                      </th>
-                      <th style={{ textAlign: "right", padding: 8 }}>
-                        Utilization %
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sprintCapacity.assignees.map((r: any) => (
-                      <tr key={r.assignee}>
-                        <td style={{ padding: 8 }}>{r.assignee}</td>
-                        <td style={{ textAlign: "right", padding: 8 }}>
-                          {r.planned_hours}
-                        </td>
-                        <td style={{ textAlign: "right", padding: 8 }}>
-                          {r.capacity_hours}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: 8,
-                            color:
-                              r.utilization_pct > 100
-                                ? "#d32f2f"
-                                : r.utilization_pct > 85
-                                  ? "#ed6c02"
-                                  : "inherit",
-                          }}
-                        >
-                          {r.utilization_pct}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </Box>
-            </Paper>
-          )}
-
-          {/* Quality */}
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Quality
-            </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={4}>
-                <Card>
-                  <CardContent>
-                    <Typography color="textSecondary" gutterBottom>
-                      DoD
-                    </Typography>
-                    <Typography variant="h5">
-                      {(sprintQuality?.dod_pct ?? 0).toFixed(1)}%
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Card>
-                  <CardContent>
-                    <Typography color="textSecondary" gutterBottom>
-                      Blockers
-                    </Typography>
-                    <Typography variant="h5">
-                      {sprintQuality?.blockers ?? 0}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Card>
-                  <CardContent>
-                    <Typography color="textSecondary" gutterBottom>
-                      Bugs by Priority
-                    </Typography>
-                    <Typography variant="body2">
-                      {sprintQuality?.bugs_by_priority
-                        ? Object.entries(sprintQuality.bugs_by_priority)
-                            .map(([k, v]) => `${k}: ${v}`)
-                            .join(" · ")
-                        : "N/A"}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          </Paper>
-        </TabPanel>
-
-        {/* Quality Tab */}
-        <TabPanel value={value} index={5}>
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Quality Thresholds
-            </Typography>
-            <Box
-              display="flex"
-              gap={2}
-              alignItems="center"
-              flexWrap="wrap"
-              mb={1}
-            >
-              <TextField
-                label="Min Line %"
-                type="number"
-                size="small"
-                inputProps={{ step: 0.01, min: 0, max: 1 }}
-                value={thresholds.min_line ?? ""}
-                onChange={(e) =>
-                  setThresholds((t) => ({
-                    ...t,
-                    min_line:
-                      e.target.value === "" ? "" : Number(e.target.value),
-                  }))
-                }
-              />
-              <TextField
-                label="Min Branch %"
-                type="number"
-                size="small"
-                inputProps={{ step: 0.01, min: 0, max: 1 }}
-                value={thresholds.min_branch ?? ""}
-                onChange={(e) =>
-                  setThresholds((t) => ({
-                    ...t,
-                    min_branch:
-                      e.target.value === "" ? "" : Number(e.target.value),
-                  }))
-                }
-              />
-              <Button
-                variant="contained"
-                size="small"
-                disabled={qualityLoading}
-                onClick={async () => {
-                  try {
-                    setQualityLoading(true);
-                    await updateProject(Number(id), {
-                      quality_thresholds: {
-                        min_line:
-                          thresholds.min_line === ""
-                            ? null
-                            : thresholds.min_line,
-                        min_branch:
-                          thresholds.min_branch === ""
-                            ? null
-                            : thresholds.min_branch,
-                      },
-                    } as any);
-                    setToast({
-                      open: true,
-                      type: "success",
-                      msg: "Thresholds saved",
-                    });
-                  } catch (e: any) {
-                    setToast({
-                      open: true,
-                      type: "error",
-                      msg: e?.message || "Save failed",
-                    });
-                  } finally {
-                    setQualityLoading(false);
-                  }
-                }}
-              >
-                Save
-              </Button>
-              <Button
-                size="small"
-                onClick={() =>
-                  setThresholds({ min_line: 0.8, min_branch: 0.7 })
-                }
-              >
-                Normal
-              </Button>
-              <Button
-                size="small"
-                onClick={() =>
-                  setThresholds({ min_line: 0.9, min_branch: 0.8 })
-                }
-              >
-                Strict
-              </Button>
-              <Button
-                size="small"
-                onClick={() =>
-                  setThresholds({ min_line: 0.7, min_branch: 0.6 })
-                }
-              >
-                Lenient
-              </Button>
-            </Box>
-            {/* History Trend */}
-            <Box>
-              <Typography variant="subtitle2" gutterBottom>
-                Gate History (last 20)
-              </Typography>
-              <Box height={220}>
-                <Line
-                  data={{
-                    labels: (hist || []).map((h) =>
-                      new Date(h.created_at).toLocaleDateString(),
-                    ),
-                    datasets: [
-                      {
-                        label: "Pass",
-                        data: (hist || []).map((h) => (h.passed ? 1 : 0)),
-                        borderColor: "rgba(76,175,80,0.9)",
-                        backgroundColor: "rgba(76,175,80,0.2)",
-                      },
-                    ],
-                  }}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                      y: {
-                        min: 0,
-                        max: 1,
-                        ticks: { callback: (v) => (v ? "PASS" : "FAIL") },
-                      },
-                    },
-                    plugins: { legend: { display: false } },
-                  }}
-                />
-              </Box>
-            </Box>
-            {/* Quality Score */}
-            <Box display="flex" gap={3} alignItems="center" mt={2}>
-              <Box>
-                <Typography variant="subtitle2">
-                  Project Quality Score
-                </Typography>
-                <Typography variant="h5">
-                  {(() => {
-                    const n = hist.length;
-                    if (!n) return "N/A";
-                    const passRatio =
-                      hist.reduce((a, h) => a + (h.passed ? 1 : 0), 0) / n;
-                    const avgCov =
-                      hist
-                        .map((h) => h.line_coverage ?? 1)
-                        .reduce((a, b) => a + b, 0) / n;
-                    const score =
-                      Math.round(passRatio * (avgCov || 1) * 1000) / 10;
-                    return `${score}`;
-                  })()}
-                  %
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2">Actions</Typography>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => window.open("/quality", "_blank")}
-                >
-                  Open Quality Page
-                </Button>
-                <Button
-                  size="small"
-                  variant="contained"
-                  sx={{ ml: 1 }}
-                  disabled={bulkProgress.active}
-                  onClick={async () => {
-                    try {
-                      setBulkProgress({
-                        active: true,
-                        percent: 0,
-                        step: "Fetching PRs...",
-                      });
-                      const prs = await listPullRequests({
-                        project_id: Number(id),
-                        limit: 500,
-                      });
-                      const list = prs.pull_requests || [];
-                      for (let i = 0; i < list.length; i++) {
-                        setBulkProgress({
-                          active: true,
-                          percent: Math.round((i / list.length) * 100),
-                          step: `Checking ${i + 1}/${list.length}`,
-                        });
-                        try {
-                          await evaluateQualityGateAndCheck({
-                            pr_number: list[i].number,
-                            project_id: Number(id),
-                            provider: (list[i].provider || "github") as any,
-                          });
-                        } catch {}
-                      }
-                      setBulkProgress({
-                        active: false,
-                        percent: 100,
-                        step: "Done",
-                      });
-                      const h = await getQualityHistory({
-                        project_id: Number(id),
-                        limit: 20,
-                      });
-                      setHist(h.history || []);
-                    } catch (e: any) {
-                      setBulkProgress({ active: false, percent: 0, step: "" });
-                      setToast({
-                        open: true,
-                        type: "error",
-                        msg: e?.message || "Bulk check failed",
-                      });
-                    }
-                  }}
-                >
-                  Check All PRs
-                </Button>
-                {bulkProgress.active && (
-                  <Box sx={{ display: "inline-block", ml: 2 }}>
-                    <CircularProgressWithLabel
-                      value={bulkProgress.percent}
-                      label={bulkProgress.step}
-                      size={40}
-                    />
-                  </Box>
-                )}
-              </Box>
-            </Box>
-          </Paper>
-        </TabPanel>
-
-        <TabPanel value={value} index={6}>
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Box
-              display="flex"
-              justifyContent="space-between"
-              alignItems="center"
-              flexWrap="wrap"
-              gap={1}
-            >
-              <Typography variant="h6">Repositories</Typography>
-              <Button
-                variant="contained"
-                size="small"
-                onClick={handleOpenRepoDialog}
-              >
-                Link Repository
-              </Button>
-            </Box>
-            <Box mt={2} display="flex" gap={1} flexWrap="wrap">
-              <Chip
-                size="small"
-                label={`GitHub: ${repoProviders.github ? "configured" : "not configured"}`}
-                color={repoProviders.github ? "success" : "default"}
-              />
-              <Chip
-                size="small"
-                label={`GitLab: ${repoProviders.gitlab ? "configured" : "not configured"}`}
-                color={repoProviders.gitlab ? "success" : "default"}
-              />
-            </Box>
-            {!repoProviders.github && !repoProviders.gitlab && (
-              <Alert severity="info" sx={{ mt: 2 }}>
-                Configure GitHub or GitLab integration in Settings to link repositories.
-              </Alert>
-            )}
-            {repoLoading && <LinearProgress sx={{ mt: 2 }} />}
-            <Table size="small" sx={{ mt: 2 }}>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Provider</TableCell>
-                  <TableCell>Repository</TableCell>
-                  <TableCell>Primary</TableCell>
-                  <TableCell align="right">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {repoBindings.map((binding) => (
-                  <TableRow key={binding.id}>
-                    <TableCell width={120}>
-                      <Chip
-                        size="small"
-                        color={binding.repository.provider === "gitlab" ? "primary" : "default"}
-                        label={binding.repository.provider === "gitlab" ? "GitLab" : "GitHub"}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" fontWeight={600}>
-                        {binding.repository.repo_slug}
-                      </Typography>
-                      {binding.repository.default_branch && (
-                        <Typography variant="caption" color="text.secondary">
-                          Default branch: {binding.repository.default_branch}
-                        </Typography>
-                      )}
-                    </TableCell>
-                    <TableCell width={160}>
-                      {binding.is_primary ? (
-                        <Chip label="Primary" color="success" size="small" />
-                      ) : (
-                        <Button
-                          size="small"
-                          onClick={() => handleSetPrimaryRepository(binding)}
-                          disabled={repoAction?.type === "primary" && repoAction.id === binding.repository_id}
-                        >
-                          {repoAction?.type === "primary" && repoAction.id === binding.repository_id
-                            ? "Updating..."
-                            : "Set Primary"}
-                        </Button>
-                      )}
-                    </TableCell>
-                    <TableCell align="right" width={140}>
-                      <Button
-                        size="small"
-                        color="error"
-                        onClick={() => handleRemoveRepository(binding)}
-                        disabled={repoAction?.type === "remove" && repoAction.id === binding.repository_id}
-                      >
-                        {repoAction?.type === "remove" && repoAction.id === binding.repository_id
-                          ? "Removing..."
-                          : "Remove"}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {!repoLoading && repoBindings.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={4}>
-                      <Typography variant="body2" color="text.secondary">
-                        No repositories linked yet.
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </Paper>
-        </TabPanel>
+      <ProjectDetailTabs
+        value={value}
+        onChange={handleChange}
+        rows={rows}
+        taskColumns={taskColumns}
+        taskPaginationModel={taskPaginationModel}
+        onTaskPaginationModelChange={setTaskPaginationModel}
+        taskRowCount={taskRowCount}
+        burndown={burndown}
+        teamMembers={teamMembers}
+        risks={risks}
+        boards={boards}
+        boardId={boardId}
+        sprints={sprints}
+        selectedSprint={selectedSprint}
+        sprintBurndown={sprintBurndown}
+        sprintQuality={sprintQuality}
+        sprintCapacity={sprintCapacity}
+        onBoardChange={handleBoardChange}
+        onSprintChange={handleSprintChange}
+        thresholds={thresholds}
+        setThresholds={setThresholds}
+        qualityLoading={qualityLoading}
+        hist={hist}
+        bulkProgress={bulkProgress}
+        onSaveThresholds={handleSaveThresholds}
+        onBulkCheck={handleBulkQualityCheck}
+        repoProviders={repoProviders}
+        repoLoading={repoLoading}
+        repoBindings={repoBindings}
+        repoAction={repoAction}
+        onOpenRepoDialog={handleOpenRepoDialog}
+        onSetPrimaryRepository={handleSetPrimaryRepository}
+        onRemoveRepository={handleRemoveRepository}
+      />
 
         {/* Toasts */}
         <Snackbar
@@ -2110,10 +1466,10 @@ const ProjectDetail = () => {
                 labelId="repo-provider-label"
                 label="Provider"
                 value={repoForm.provider}
-                onChange={(e) =>
+                onChange={(e: SelectChangeEvent<RepositoryProvider>) =>
                   setRepoForm((form) => ({
                     ...form,
-                    provider: e.target.value as RepositoryProvider,
+                    provider: e.target.value,
                   }))
                 }
               >
@@ -2452,11 +1808,12 @@ const ProjectDetail = () => {
                       });
                       return;
                     }
-                  } catch {}
+                  } catch (err) { void err; }
                   setSyncing(true);
                   await syncJiraProject(project.jira_key);
-                  // Poll tasks until available or timeout
+                  // Poll tasks until available or timeout - use paginated API
                   let attempts = 0;
+                  let taskTotal = 0;
                   const maxAttempts = 30; // ~60s if interval 2s
                   if (purgePollRef.current) clearInterval(purgePollRef.current);
                   purgePollRef.current = setInterval(async () => {
@@ -2465,34 +1822,44 @@ const ProjectDetail = () => {
                     if (purgeReqCtrlRef.current)
                       purgeReqCtrlRef.current.abort();
                     purgeReqCtrlRef.current = new AbortController();
-                    const list = await listTasksByProject(Number(id), {
-                      signal: purgeReqCtrlRef.current.signal,
-                    });
-                    if (list.length > 0 || attempts >= maxAttempts) {
-                      clearInterval(purgePollRef.current);
-                      purgePollRef.current = null;
+                    try {
+                      const response = await listTasksByProjectPaginated(Number(id), {
+                        skip: taskPaginationModel.page * taskPaginationModel.pageSize,
+                        limit: taskPaginationModel.pageSize,
+                      });
+                      taskTotal = response.meta.total;
+                      if (taskTotal > 0) {
+                        setRows(response.data);
+                        setTaskRowCount(taskTotal);
+                        lastRowsRef.current = response.data;
+                      }
+                    } catch (err) { void err; }
+                    if (taskTotal > 0 || attempts >= maxAttempts) {
+                      if (purgePollRef.current) {
+                        clearInterval(purgePollRef.current);
+                        purgePollRef.current = null;
+                      }
                       if (purgeReqCtrlRef.current) {
                         purgeReqCtrlRef.current.abort();
                         purgeReqCtrlRef.current = null;
                       }
-                      updateTaskRows(list);
                       setSyncing(false);
                       setToast({
                         open: true,
-                        type: list.length > 0 ? "success" : "error",
+                        type: taskTotal > 0 ? "success" : "error",
                         msg:
-                          list.length > 0
+                          taskTotal > 0
                             ? "Resync completed"
                             : "Timeout while waiting for data",
                       });
                     }
                   }, 2000);
-                } catch (e: any) {
+                } catch (e) {
                   setSyncing(false);
                   setToast({
                     open: true,
                     type: "error",
-                    msg: `Purge/Resync failed: ${e?.response?.data?.detail || e.message}`,
+                    msg: `Purge/Resync failed: ${getErrorMessage(e, "Unknown error")}`,
                   });
                 }
               }}
@@ -2501,10 +1868,8 @@ const ProjectDetail = () => {
             </Button>
           </DialogActions>
         </Dialog>
-      </Paper>
     </Box>
   );
 };
 
 export default ProjectDetail;
-

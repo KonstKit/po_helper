@@ -1,4 +1,4 @@
-﻿# Release Notes
+# Release Notes
 
 ## 2025-09-30
 

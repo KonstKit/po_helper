@@ -21,7 +21,6 @@ import {
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
-  Save as SaveIcon,
   Delete as DeleteIcon,
   Info as InfoIcon,
 } from '@mui/icons-material';
@@ -69,7 +68,7 @@ export const AdvancedFieldMapping: React.FC<AdvancedFieldMappingProps> = ({
   const handleStartMapping = (fieldType: string) => {
     setEditingType(fieldType);
     // Pre-select if there's a likely candidate
-    const likelyField = Object.entries(fields).find(([_, field]) =>
+    const likelyField = Object.entries(fields).find(([, field]) =>
       field.name.toLowerCase().includes(fieldType.replace('_', ' '))
     );
     if (likelyField) {
@@ -147,7 +146,7 @@ export const AdvancedFieldMapping: React.FC<AdvancedFieldMappingProps> = ({
                   </TableRow>
                 ) : (
                   mappings.map((mapping) => (
-                    <TableRow key={mapping.id}>
+                    <TableRow key={mapping.id ?? mapping.field_id}>
                       <TableCell>
                         <Box display="flex" alignItems="center" gap={1}>
                           {FIELD_TYPES.find((ft) => ft.value === mapping.field_type)?.label ||
@@ -181,7 +180,11 @@ export const AdvancedFieldMapping: React.FC<AdvancedFieldMappingProps> = ({
                         <IconButton
                           size="small"
                           color="error"
-                          onClick={() => onDeleteMapping(mapping.id)}
+                          onClick={() => {
+                            if (mapping.id !== undefined) {
+                              onDeleteMapping(mapping.id);
+                            }
+                          }}
                         >
                           <DeleteIcon fontSize="small" />
                         </IconButton>

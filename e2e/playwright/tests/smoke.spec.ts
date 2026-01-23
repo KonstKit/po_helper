@@ -1,4 +1,4 @@
-﻿import { test, expect } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
 const apiURL = process.env.E2E_API_URL || 'http://localhost:8000/health';
 

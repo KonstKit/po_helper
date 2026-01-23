@@ -18,7 +18,6 @@ import {
   FilterList as FilterListIcon,
   CallSplit as DecisionIcon,
   Link as LinkIcon,
-  AddCircle as AddIcon,
   Upload as UploadIcon,
   Download as DownloadIcon,
   LibraryBooks as TemplateIcon,
@@ -34,8 +33,10 @@ interface NodeTemplate {
   label: string;
   icon: React.ReactNode;
   category: 'source' | 'processor' | 'action';
-  defaultData: any;
+  defaultData: NodeTemplateData;
 }
+
+type NodeTemplateData = Record<string, unknown>;
 
 const nodeTemplates: NodeTemplate[] = [
   // Source Nodes
@@ -144,7 +145,7 @@ const nodeTemplates: NodeTemplate[] = [
 ];
 
 const Toolbox: React.FC<ToolboxProps> = ({ onImportExportClick, onTemplateClick }) => {
-  const onDragStart = (event: React.DragEvent, nodeType: string, nodeData: any) => {
+  const onDragStart = (event: React.DragEvent, nodeType: string, nodeData: NodeTemplateData) => {
     event.dataTransfer.setData('application/reactflow', nodeType);
     event.dataTransfer.setData('application/nodedata', JSON.stringify(nodeData));
     event.dataTransfer.effectAllowed = 'move';

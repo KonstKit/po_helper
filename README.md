@@ -1,4 +1,4 @@
-﻿# PO Helper - Product Owner Assistant
+# PO Helper - Product Owner Assistant
 
 Comprehensive project management tool for Product Owners working with Jira and Confluence, providing analytics, forecasting, and risk management capabilities.
 

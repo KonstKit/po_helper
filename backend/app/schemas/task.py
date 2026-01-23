@@ -14,7 +14,7 @@ class TaskBase(BaseModel):
             return value
         if isinstance(value, str):
             # Try comma-separated fallback
-            parts = [p.strip() for p in value.split(',') if p.strip()]
+            parts = [p.strip() for p in value.split(",") if p.strip()]
             return parts or None
         # Unknown type -> drop
         return None
@@ -28,13 +28,14 @@ class TaskBase(BaseModel):
         # Unknown type -> drop
         return None
 
-    @field_validator('blocked_by', 'blocks', 'labels', 'components', mode='before')
+    @field_validator("blocked_by", "blocks", "labels", "components", mode="before")
     def _validate_lists(cls, v):
         return TaskBase._ensure_list(v)
 
-    @field_validator('custom_fields', mode='before')
+    @field_validator("custom_fields", mode="before")
     def _validate_custom_fields(cls, v):
         return TaskBase._ensure_dict(v)
+
     key: str
     summary: str
     description: Optional[str] = None

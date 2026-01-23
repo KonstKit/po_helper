@@ -20,6 +20,7 @@ import {
   FormControl,
   InputLabel,
 } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import {
   KeyboardArrowDown as ExpandMoreIcon,
   KeyboardArrowUp as ExpandLessIcon,
@@ -27,14 +28,12 @@ import {
   Error as ErrorIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
+import { getAllRuleExecutions } from '../services/api';
+import type { TraceabilityRuleExecution } from '../services/api';
+import { getErrorMessage } from '../utils/errorUtils';
 
-interface RuleExecution {
-  id: number;
-  rule_id: number;
-  rule_name: string;
-  status: 'success' | 'failed';
-  links_created: number;
-  executed_at: string;
+// Extended interface for display with execution_log convenience
+interface RuleExecutionDisplay extends TraceabilityRuleExecution {
   execution_log: {
     errors: string[];
     warnings: string[];
@@ -42,12 +41,30 @@ interface RuleExecution {
   };
 }
 
+type StatusFilter = 'all' | TraceabilityRuleExecution['status'];
+const STATUS_OPTIONS: TraceabilityRuleExecution['status'][] = [
+  'success',
+  'failed',
+  'running',
+  'pending',
+];
+const STATUS_SET = new Set<string>(STATUS_OPTIONS);
+
+const isExecutionStatus = (value: string): value is TraceabilityRuleExecution['status'] =>
+  STATUS_SET.has(value);
+
+const parseStatusFilter = (value: string): StatusFilter =>
+  value === 'all' || isExecutionStatus(value) ? value : 'all';
+
 const TraceabilityExecutionHistory: React.FC = () => {
-  const [executions, setExecutions] = useState<RuleExecution[]>([]);
+  const [executions, setExecutions] = useState<RuleExecutionDisplay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const handleStatusFilterChange = (event: SelectChangeEvent<string>) => {
+    setStatusFilter(parseStatusFilter(event.target.value));
+  };
 
   useEffect(() => {
     fetchExecutions();
@@ -56,20 +73,22 @@ const TraceabilityExecutionHistory: React.FC = () => {
   const fetchExecutions = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/v1/traceability/rules/executions', {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+      const response = await getAllRuleExecutions();
+
+      // Transform API response to display format
+      const displayItems: RuleExecutionDisplay[] = response.data.map((item) => ({
+        ...item,
+        // Ensure execution_log is always present with proper structure
+        execution_log: item.execution_log ?? {
+          errors: item.error_message ? [item.error_message] : [],
+          warnings: [],
+          links_created: item.links_created,
         },
-      });
+      }));
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch executions');
-      }
-
-      const data = await response.json();
-      setExecutions(data.items || []);
-    } catch (err: any) {
-      setError(err.message);
+      setExecutions(displayItems);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to fetch executions'));
     } finally {
       setLoading(false);
     }
@@ -115,7 +134,7 @@ const TraceabilityExecutionHistory: React.FC = () => {
           <InputLabel>Status</InputLabel>
           <Select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={handleStatusFilterChange}
             label="Status"
           >
             <MenuItem value="all">All</MenuItem>
@@ -177,7 +196,11 @@ const TraceabilityExecutionHistory: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" color="text.secondary">
-                        {new Date(execution.executed_at).toLocaleString()}
+                        {execution.executed_at
+                          ? new Date(execution.executed_at).toLocaleString()
+                          : execution.started_at
+                            ? new Date(execution.started_at).toLocaleString()
+                            : 'N/A'}
                       </Typography>
                     </TableCell>
                     <TableCell>

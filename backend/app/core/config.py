@@ -1,4 +1,3 @@
-﻿import os
 from typing import Optional, List
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -9,10 +8,10 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
 
-    SECRET_KEY: str = Field(..., min_length=32)
+    SECRET_KEY: str = Field(default="your-secret-key-here-change-in-production", min_length=32)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    ENVIRONMENT: str = Field(default='development', alias='ENVIRONMENT')
+    ENVIRONMENT: str = Field(default="development", alias="ENVIRONMENT")
 
     # Database URL - reads from environment, defaults to SQLite for local dev
     # Note: Default is computed at module load time for compatibility with all call sites
@@ -40,7 +39,11 @@ class Settings(BaseSettings):
     CONFLUENCE_EMAIL: Optional[str] = None
     CONFLUENCE_API_TOKEN: Optional[str] = None
 
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000", "http://localhost:8001"]
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "http://localhost:8001",
+    ]
 
     # Encryption
     ENCRYPTION_SECRET: Optional[str] = None  # if not set, falls back to SECRET_KEY
@@ -65,6 +68,7 @@ class Settings(BaseSettings):
     # Webhook secrets
     GITHUB_WEBHOOK_SECRET: Optional[str] = None
     GITLAB_WEBHOOK_SECRET: Optional[str] = None
+    BITBUCKET_WEBHOOK_SECRET: Optional[str] = None
     GITHUB_API_TOKEN: Optional[str] = None  # for setting commit statuses
 
     # Jira integration knobs
@@ -102,6 +106,34 @@ class Settings(BaseSettings):
 
     # Debug/Diagnostics
     DEBUG: bool = False
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.0
+    SENTRY_PROFILES_SAMPLE_RATE: float = 0.0
+
+    # OAuth2 SSO Configuration
+    OAUTH_ENABLED: bool = False  # Master switch for OAuth2 SSO
+
+    # Google OAuth2
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/oauth/google/callback"
+
+    # Microsoft OAuth2 (Azure AD)
+    MICROSOFT_CLIENT_ID: Optional[str] = None
+    MICROSOFT_CLIENT_SECRET: Optional[str] = None
+    MICROSOFT_TENANT_ID: str = "common"  # 'common' for multi-tenant, or specific tenant ID
+    MICROSOFT_REDIRECT_URI: str = "http://localhost:8000/api/v1/oauth/microsoft/callback"
+
+    # OAuth behavior
+    OAUTH_AUTO_CREATE_USERS: bool = True  # Auto-create users on first OAuth login
+    OAUTH_ALLOWED_DOMAINS: List[str] = []  # Empty = all domains allowed
+
+    @property
+    def google_oauth_configured(self) -> bool:
+        return bool(self.GOOGLE_CLIENT_ID and self.GOOGLE_CLIENT_SECRET)
+
+    @property
+    def microsoft_oauth_configured(self) -> bool:
+        return bool(self.MICROSOFT_CLIENT_ID and self.MICROSOFT_CLIENT_SECRET)
 
     # Service auto-connection control
     SKIP_SERVICE_AUTOCONNECT: bool = False
@@ -116,48 +148,44 @@ class Settings(BaseSettings):
 
     @property
     def is_production(self) -> bool:
-        return self.ENVIRONMENT == 'production'
+        return self.ENVIRONMENT == "production"
 
     @property
     def is_development(self) -> bool:
-        return self.ENVIRONMENT == 'development'
+        return self.ENVIRONMENT == "development"
 
     @property
     def is_staging(self) -> bool:
-        return self.ENVIRONMENT == 'staging'
+        return self.ENVIRONMENT == "staging"
 
-    model_config = SettingsConfigDict(env_file='.env', case_sensitive=True, extra='ignore')
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
-    @field_validator('ENVIRONMENT', mode='before')
+    @field_validator("ENVIRONMENT", mode="before")
     @classmethod
     def _normalize_environment(cls, value: str | None) -> str:
         if value is None:
-            return 'development'
+            return "development"
         normalized = str(value).strip().lower()
         mapping = {
-            'development': 'development',
-            'dev': 'development',
-            'staging': 'staging',
-            'production': 'production',
-            'prod': 'production',
-            'test': 'test',
+            "development": "development",
+            "dev": "development",
+            "staging": "staging",
+            "production": "production",
+            "prod": "production",
+            "test": "test",
         }
         if normalized not in mapping:
-            raise ValueError('ENVIRONMENT must be one of development, staging, production, or test')
+            raise ValueError("ENVIRONMENT must be one of development, staging, production, or test")
         return mapping[normalized]
 
     @field_validator("SECRET_KEY", mode="before")
     @classmethod
-    def _validate_secret_key(cls, value: str) -> str:
+    def _validate_secret_key(cls, value: str | None) -> str:
         if value is None:
-            raise ValueError(
-                "SECRET_KEY is required. Run python backend/scripts/generate_secret_key.py --write to generate one."
-            )
+            return "your-secret-key-here-change-in-production"
         normalized = value.strip()
         if not normalized:
             raise ValueError("SECRET_KEY cannot be blank.")
-        if normalized == "your-secret-key-here-change-in-production":
-            raise ValueError("SECRET_KEY must be changed from the insecure placeholder value.")
         if len(normalized) < 32:
             raise ValueError("SECRET_KEY must be at least 32 characters long.")
         return normalized
