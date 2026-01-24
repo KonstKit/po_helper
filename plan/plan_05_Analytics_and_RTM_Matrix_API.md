@@ -4,7 +4,7 @@ file_id: plan_05
 parent: plan_04
 children:
   - plan_06
-status: draft
+status: completed
 created: 2024-05-26
 ---
 
@@ -28,4 +28,3 @@ created: 2024-05-26
 
 ## Acceptance
 - Matrix API returns sparse data within targets; coverage counts match direction=both; projections saved/loaded; exports delivered via async tasks.
-
