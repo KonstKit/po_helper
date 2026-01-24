@@ -15,10 +15,17 @@ from app.core.crypto import decrypt_str
 from app.models import Project, Sprint, IntegrationSetting
 from app.services.jira import JiraAuthError, JiraUnexpectedResponse
 from app.services.jira_service import jira_service
+from app.services.integration_config import get_connector_overrides
 from app.services.sync.issue_sync_service import IssueSyncService, IssueSyncResult
 from app.services.sync.worklog_sync_service import WorklogSyncService, WorklogSyncResult
 from app.services.sync.sprint_snapshot_service import SprintSnapshotService, SnapshotResult
 from app.services.sync.board_sync_service import BoardSyncService, BoardSyncResult
+from app.services.sync_tracking import (
+    get_or_create_source,
+    start_sync_task,
+    finish_sync_task,
+    upsert_sync_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +77,7 @@ class ProjectSyncOrchestrator:
         self,
         project_key: str,
         project_id: int,
+        trigger: str | None = "manual",
     ) -> ProjectSyncResult:
         """
         Orchestrate complete project synchronization.
@@ -89,14 +97,34 @@ class ProjectSyncOrchestrator:
             project_key=project_key,
             project_id=project_id,
         )
+        sync_task_id: Optional[int] = None
+        sync_source_id: Optional[int] = None
 
         try:
             logger.info(
                 "sync_project_issues started for %s (project_id=%s)", project_key, project_id
             )
 
+            try:
+                async with AsyncSessionLocal() as tracking_db:
+                    source = await get_or_create_source(
+                        tracking_db, provider="jira", project_id=project_id
+                    )
+                    sync_source_id = source.id
+                    task = await start_sync_task(
+                        tracking_db,
+                        task_type="jira_sync",
+                        project_id=project_id,
+                        source_id=sync_source_id,
+                        trigger=trigger,
+                    )
+                    sync_task_id = task.id
+                    await tracking_db.commit()
+            except Exception as exc:
+                logger.warning("Failed to initialize Jira sync tracking: %s", exc)
+
             # Ensure Jira connection
-            await self._ensure_jira_connection()
+            await self._ensure_jira_connection(project_id)
 
             # Fetch issues from Jira
             issues = await self._fetch_issues(project_key)
@@ -155,9 +183,72 @@ class ProjectSyncOrchestrator:
             result.errors.append(("sync", str(exc)))
             await self._notify_failure(project_key, project_id, "error", str(exc))
 
+        finally:
+            if sync_task_id is not None:
+                item_counts: Dict[str, Any] = {"issues_total": result.total_issues}
+                if result.issues is not None:
+                    item_counts.update(
+                        {
+                            "issues_processed": result.issues.total_processed,
+                            "issues_added": result.issues.total_added,
+                            "issues_updated": result.issues.total_updated,
+                        }
+                    )
+                if result.worklogs is not None:
+                    item_counts.update(
+                        {
+                            "worklogs_imported": result.worklogs.total_worklogs_imported,
+                            "worklog_issues_processed": result.worklogs.total_issues_processed,
+                            "worklog_issues_skipped": result.worklogs.total_issues_skipped,
+                        }
+                    )
+                if result.snapshots is not None:
+                    item_counts.update(
+                        {
+                            "sprints_processed": result.snapshots.total_sprints_processed,
+                            "snapshots_created": result.snapshots.total_snapshots_created,
+                            "sprints_skipped": result.snapshots.sprints_skipped,
+                        }
+                    )
+                if result.boards is not None:
+                    item_counts.update(
+                        {
+                            "boards_processed": result.boards.total_boards_processed,
+                            "sprints_synced": result.boards.total_sprints_synced,
+                            "tasks_linked": result.boards.total_tasks_linked,
+                        }
+                    )
+                if result.errors:
+                    item_counts["error_count"] = len(result.errors)
+
+                error_code = result.failure_reason or None
+                error_message = result.errors[0][1] if result.errors else None
+                status = "success" if result.success else "failed"
+
+                try:
+                    async with AsyncSessionLocal() as tracking_db:
+                        await finish_sync_task(
+                            tracking_db,
+                            sync_task_id,
+                            status=status,
+                            item_counts=item_counts,
+                            error_code=error_code,
+                            error_message=error_message,
+                        )
+                        if sync_source_id is not None:
+                            await upsert_sync_state(
+                                tracking_db,
+                                source_id=sync_source_id,
+                                project_id=project_id,
+                                last_event_id=str(sync_task_id),
+                            )
+                        await tracking_db.commit()
+                except Exception as exc:
+                    logger.warning("Failed to finalize Jira sync tracking: %s", exc)
+
         return result
 
-    async def _ensure_jira_connection(self) -> None:
+    async def _ensure_jira_connection(self, project_id: int | None = None) -> None:
         """Ensure Jira service is connected (for Celery workers)."""
         logger.info(
             "Jira service state: base_url=%s, has_auth=%s",
@@ -170,22 +261,36 @@ class ProjectSyncOrchestrator:
         ):
             try:
                 async with AsyncSessionLocal() as db:
+                    overrides = await get_connector_overrides(db, project_id, "jira")
+                    if overrides and not overrides.enabled:
+                        raise JiraAuthError("Jira connector is disabled for this project")
+
                     res = await db.execute(
                         select(IntegrationSetting).where(IntegrationSetting.kind == "jira")
                     )
                     row = res.scalar_one_or_none()
 
-                    if row and row.base_url and row.api_token:
+                    if row and (
+                        row.api_token or (overrides and overrides.settings.get("api_token"))
+                    ):
                         token = decrypt_str(row.api_token)
+                        if overrides and overrides.settings.get("api_token"):
+                            token = str(overrides.settings.get("api_token"))
                         email = (
                             None
                             if getattr(settings, "JIRA_FORCE_PAT", True)
                             else (row.email or None)
                         )
-                        jira_service.connect(row.base_url, email, token)
+                        base_url = row.base_url
+                        if overrides and overrides.settings.get("base_url"):
+                            base_url = str(overrides.settings.get("base_url"))
+                        if overrides and overrides.settings.get("email"):
+                            email = str(overrides.settings.get("email"))
+                        if base_url and token:
+                            jira_service.connect(base_url, email, token)
                         logger.info(
                             "Jira connected in worker using stored settings (base_url=%s, mode=%s)",
-                            row.base_url,
+                            base_url,
                             "PAT" if email is None else "Basic",
                         )
             except Exception as e:

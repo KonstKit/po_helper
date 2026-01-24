@@ -3,6 +3,7 @@
  */
 import api, { withRetry } from './client';
 import { AxiosRequestConfig } from 'axios';
+import { DEFAULT_PAGE_SIZE } from './types';
 import type {
   TraceabilityMatrixSummary,
   TraceabilityBackfillResult,
@@ -34,7 +35,15 @@ import type {
   ListRulesOptions,
   ListRuleExecutionsOptions,
   RuleExecutionResult,
-  DEFAULT_PAGE_SIZE,
+  // RTM Matrix types
+  RTMFilters,
+  RTMPagination,
+  RTMMatrixResponse,
+  MatrixConfig,
+  MatrixConfigCreate,
+  MatrixConfigUpdate,
+  ExportTaskCreate,
+  ExportTaskStatus,
 } from './types';
 import { normalizePaginatedResponse } from './pagination';
 
@@ -551,4 +560,233 @@ export const getAllRuleExecutions = async (
     limit,
     legacyKey: 'items',
   });
+};
+
+// =============================================================================
+// RTM Matrix (Full Grid with Pagination/Filters)
+// =============================================================================
+
+/**
+ * Map frontend direction values to backend direction values.
+ * Frontend uses row_to_col/col_to_row, backend expects outgoing/incoming.
+ */
+const mapDirection = (
+  direction?: 'both' | 'row_to_col' | 'col_to_row'
+): 'both' | 'outgoing' | 'incoming' | undefined => {
+  if (!direction) return undefined;
+  if (direction === 'row_to_col') return 'outgoing';
+  if (direction === 'col_to_row') return 'incoming';
+  return direction;
+};
+
+/**
+ * Get RTM matrix with server-side pagination and filters (GET method).
+ * Use for simple queries with comma-separated params.
+ */
+export const getRTMMatrix = async (
+  opts?: {
+    projectId?: number;
+    rowTypes?: string[];
+    colTypes?: string[];
+    rowStatuses?: string[];
+    colStatuses?: string[];
+    linkTypes?: string[];
+    minConfidence?: number;
+    direction?: 'both' | 'row_to_col' | 'col_to_row';
+    searchQuery?: string;
+    includeOrphans?: boolean;
+    rowSkip?: number;
+    rowLimit?: number;
+    colSkip?: number;
+    colLimit?: number;
+  }
+): Promise<RTMMatrixResponse> => {
+  const params: Record<string, unknown> = {};
+  if (opts?.projectId !== undefined) params.project_id = opts.projectId;
+  if (opts?.rowTypes?.length) params.row_types = opts.rowTypes.join(',');
+  if (opts?.colTypes?.length) params.col_types = opts.colTypes.join(',');
+  if (opts?.rowStatuses?.length) params.row_statuses = opts.rowStatuses.join(',');
+  if (opts?.colStatuses?.length) params.col_statuses = opts.colStatuses.join(',');
+  if (opts?.linkTypes?.length) params.link_types = opts.linkTypes.join(',');
+  if (opts?.minConfidence !== undefined) params.min_confidence = opts.minConfidence;
+  if (opts?.direction) params.direction = mapDirection(opts.direction);
+  if (opts?.searchQuery) params.search_query = opts.searchQuery;
+  if (opts?.includeOrphans !== undefined) params.include_orphans = opts.includeOrphans;
+  if (opts?.rowSkip !== undefined) params.row_skip = opts.rowSkip;
+  if (opts?.rowLimit !== undefined) params.row_limit = opts.rowLimit;
+  if (opts?.colSkip !== undefined) params.col_skip = opts.colSkip;
+  if (opts?.colLimit !== undefined) params.col_limit = opts.colLimit;
+
+  const { data } = await withRetry(
+    () => api.get('/v1/traceability/rtm-matrix', { params, timeout: 60000 }),
+    { retries: 2, baseDelayMs: 500, maxDelayMs: 3000 }
+  );
+  return data as RTMMatrixResponse;
+};
+
+/**
+ * Query RTM matrix with full filter/pagination body (POST method).
+ * Use for complex queries with array filters.
+ */
+export const queryRTMMatrix = async (
+  filters: RTMFilters,
+  pagination?: RTMPagination,
+  projectId?: number,
+  includeLinkDetails?: boolean
+): Promise<RTMMatrixResponse> => {
+  // Map frontend direction values to backend values
+  const mappedFilters = {
+    ...filters,
+    direction: filters.direction ? mapDirection(filters.direction as 'both' | 'row_to_col' | 'col_to_row') : undefined,
+  };
+
+  // project_id and include_link_details go as query params
+  const params: Record<string, unknown> = {};
+  if (projectId !== undefined) params.project_id = projectId;
+  // Only send include_link_details when explicitly true
+  if (includeLinkDetails) params.include_link_details = true;
+
+  const body: Record<string, unknown> = {
+    filters: mappedFilters,
+    pagination,
+  };
+
+  const { data } = await withRetry(
+    () => api.post(
+      '/v1/traceability/rtm-matrix/query',
+      body,
+      {
+        params,
+        timeout: 60000,
+      }
+    ),
+    { retries: 2, baseDelayMs: 500, maxDelayMs: 3000 }
+  );
+  return data as RTMMatrixResponse;
+};
+
+// =============================================================================
+// Matrix Configurations (Saved Projections)
+// =============================================================================
+
+/**
+ * List saved matrix configurations for a project.
+ */
+export const listMatrixConfigs = async (
+  opts?: { projectId?: number }
+): Promise<MatrixConfig[]> => {
+  const params: Record<string, unknown> = {};
+  if (opts?.projectId !== undefined) params.project_id = opts.projectId;
+
+  const { data } = await api.get('/v1/traceability/matrix-configs', { params, timeout: 30000 });
+  return data as MatrixConfig[];
+};
+
+/**
+ * Get a single matrix configuration by ID.
+ */
+export const getMatrixConfig = async (configId: number): Promise<MatrixConfig> => {
+  const { data } = await api.get(`/v1/traceability/matrix-configs/${configId}`, { timeout: 20000 });
+  return data as MatrixConfig;
+};
+
+/**
+ * Create a new matrix configuration (saved projection).
+ */
+export const createMatrixConfig = async (payload: MatrixConfigCreate): Promise<MatrixConfig> => {
+  const { data } = await api.post('/v1/traceability/matrix-configs', payload, { timeout: 30000 });
+  return data as MatrixConfig;
+};
+
+/**
+ * Update an existing matrix configuration.
+ */
+export const updateMatrixConfig = async (
+  configId: number,
+  payload: MatrixConfigUpdate
+): Promise<MatrixConfig> => {
+  const { data } = await api.patch(`/v1/traceability/matrix-configs/${configId}`, payload, {
+    timeout: 30000,
+  });
+  return data as MatrixConfig;
+};
+
+/**
+ * Delete a matrix configuration.
+ */
+export const deleteMatrixConfig = async (configId: number): Promise<void> => {
+  await api.delete(`/v1/traceability/matrix-configs/${configId}`, { timeout: 20000 });
+};
+
+/**
+ * Apply a saved matrix configuration and get the resulting matrix.
+ */
+export const applyMatrixConfig = async (
+  configId: number,
+  opts?: { includeLinkDetails?: boolean }
+): Promise<RTMMatrixResponse> => {
+  const params: Record<string, unknown> = {};
+  if (opts?.includeLinkDetails !== undefined) params.include_link_details = opts.includeLinkDetails;
+
+  const { data } = await api.get(`/v1/traceability/matrix-configs/${configId}/apply`, {
+    params,
+    timeout: 60000,
+  });
+  return data as RTMMatrixResponse;
+};
+
+// =============================================================================
+// Matrix Export
+// =============================================================================
+
+/**
+ * Create an export task for the RTM matrix.
+ * Returns immediately with a task_id for tracking progress.
+ */
+export const createMatrixExport = async (
+  payload: ExportTaskCreate
+): Promise<ExportTaskStatus> => {
+  const { data } = await api.post('/v1/traceability/exports', payload, {
+    timeout: 30000,
+  });
+  return data as ExportTaskStatus;
+};
+
+/**
+ * Get the status of an export task.
+ */
+export const getExportStatus = async (taskId: string): Promise<ExportTaskStatus> => {
+  const { data } = await api.get(`/v1/traceability/exports/${taskId}`, {
+    timeout: 10000,
+  });
+  return data as ExportTaskStatus;
+};
+
+/**
+ * List export tasks for a project.
+ */
+export const listExports = async (
+  opts?: { projectId?: number; status?: string; limit?: number }
+): Promise<ExportTaskStatus[]> => {
+  const params: Record<string, unknown> = {};
+  if (opts?.projectId !== undefined) params.project_id = opts.projectId;
+  if (opts?.status !== undefined) params.status = opts.status;
+  if (opts?.limit !== undefined) params.limit = opts.limit;
+
+  const { data } = await api.get('/v1/traceability/exports', { params, timeout: 30000 });
+  return data as ExportTaskStatus[];
+};
+
+/**
+ * Delete an export task.
+ */
+export const deleteExport = async (taskId: string): Promise<void> => {
+  await api.delete(`/v1/traceability/exports/${taskId}`, { timeout: 10000 });
+};
+
+/**
+ * Get download URL for a completed export.
+ */
+export const getExportDownloadUrl = (taskId: string): string => {
+  return `/api/v1/traceability/exports/${taskId}/download`;
 };

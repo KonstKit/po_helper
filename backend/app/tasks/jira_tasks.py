@@ -12,7 +12,7 @@ from app.core.celery_app import celery_app
 from app.core.database import AsyncSessionLocal
 from app.services.jira_sync import perform_project_sync
 from app.core.cache import redis_client as _redis_client
-from app.models import IntegrationSetting
+from app.models import IntegrationSetting, Project
 from app.core.crypto import decrypt_str
 from app.core.config import settings
 from app.services.jira_service import jira_service
@@ -86,7 +86,11 @@ class JiraSyncTask(Task):
     reject_on_worker_lost=True,
 )
 def sync_jira_project(
-    self, project_key: str, project_id: int, channel_id: Optional[str] = None
+    self,
+    project_key: str,
+    project_id: int,
+    channel_id: Optional[str] = None,
+    trigger: str | None = "manual",
 ) -> Dict[str, Any]:
     """
     Sync Jira project with robust error handling and progress tracking.
@@ -138,7 +142,7 @@ def sync_jira_project(
 
         # Run the actual sync
         self.update_progress(f"Syncing issues for {project_key}...", 10)
-        loop.run_until_complete(perform_project_sync(project_key, project_id))
+        loop.run_until_complete(perform_project_sync(project_key, project_id, trigger=trigger))
 
         # Calculate duration
         duration = (datetime.utcnow() - start_time).total_seconds()
@@ -200,6 +204,49 @@ def sync_jira_project(
             loop.close()
         except Exception:
             pass
+
+
+@celery_app.task(name="jira.scheduled_sync")
+def scheduled_jira_sync() -> Dict[str, Any]:
+    """Scheduled task to sync all active Jira projects."""
+    logger.info("Running scheduled Jira sync")
+
+    async def _load_projects() -> list[Project]:
+        async with AsyncSessionLocal() as db:
+            setting = (
+                await db.execute(
+                    select(IntegrationSetting).where(IntegrationSetting.kind == "jira")
+                )
+            ).scalar_one_or_none()
+            if not setting or not setting.api_token:
+                return []
+
+            result = await db.execute(
+                select(Project).where(Project.status == "active").order_by(Project.id)
+            )
+            return list(result.scalars().all())
+
+    projects: list[Project] = []
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        projects = loop.run_until_complete(_load_projects())
+    finally:
+        loop.close()
+
+    if not projects:
+        logger.info("No active Jira projects or Jira not configured; skipping scheduled sync")
+        return {"status": "skipped", "dispatched": 0}
+
+    dispatched = 0
+    for project in projects:
+        if not project.jira_key:
+            continue
+        sync_jira_project.delay(project.jira_key, project.id, None, "schedule")
+        dispatched += 1
+
+    logger.info("Scheduled Jira sync dispatched for %d project(s)", dispatched)
+    return {"status": "ok", "dispatched": dispatched}
 
 
 redis_client: Any = cast(Any, _redis_client)

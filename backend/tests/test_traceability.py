@@ -91,16 +91,21 @@ class _MatrixResult:
 
 
 class _MatrixSession:
-    def __init__(self, artifacts, links):
+    def __init__(self, artifacts, outgoing_links, incoming_links=None):
         self._artifacts = artifacts
-        self._links = links
+        self._outgoing_links = outgoing_links
+        self._incoming_links = incoming_links if incoming_links is not None else []
         self._calls = 0
 
     async def execute(self, *_args, **_kwargs):
         if self._calls == 0:
             self._calls += 1
             return _MatrixResult(self._artifacts, scalar=True)
-        return _MatrixResult(self._links)
+        elif self._calls == 1:
+            self._calls += 1
+            return _MatrixResult(self._outgoing_links)
+        else:
+            return _MatrixResult(self._incoming_links)
 
 
 @pytest.mark.asyncio
@@ -137,12 +142,13 @@ async def test_traceability_matrix_includes_link_type_counts():
         _DummyArtifact(id=2, type='commit', project_id=42),
         _DummyArtifact(id=3, type='test_case', project_id=42),
     ]
-    links = [
+    outgoing_links = [
         (1, 'implements'),
         (1, 'tests'),
         (2, 'derives_from'),
     ]
-    session = _MatrixSession(artifacts, links)
+    # incoming_links=[] means no links where these artifacts are targets
+    session = _MatrixSession(artifacts, outgoing_links, incoming_links=[])
 
     try:
         result = await traceability_matrix(project_id=42, db=session, current_user=SimpleNamespace(is_active=True))

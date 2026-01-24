@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Optional, Dict, Any, List
 import re
 from dataclasses import dataclass
@@ -24,6 +25,68 @@ class ConfluenceService:
         if self.bearer_token:
             h["Authorization"] = f"Bearer {self.bearer_token}"
         return h
+
+    def _request_with_retry(
+        self,
+        url: str,
+        *,
+        params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        auth: Optional[HTTPBasicAuth] = None,
+        timeout: Optional[int] = None,
+        allow_redirects: bool = True,
+        max_retries: Optional[int] = None,
+    ) -> requests.Response:
+        retry_count = (
+            settings.INTEGRATION_HTTP_MAX_RETRIES if max_retries is None else max(0, max_retries)
+        )
+        backoff_base = settings.INTEGRATION_HTTP_BACKOFF_SECONDS
+        backoff_max = settings.INTEGRATION_HTTP_BACKOFF_MAX_SECONDS
+        timeout_val = settings.INTEGRATION_HTTP_TIMEOUT if timeout is None else int(timeout)
+        attempts = retry_count + 1
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(attempts):
+            try:
+                resp = requests.get(
+                    url,
+                    params=params,
+                    headers=headers,
+                    auth=auth,
+                    timeout=timeout_val,
+                    allow_redirects=allow_redirects,
+                )
+                if resp.status_code >= 500 and attempt < attempts - 1:
+                    delay = min(backoff_base * (2**attempt), backoff_max)
+                    logger.warning(
+                        "Confluence request failed (%s) retry %d/%d in %.1fs: %s",
+                        resp.status_code,
+                        attempt + 1,
+                        attempts - 1,
+                        delay,
+                        url,
+                    )
+                    time.sleep(delay)
+                    continue
+                return resp
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
+                last_exc = exc
+                if attempt >= attempts - 1:
+                    raise
+                delay = min(backoff_base * (2**attempt), backoff_max)
+                logger.warning(
+                    "Confluence request error (%s) retry %d/%d in %.1fs: %s",
+                    exc.__class__.__name__,
+                    attempt + 1,
+                    attempts - 1,
+                    delay,
+                    url,
+                )
+                time.sleep(delay)
+
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("Unexpected Confluence request retry loop exit")
 
     def connect(
         self, base_url: str, email: Optional[str], api_token: str, is_cloud: Optional[bool] = None
@@ -256,7 +319,7 @@ class ConfluenceService:
                     "limit": int(limit),
                     "expand": expand,
                 }
-                r = requests.get(
+                r = self._request_with_retry(
                     url, params=params, headers=self._headers(), auth=self.auth, timeout=30
                 )
                 r.raise_for_status()
@@ -276,7 +339,7 @@ class ConfluenceService:
             url = f"{self.base_url}/rest/api/{ver}/content/{page_id}"
             try:
                 params: Dict[str, str | int | float | bool | None] = {"expand": expand}
-                r = requests.get(
+                r = self._request_with_retry(
                     url, params=params, headers=self._headers(), auth=self.auth, timeout=30
                 )
                 r.raise_for_status()
@@ -365,7 +428,7 @@ class ConfluenceService:
                     self._headers(),
                     "Basic" if self.auth else "Bearer",
                 )
-                r = requests.get(
+                r = self._request_with_retry(
                     url,
                     params=params,
                     headers=self._headers(),
@@ -483,7 +546,7 @@ class ConfluenceService:
                             "expand": expand,
                         }
                         logger.debug("Confluence CQL %s v%s: %s", ep, ver, cql)
-                        r = requests.get(
+                        r = self._request_with_retry(
                             url,
                             params=cql_params,
                             headers=self._headers(),
@@ -543,8 +606,12 @@ class ConfluenceService:
                 }
                 if space:
                     content_params["spaceKey"] = space
-                r = requests.get(
-                    url, params=content_params, headers=self._headers(), auth=self.auth, timeout=30
+                r = self._request_with_retry(
+                    url,
+                    params=content_params,
+                    headers=self._headers(),
+                    auth=self.auth,
+                    timeout=30,
                 )
                 r.raise_for_status()
                 data = r.json()
@@ -597,8 +664,12 @@ class ConfluenceService:
                         "start": int(start),
                         "expand": "ancestors",
                     }
-                    r = requests.get(
-                        url, params=params, headers=self._headers(), auth=self.auth, timeout=30
+                    r = self._request_with_retry(
+                        url,
+                        params=params,
+                        headers=self._headers(),
+                        auth=self.auth,
+                        timeout=30,
                     )
                     r.raise_for_status()
                     data = r.json()
@@ -657,7 +728,7 @@ class ConfluenceService:
                     "start": int(start),
                     "expand": "version,space",
                 }
-                r = requests.get(
+                r = self._request_with_retry(
                     url, params=params, headers=self._headers(), auth=self.auth, timeout=30
                 )
                 r.raise_for_status()

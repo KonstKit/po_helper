@@ -46,14 +46,35 @@ class ExecutionContext:
         """Добавить предупреждение."""
         self.warnings.append(message)
 
+    def set_node_output_with_handle(
+        self, node_id: str, handle: str, artifacts: List[Artifact]
+    ) -> None:
+        """Сохранить результат выполнения ноды для конкретного выходного handle."""
+        key = f"{node_id}_{handle}"
+        self.node_outputs[key] = artifacts
+
     def get_input_artifacts(self, node_id: str) -> List[Artifact]:
-        """Получить все входные артефакты для ноды."""
+        """Получить все входные артефакты для ноды.
+
+        Учитывает sourceHandle для корректной работы ветвления (DecisionNode).
+        Если edge имеет sourceHandle, ищем выход по ключу {source}_{sourceHandle}.
+        """
         all_inputs = []
 
         incoming = self.incoming_edges.get(node_id, [])
 
         for edge in incoming:
             source_id = edge["source"]
+            source_handle = edge.get("sourceHandle")
+
+            # Try handle-specific output first (for DecisionNode branches)
+            if source_handle:
+                handle_key = f"{source_id}_{source_handle}"
+                if handle_key in self.node_outputs:
+                    all_inputs.extend(self.node_outputs[handle_key])
+                    continue
+
+            # Fall back to node output without handle
             source_artifacts = self.node_outputs.get(source_id, [])
             all_inputs.extend(source_artifacts)
 

@@ -1568,3 +1568,162 @@ export interface RuleExecutionResult {
   errors: string[];
   warnings: string[];
 }
+
+// =============================================================================
+// Export Types
+// =============================================================================
+
+export type ExportFormat = 'xlsx' | 'csv' | 'pdf';
+export type ExportStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+/** RTM filters for export */
+export interface RTMExportFilters {
+  row_types?: string[];
+  col_types?: string[];
+  row_statuses?: string[];
+  col_statuses?: string[];
+  link_types?: string[];
+  min_confidence?: number;
+}
+
+/** Request to create an export task */
+export interface ExportTaskCreate {
+  project_id: number;
+  format: ExportFormat;
+  matrix_config_id?: number;
+  filters?: RTMExportFilters;
+  include_details?: boolean;
+}
+
+/** Status of an export task */
+export interface ExportTaskStatus {
+  task_id: string;
+  status: ExportStatus;
+  progress_pct: number;
+  download_url: string | null;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+// =============================================================================
+// RTM Matrix Types
+// =============================================================================
+
+/** Filtering options for RTM matrix query */
+export interface RTMFilters {
+  row_types?: string[];
+  col_types?: string[];
+  row_statuses?: string[];
+  col_statuses?: string[];
+  link_types?: string[];
+  min_confidence?: number;
+  direction?: 'both' | 'row_to_col' | 'col_to_row';
+  search_query?: string;
+  include_orphans?: boolean;
+  project_id?: number;
+}
+
+/** Pagination parameters for RTM matrix */
+export interface RTMPagination {
+  row_skip?: number;
+  row_limit?: number;
+  col_skip?: number;
+  col_limit?: number;
+}
+
+/** Lightweight artifact representation for matrix cells */
+export interface ArtifactSummary {
+  id: number;
+  type: string;
+  source: string;
+  external_id: string;
+  display_key?: string | null;
+  title?: string | null;
+  status?: string | null;
+  url?: string | null;
+}
+
+/** Link information in a matrix cell */
+export interface RTMCellLink {
+  link_type: string;
+  confidence?: number | null;
+  confidence_factors?: Record<string, unknown> | null;
+}
+
+/** Single cell in the RTM matrix (matches backend response) */
+export interface RTMCell {
+  /** Whether cell has any links */
+  has_link: boolean;
+  /** Number of links in this cell */
+  link_count: number;
+  /** Link types present in this cell */
+  link_types: string[];
+  /** Average confidence across all links in cell */
+  avg_confidence?: number | null;
+  /** Detailed link info (only present when include_link_details=true) */
+  links?: RTMCellLink[] | null;
+}
+
+/** Coverage/statistics in RTM matrix response */
+export interface RTMMatrixCoverage {
+  /** Number of rows with at least one link */
+  rows_with_links: number;
+  /** Number of columns with at least one link */
+  cols_with_links: number;
+  /** Percentage of rows that have at least one link */
+  row_coverage_pct: number;
+  /** Percentage of columns that have at least one link */
+  col_coverage_pct: number;
+  /** Traceability density (filled cells / possible cells * 100) */
+  traceability_density_pct: number;
+  /** Total number of links in the matrix */
+  total_links: number;
+  /** Links broken down by link type */
+  links_by_type: Record<string, number>;
+  /** Average confidence across all links */
+  avg_confidence?: number | null;
+}
+
+/** Full RTM matrix response with rows, columns, and cells */
+export interface RTMMatrixResponse {
+  rows: ArtifactSummary[];
+  columns: ArtifactSummary[];
+  cells: Record<string, Record<string, RTMCell>>;
+  total_rows: number;
+  total_columns: number;
+  coverage: RTMMatrixCoverage;
+  filters_applied: Record<string, unknown>;
+}
+
+/** Base schema for saved matrix configurations */
+export interface MatrixConfigBase {
+  project_id?: number | null;
+  name: string;
+  description?: string | null;
+  filters?: RTMFilters | null;
+  pagination?: RTMPagination | null;
+  display_options?: Record<string, unknown> | null;
+  is_default?: boolean;
+}
+
+/** Request to create a matrix configuration */
+export interface MatrixConfigCreate extends MatrixConfigBase {}
+
+/** Request to update a matrix configuration */
+export interface MatrixConfigUpdate {
+  name?: string;
+  description?: string | null;
+  filters?: RTMFilters | null;
+  pagination?: RTMPagination | null;
+  display_options?: Record<string, unknown> | null;
+  is_default?: boolean;
+}
+
+/** Matrix configuration response */
+export interface MatrixConfig extends MatrixConfigBase {
+  id: number;
+  created_by_id?: number | null;
+  created_at: string;
+  updated_at?: string | null;
+}

@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     JSON,
     Float,
+    Boolean,
     UniqueConstraint,
     Index,
 )
@@ -27,6 +28,9 @@ class Artifact(Base):
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id"), index=True, nullable=True
     )
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), index=True, nullable=True
+    )
 
     type: Mapped[str] = mapped_column(
         String, index=True, nullable=False
@@ -37,6 +41,9 @@ class Artifact(Base):
     external_id: Mapped[str] = mapped_column(
         String, index=True, nullable=False
     )  # external key/id (e.g., JIRA-123, SHA)
+    source_system: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_reference_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    ingestion_run_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
     display_key: Mapped[str | None] = mapped_column(String, nullable=True)
     title: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -75,6 +82,13 @@ class ArtifactLink(Base):
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id"), index=True, nullable=True
     )
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), index=True, nullable=True
+    )
+    created_via: Mapped[str | None] = mapped_column(String, nullable=True)  # manual|rule|sync
+    source_system: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_reference_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    method: Mapped[str | None] = mapped_column(String, nullable=True)
 
     from_artifact_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("artifacts.id"), nullable=False
@@ -216,4 +230,188 @@ class SuggestedLink(Base):
         ),
         Index("ix_suggested_status", "status", "project_id"),
         Index("ix_suggested_score", "similarity_score"),
+    )
+
+
+class Baseline(Base):
+    __tablename__ = "baselines"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id"), index=True, nullable=True
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    filters_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), index=True, nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BaselineItem(Base):
+    __tablename__ = "baseline_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    baseline_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("baselines.id"), nullable=False, index=True
+    )
+    artifact_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("artifacts.id"), nullable=True, index=True
+    )
+    link_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("artifact_links.id"), nullable=True, index=True
+    )
+    included_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class Projection(Base):
+    __tablename__ = "projections"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id"), index=True, nullable=True
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    filters_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), index=True, nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProjectionItem(Base):
+    __tablename__ = "projection_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    projection_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projections.id"), nullable=False, index=True
+    )
+    artifact_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("artifacts.id"), nullable=True, index=True
+    )
+    link_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("artifact_links.id"), nullable=True, index=True
+    )
+    included_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class SyncTask(Base):
+    __tablename__ = "sync_tasks"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sources.id"), index=True, nullable=True
+    )
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id"), index=True, nullable=True
+    )
+    rule_id: Mapped[int | None] = mapped_column(
+        ForeignKey("traceability_rules.id"), index=True, nullable=True
+    )
+    task_type: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cursor_in: Mapped[str | None] = mapped_column(String, nullable=True)
+    cursor_out: Mapped[str | None] = mapped_column(String, nullable=True)
+    item_counts: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    trigger: Mapped[str | None] = mapped_column(String, nullable=True)  # manual|schedule|webhook
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ConnectorConfig(Base):
+    __tablename__ = "connector_configs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id"), index=True, nullable=True
+    )
+    provider: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    settings_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    auth_ref: Mapped[str | None] = mapped_column(String, nullable=True)
+    rate_limit_policy: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now()
+    )
+
+
+class MatrixConfig(Base):
+    """Saved RTM matrix configurations (projections) for reusable matrix views."""
+
+    __tablename__ = "matrix_configs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id"), index=True, nullable=True
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), index=True, nullable=True
+    )
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Saved filter configuration
+    filters_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # Pagination defaults
+    pagination_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # Display options (column order, grouping, etc.)
+    display_options_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_matrix_config_project", "project_id", "is_default"),
+    )
+
+
+class ExportTask(Base):
+    """Async export task tracking for RTM matrix exports."""
+
+    __tablename__ = "export_tasks"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    task_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id"), index=True, nullable=True
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), index=True, nullable=True
+    )
+
+    export_type: Mapped[str] = mapped_column(String(20), nullable=False)  # matrix, coverage, etc.
+    format: Mapped[str] = mapped_column(String(10), nullable=False)  # csv, xlsx, pdf
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    progress_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+    # Config used for export
+    config_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    # Result
+    file_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    file_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_export_task_status", "status", "created_at"),
     )

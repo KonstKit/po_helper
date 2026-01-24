@@ -14,11 +14,56 @@ from sqlalchemy import select
 
 from app.core.celery_app import celery_app
 from app.core.database import AsyncSessionLocal
+from app.core.config import settings
+from app.core.crypto import decrypt_str
 from app.services.confluence_service import confluence_service
 from app.models.confluence import ConfluencePage
+from app.models.settings import IntegrationSetting
 from app.core.cache import redis_client as _redis_client
 
 logger = logging.getLogger(__name__)
+
+
+def _load_confluence_setting() -> Optional[IntegrationSetting]:
+    async def _fetch_setting() -> Optional[IntegrationSetting]:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(IntegrationSetting).where(IntegrationSetting.kind == "confluence")
+            )
+            return result.scalar_one_or_none()
+
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(_fetch_setting())
+    finally:
+        loop.close()
+
+
+def _ensure_confluence_connection() -> bool:
+    status = confluence_service.status()
+    if status.get("configured"):
+        return True
+
+    row = _load_confluence_setting()
+    base_url = row.base_url if row else settings.CONFLUENCE_BASE_URL
+    email = row.email if row else settings.CONFLUENCE_EMAIL
+    token: Optional[str] = None
+    if row and row.api_token:
+        token = decrypt_str(row.api_token)
+    elif settings.CONFLUENCE_API_TOKEN:
+        token = settings.CONFLUENCE_API_TOKEN
+
+    if not base_url or not token:
+        return False
+
+    try:
+        confluence_service.connect(base_url, email or None, token)
+    except Exception as exc:
+        logger.warning("Confluence connect failed: %s", exc)
+        return False
+
+    return True
 
 
 class ConfluenceSyncTask(Task):
@@ -104,6 +149,10 @@ def sync_confluence_space(
         Dictionary with sync statistics
     """
     self.channel_id = channel_id
+
+    if not _ensure_confluence_connection():
+        logger.warning("Confluence not configured; skipping sync for space %s", space_key)
+        return {"synced": 0, "created": 0, "updated": 0, "skipped": True}
 
     try:
         # Initialize progress
@@ -301,11 +350,26 @@ async def _process_page(db, page_data: Dict[str, Any]) -> bool:
 @celery_app.task(name="confluence.scheduled_sync")
 def scheduled_confluence_sync():
     """Scheduled task to sync all configured Confluence spaces."""
-    # Get all configured spaces from DB
-    # For each space, spawn a sync task
     logger.info("Running scheduled Confluence sync")
-    # Implementation would fetch spaces from IntegrationSettings
-    pass
+    if not _ensure_confluence_connection():
+        logger.info("Confluence not configured; skipping scheduled sync")
+        return {"status": "skipped", "dispatched": 0}
+
+    spaces = confluence_service.list_spaces(limit=200)
+    if not spaces:
+        logger.info("No Confluence spaces found; skipping scheduled sync")
+        return {"status": "skipped", "dispatched": 0}
+
+    dispatched = 0
+    for space in spaces:
+        space_key = space.get("key")
+        if not space_key:
+            continue
+        sync_confluence_space.delay(space_key, None, None, True)
+        dispatched += 1
+
+    logger.info("Scheduled Confluence sync dispatched for %d space(s)", dispatched)
+    return {"status": "ok", "dispatched": dispatched}
 
 
 redis_client: Any = cast(Any, _redis_client)

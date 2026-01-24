@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import platform
 from celery import Celery
+from celery.schedules import crontab
 
 from app.core.config import settings
 
@@ -34,6 +35,20 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     # Set the worker pool type
     worker_pool=worker_pool,
+    beat_schedule={
+        "jira-sync-every-15-min": {
+            "task": "jira.scheduled_sync",
+            "schedule": crontab(minute="*/15"),
+        },
+        "confluence-sync-every-30-min": {
+            "task": "confluence.scheduled_sync",
+            "schedule": crontab(minute="*/30"),
+        },
+        "git-sync-every-30-min": {
+            "task": "git.scheduled_sync",
+            "schedule": crontab(minute="*/30"),
+        },
+    },
 )
 
 celery_app.autodiscover_tasks(["app"])

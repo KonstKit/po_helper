@@ -299,6 +299,79 @@ class TraceabilityCacheKeys:
         return CacheKeyBuilder.build("traceability", "project", pid, variant="matrix")
 
     @staticmethod
+    def rtm_matrix(
+        project_id: Optional[int],
+        row_types: Optional[str] = None,
+        col_types: Optional[str] = None,
+        row_skip: int = 0,
+        row_limit: int = 50,
+        # Additional filter parameters to prevent cache collisions
+        col_skip: int = 0,
+        col_limit: int = 50,
+        row_statuses: Optional[str] = None,
+        col_statuses: Optional[str] = None,
+        link_types: Optional[str] = None,
+        min_confidence: float = 0.0,
+        direction: str = "both",
+        search_query: Optional[str] = None,
+        include_orphans: bool = False,
+    ) -> str:
+        """Cache key for RTM matrix with ALL filters to prevent collisions."""
+        pid: int | str = project_id if project_id is not None else "global"
+        # Create a deterministic hash of all filter parameters
+        filter_parts = [
+            f"rt_{row_types or 'all'}",
+            f"ct_{col_types or 'all'}",
+            f"rs_{row_skip}",
+            f"rl_{row_limit}",
+            f"cs_{col_skip}",
+            f"cl_{col_limit}",
+            f"rsts_{row_statuses or 'all'}",
+            f"csts_{col_statuses or 'all'}",
+            f"lt_{link_types or 'all'}",
+            f"mc_{min_confidence:.3f}",
+            f"dir_{direction}",
+            f"sq_{search_query or ''}",
+            f"io_{include_orphans}",
+        ]
+        filter_hash = hashlib.md5("_".join(filter_parts).encode()).hexdigest()[:12]
+        return CacheKeyBuilder.build(
+            "traceability",
+            "rtm_matrix",
+            pid,
+            variant=f"f_{filter_hash}",
+        )
+
+    @staticmethod
+    def coverage_analytics(
+        project_id: Optional[int],
+        include_trends: bool = False,
+        artifact_types: Optional[str] = None,
+        trend_days: int = 30,
+    ) -> str:
+        """Cache key for coverage analytics with ALL parameters to prevent collisions."""
+        pid: int | str = project_id if project_id is not None else "global"
+        # Include all parameters in cache key
+        parts = [
+            f"trends_{include_trends}",
+            f"types_{artifact_types or 'req'}",
+            f"days_{trend_days}",
+        ]
+        variant_hash = hashlib.md5("_".join(parts).encode()).hexdigest()[:8]
+        return CacheKeyBuilder.build(
+            "traceability",
+            "coverage",
+            pid,
+            variant=f"v_{variant_hash}",
+        )
+
+    @staticmethod
+    def matrix_configs(project_id: Optional[int]) -> str:
+        """Cache key for matrix configurations list."""
+        pid: int | str = project_id if project_id is not None else "global"
+        return CacheKeyBuilder.build("traceability", "matrix_configs", pid)
+
+    @staticmethod
     def flow(artifact_id: int, depth: int) -> str:
         return CacheKeyBuilder.build(
             "traceability", "artifact", artifact_id, variant=f"flow_depth_{depth}"
@@ -315,7 +388,7 @@ class TraceabilityCacheKeys:
             "traceability",
             "chain",
             artifact_id,
-            variant=f"depth_{depth}_{direction}_conf_{int(min_confidence * 100)}",
+            variant=f"depth_{depth}_{direction}_conf_{min_confidence:.3f}",
         )
 
     @staticmethod

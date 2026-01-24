@@ -205,7 +205,7 @@ const TraceabilityVisualization: React.FC = () => {
             onChange={(e) => setArtifactIdInput(e.target.value)}
             placeholder="Enter artifact ID"
             sx={{ width: 150 }}
-            onKeyPress={(e) => e.key === 'Enter' && handleArtifactSelect()}
+            onKeyDown={(e) => e.key === 'Enter' && handleArtifactSelect()}
           />
 
           <Button
@@ -253,8 +253,7 @@ const TraceabilityVisualization: React.FC = () => {
         {selectedArtifactId ? (
           <TraceabilityGraph
             artifactId={selectedArtifactId}
-            width={1100}
-            height={650}
+            minHeight={650}
             onNodeClick={handleNodeClick}
           />
         ) : (

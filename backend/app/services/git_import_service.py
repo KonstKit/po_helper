@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
@@ -17,14 +18,15 @@ import requests
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.crypto import decrypt_str
 from app.models import IntegrationSetting, Repository
+from app.services.integration_config import get_connector_overrides_map
 from app.services.repository_resolver import repository_resolver
 from app.services.git.webhook_processor import process_commits, process_pull_request
 
 logger = logging.getLogger(__name__)
 
-REQUEST_TIMEOUT = 15
 COMMITS_PER_SYNC = 50
 PRS_PER_SYNC = 50
 
@@ -62,6 +64,51 @@ class GitImportService:
             self._session = requests.Session()
         return self._session
 
+    def _request_with_retry(
+        self, url: str, *, headers: Dict[str, str], params: Dict[str, Any]
+    ) -> requests.Response:
+        max_retries = settings.INTEGRATION_HTTP_MAX_RETRIES
+        backoff_base = settings.INTEGRATION_HTTP_BACKOFF_SECONDS
+        backoff_max = settings.INTEGRATION_HTTP_BACKOFF_MAX_SECONDS
+        timeout = settings.INTEGRATION_HTTP_TIMEOUT
+        attempts = max_retries + 1
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(attempts):
+            try:
+                resp = self._get_session().get(url, headers=headers, params=params, timeout=timeout)
+                if resp.status_code >= 500 and attempt < attempts - 1:
+                    delay = min(backoff_base * (2**attempt), backoff_max)
+                    logger.warning(
+                        "Git request failed (%s) retry %d/%d in %.1fs: %s",
+                        resp.status_code,
+                        attempt + 1,
+                        attempts - 1,
+                        delay,
+                        url,
+                    )
+                    time.sleep(delay)
+                    continue
+                return resp
+            except (requests.Timeout, requests.ConnectionError) as exc:
+                last_exc = exc
+                if attempt >= attempts - 1:
+                    raise
+                delay = min(backoff_base * (2**attempt), backoff_max)
+                logger.warning(
+                    "Git request error (%s) retry %d/%d in %.1fs: %s",
+                    exc.__class__.__name__,
+                    attempt + 1,
+                    attempts - 1,
+                    delay,
+                    url,
+                )
+                time.sleep(delay)
+
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("Unexpected request retry loop exit")
+
     async def _session_get(self, url: str, **kwargs) -> requests.Response:
         """Run session.get in a worker thread to avoid blocking the event loop."""
         return await asyncio.to_thread(self._get_session().get, url, **kwargs)
@@ -82,6 +129,7 @@ class GitImportService:
         project_id: int,
         include_commits: bool = True,
         include_pull_requests: bool = True,
+        trigger: str | None = "manual",
     ) -> Dict[str, Any]:
         repositories = await repository_resolver.get_all_repositories(project_id, db)
         results: List[Dict[str, Any]] = []
@@ -93,7 +141,7 @@ class GitImportService:
         # OPTIMIZED: Pre-fetch provider configs to avoid N+1 queries
         unique_providers = {(repo.provider or "").lower() for repo in repositories}
         valid_providers = unique_providers & {"github", "gitlab"}
-        provider_configs = await self._get_all_provider_configs(db, valid_providers)
+        provider_configs = await self._get_all_provider_configs(db, project_id, valid_providers)
 
         for repo in repositories:
             provider = (repo.provider or "").lower()
@@ -122,11 +170,13 @@ class GitImportService:
             }
 
             if include_commits:
-                commit_stats = await self._sync_commits(db, repo, config, default_branch)
+                commit_stats = await self._sync_commits(
+                    db, repo, config, default_branch, trigger=trigger
+                )
                 repo_stats["commits"] = commit_stats
 
             if include_pull_requests:
-                pr_stats = await self._sync_pull_requests(db, repo, config)
+                pr_stats = await self._sync_pull_requests(db, repo, config, trigger=trigger)
                 repo_stats["pull_requests"] = pr_stats
 
             results.append(repo_stats)
@@ -175,12 +225,14 @@ class GitImportService:
     async def _get_all_provider_configs(
         self,
         db: AsyncSession,
+        project_id: int,
         providers: set,
     ) -> Dict[str, ProviderConfig]:
         """Batch fetch all provider configs in a single query (N+1 optimization)."""
         if not providers:
             return {}
 
+        connector_overrides = await get_connector_overrides_map(db, project_id, providers)
         res = await db.execute(
             select(IntegrationSetting).where(IntegrationSetting.kind.in_(list(providers)))
         )
@@ -188,7 +240,15 @@ class GitImportService:
 
         configs: Dict[str, ProviderConfig] = {}
         for row in rows:
-            if not row.api_token:
+            override = connector_overrides.get(row.kind)
+            if override and not override.enabled:
+                continue
+
+            override_settings = override.settings if override else {}
+
+            if not row.api_token and not (
+                override_settings.get("api_token") or override_settings.get("token")
+            ):
                 continue
 
             provider = row.kind
@@ -204,7 +264,9 @@ class GitImportService:
                 except (json.JSONDecodeError, TypeError):
                     token = decrypted
 
-            base_url = (row.base_url or "").strip()
+            if override_settings.get("api_token") or override_settings.get("token"):
+                token = str(override_settings.get("api_token") or override_settings.get("token"))
+            base_url = str(override_settings.get("base_url") or row.base_url or "").strip()
 
             if provider == "github":
                 api_base = base_url or "https://api.github.com"
@@ -273,6 +335,7 @@ class GitImportService:
         repo: Repository,
         config: ProviderConfig,
         branch: Optional[str],
+        trigger: str | None = "manual",
     ) -> Dict[str, Any]:
         commits: List[Dict[str, Any]] = []
         try:
@@ -298,6 +361,7 @@ class GitImportService:
                 repo_slug=repo.repo_slug,
                 commits=commits,
                 branch=branch,
+                trigger=trigger,
             )
         except Exception as exc:
             logger.error("Git import: process_commits failed for %s: %s", repo.repo_slug, exc)
@@ -308,6 +372,7 @@ class GitImportService:
         db: AsyncSession,
         repo: Repository,
         config: ProviderConfig,
+        trigger: str | None = "manual",
     ) -> Dict[str, Any]:
         prs: List[Dict[str, Any]] = []
         try:
@@ -337,6 +402,7 @@ class GitImportService:
                     repo_slug=repo.repo_slug,
                     pr_data=pr,
                     action="synchronize",
+                    trigger=trigger,
                 )
                 processed += 1
                 links_created += result.get("links_created", 0)
@@ -362,9 +428,7 @@ class GitImportService:
 
         params: Dict[str, str | int | float | bool | None] = {"per_page": COMMITS_PER_SYNC}
         url = f"{config.api_base}/repos/{repo_slug}/commits"
-        resp = self._get_session().get(
-            url, headers=config.headers, params=params, timeout=REQUEST_TIMEOUT
-        )
+        resp = self._request_with_retry(url, headers=config.headers, params=params)
         if resp.status_code >= 400:
             raise RuntimeError(
                 f"GitHub commits request failed ({resp.status_code}): {resp.text[:200]}"
@@ -400,9 +464,7 @@ class GitImportService:
             "state": "all",
         }
         url = f"{config.api_base}/repos/{repo_slug}/pulls"
-        resp = self._get_session().get(
-            url, headers=config.headers, params=params, timeout=REQUEST_TIMEOUT
-        )
+        resp = self._request_with_retry(url, headers=config.headers, params=params)
         if resp.status_code >= 400:
             raise RuntimeError(
                 f"GitHub pull requests request failed ({resp.status_code}): {resp.text[:200]}"
@@ -452,9 +514,7 @@ class GitImportService:
                 params["ref_name"] = branch
 
             url = f"{config.api_base}/projects/{project_path}/repository/commits"
-            resp = self._get_session().get(
-                url, headers=config.headers, params=params, timeout=REQUEST_TIMEOUT
-            )
+            resp = self._request_with_retry(url, headers=config.headers, params=params)
             if resp.status_code >= 400:
                 raise RuntimeError(
                     f"GitLab commits request failed ({resp.status_code}): {resp.text[:200]}"
@@ -537,9 +597,7 @@ class GitImportService:
                 "page": page,
             }
             url = f"{config.api_base}/projects/{project_path}/merge_requests"
-            resp = self._get_session().get(
-                url, headers=config.headers, params=params, timeout=REQUEST_TIMEOUT
-            )
+            resp = self._request_with_retry(url, headers=config.headers, params=params)
             if resp.status_code >= 400:
                 raise RuntimeError(
                     f"GitLab MR request failed ({resp.status_code}): {resp.text[:200]}"

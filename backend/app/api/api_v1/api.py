@@ -20,6 +20,7 @@ from app.api.api_v1.endpoints import (
     project_repository,
     gitlab_projects,
     capacity,
+    testrail,
 )
 
 api_router = APIRouter()
@@ -46,3 +47,4 @@ api_router.include_router(quality.router, prefix="/quality", tags=["quality"])
 api_router.include_router(testing.router, prefix="/testing", tags=["testing"])
 api_router.include_router(tasks_async.router, prefix="/async-tasks", tags=["async-tasks"])
 api_router.include_router(capacity.router, prefix="/capacity", tags=["capacity"])
+api_router.include_router(testrail.router, prefix="/testrail", tags=["testrail"])

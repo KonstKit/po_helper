@@ -14,6 +14,12 @@ from sqlalchemy import select
 from app.models import Artifact, ArtifactLink, CoverageReport, TestResult
 from app.utils import transactional_session
 from app.core.metrics import metrics
+from app.services.sync_tracking import (
+    get_or_create_source,
+    start_sync_task,
+    finish_sync_task,
+    upsert_sync_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -242,6 +248,32 @@ async def process_ci_results(db: AsyncSession, payload: Dict[str, Any]) -> Dict[
     coverage = payload.get("coverage") or {}
     report_url = payload.get("report_url")
 
+    sync_task_id: Optional[int] = None
+    sync_source_id: Optional[int] = None
+    sync_source = None
+    project_id: Optional[int] = None
+
+    try:
+        source = await get_or_create_source(
+            db,
+            provider="ci",
+            project_id=project_id,
+            settings={"provider": provider},
+        )
+        sync_source = source
+        sync_source_id = source.id
+        task = await start_sync_task(
+            db,
+            task_type="ci_ingest",
+            project_id=project_id,
+            source_id=sync_source_id,
+            trigger="webhook",
+            cursor_in=commit_sha,
+        )
+        sync_task_id = task.id
+    except Exception as exc:
+        logger.warning("Failed to start CI ingest tracking: %s", exc)
+
     tests_created = 0
     tests_failed = 0
     tests_passed = 0
@@ -371,6 +403,7 @@ async def process_ci_results(db: AsyncSession, payload: Dict[str, Any]) -> Dict[
                 )
                 db.add(commit_art)
                 await db.flush()
+            project_id = commit_art.project_id
 
             # Create test_run artifact
             run_external_id = f"{provider}:{commit_sha}"
@@ -432,6 +465,41 @@ async def process_ci_results(db: AsyncSession, payload: Dict[str, Any]) -> Dict[
 
         except Exception as e:
             logger.error(f"Error creating test artifacts: {e}")
+
+    if sync_task_id is not None:
+        try:
+            item_counts = {
+                "tests_created": tests_created,
+                "tests_passed": tests_passed,
+                "tests_failed": tests_failed,
+                "tests_skipped": tests_skipped,
+                "coverage_saved": bool(coverage_obj),
+            }
+            finished_task = await finish_sync_task(
+                db,
+                sync_task_id,
+                status="success",
+                item_counts=item_counts,
+                cursor_out=commit_sha,
+            )
+            if finished_task and project_id is not None and finished_task.project_id is None:
+                finished_task.project_id = project_id
+            if (
+                sync_source is not None
+                and project_id is not None
+                and sync_source.project_id is None
+            ):
+                sync_source.project_id = project_id
+            if sync_source_id is not None:
+                await upsert_sync_state(
+                    db,
+                    source_id=sync_source_id,
+                    project_id=project_id,
+                    last_event_id=commit_sha,
+                    last_cursor=commit_sha,
+                )
+        except Exception as exc:
+            logger.warning("Failed to finalize CI ingest tracking: %s", exc)
 
     # Commit all changes
     async with transactional_session(db):
