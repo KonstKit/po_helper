@@ -4,7 +4,7 @@ file_id: plan_06
 parent: plan_05
 children:
   - plan_07
-status: draft
+status: completed
 created: 2024-05-26
 ---
 
@@ -29,4 +29,3 @@ created: 2024-05-26
 
 ## Acceptance
 - Matrix UI responsive and performant on large datasets; graph/flow usable; exports flow exposed with progress and downloads.
-
