@@ -20,6 +20,12 @@ from app.models import (
     PullRequest,
 )
 from app.services.repository_resolver import repository_resolver
+from app.services.sync_tracking import (
+    get_or_create_source,
+    start_sync_task,
+    finish_sync_task,
+    upsert_sync_state,
+)
 from app.utils import transactional_session, execute_with_lock
 
 logger = logging.getLogger(__name__)
@@ -145,6 +151,7 @@ async def process_commits(
     repo_slug: str,
     commits: List[Dict[str, Any]],
     branch: Optional[str] = None,
+    trigger: str | None = "webhook",
 ) -> Dict[str, Any]:
     """Process commits from webhook payload."""
     repo = await get_or_create_repository(db, provider, repo_slug, branch)
@@ -152,16 +159,39 @@ async def process_commits(
     project_id = project.id if project else None
     tenant_id = getattr(project, "tenant_id", None) if project else None
 
+    sync_task_id: Optional[int] = None
+    sync_source_id: Optional[int] = None
+    last_commit_id: Optional[str] = None
+
     created = 0
     updated = 0
     links_created = 0
+    errors = 0
     suggestions = []
+
+    try:
+        source = await get_or_create_source(
+            db, provider=provider, project_id=project_id, tenant_id=tenant_id
+        )
+        sync_source_id = source.id
+        task = await start_sync_task(
+            db,
+            task_type="git_commits",
+            project_id=project_id,
+            source_id=sync_source_id,
+            trigger=trigger,
+            cursor_in=branch,
+        )
+        sync_task_id = task.id
+    except Exception as exc:
+        logger.warning("Failed to start git commit sync tracking: %s", exc)
 
     for commit_data in commits:
         try:
             sha = commit_data.get("id") or commit_data.get("sha")
             if not sha:
                 continue
+            last_commit_id = sha
 
             message = commit_data.get("message") or commit_data.get("title", "")
             author = commit_data.get("author") or {}
@@ -263,7 +293,36 @@ async def process_commits(
 
         except Exception as e:
             logger.error("Error processing commit %s: %s", commit_data.get("id"), e)
+            errors += 1
             continue
+
+    if sync_task_id is not None:
+        try:
+            item_counts = {
+                "created": created,
+                "updated": updated,
+                "links_created": links_created,
+                "suggestions": len(suggestions),
+                "errors": errors,
+                "commits": len(commits),
+            }
+            await finish_sync_task(
+                db,
+                sync_task_id,
+                status="success",
+                item_counts=item_counts,
+                cursor_out=last_commit_id,
+            )
+            if sync_source_id is not None:
+                await upsert_sync_state(
+                    db,
+                    source_id=sync_source_id,
+                    project_id=project_id,
+                    last_event_id=last_commit_id or repo_slug,
+                    last_cursor=branch,
+                )
+        except Exception as exc:
+            logger.warning("Failed to finalize git commit sync tracking: %s", exc)
 
     async with transactional_session(db):
         pass  # All db operations already executed above
@@ -282,8 +341,14 @@ async def process_pull_request(
     repo_slug: str,
     pr_data: Dict[str, Any],
     action: Optional[str] = None,
+    trigger: str | None = "webhook",
 ) -> Dict[str, Any]:
     """Process pull request from webhook payload."""
+    sync_task_id: Optional[int] = None
+    sync_source_id: Optional[int] = None
+    project_id: Optional[int] = None
+    number: Optional[int | str] = None
+
     try:
         number = pr_data.get("number") or pr_data.get("iid")
         if not number:
@@ -304,6 +369,23 @@ async def process_pull_request(
         project = await repository_resolver.get_project_by_repository(repo.id, db)
         project_id = project.id if project else None
         tenant_id = getattr(project, "tenant_id", None) if project else None
+
+        try:
+            source = await get_or_create_source(
+                db, provider=provider, project_id=project_id, tenant_id=tenant_id
+            )
+            sync_source_id = source.id
+            task = await start_sync_task(
+                db,
+                task_type="git_pull_request",
+                project_id=project_id,
+                source_id=sync_source_id,
+                trigger=trigger,
+                cursor_in=str(number),
+            )
+            sync_task_id = task.id
+        except Exception as exc:
+            logger.warning("Failed to start git PR sync tracking: %s", exc)
 
         # Get or create PR record
         res = await db.execute(
@@ -426,6 +508,31 @@ async def process_pull_request(
             ):
                 links_created += 1
 
+        if sync_task_id is not None:
+            try:
+                item_counts = {
+                    "links_created": links_created,
+                    "suggestions": len(suggestions),
+                    "action": action,
+                }
+                await finish_sync_task(
+                    db,
+                    sync_task_id,
+                    status="success",
+                    item_counts=item_counts,
+                    cursor_out=str(number),
+                )
+                if sync_source_id is not None:
+                    await upsert_sync_state(
+                        db,
+                        source_id=sync_source_id,
+                        project_id=project_id,
+                        last_event_id=str(number),
+                        last_cursor=str(number),
+                    )
+            except Exception as exc:
+                logger.warning("Failed to finalize git PR sync tracking: %s", exc)
+
         async with transactional_session(db):
             pass  # All db operations already executed above
 
@@ -439,4 +546,23 @@ async def process_pull_request(
     except Exception as e:
         logger.error("Error processing pull request: %s", e)
         await db.rollback()
+        if sync_task_id is not None:
+            try:
+                await finish_sync_task(
+                    db,
+                    sync_task_id,
+                    status="failed",
+                    error_code="error",
+                    error_message=str(e),
+                )
+                if sync_source_id is not None:
+                    await upsert_sync_state(
+                        db,
+                        source_id=sync_source_id,
+                        project_id=project_id,
+                        last_event_id=str(number) if number is not None else None,
+                    )
+                await db.commit()
+            except Exception as exc:
+                logger.warning("Failed to finalize git PR sync failure: %s", exc)
         return {"error": str(e)}

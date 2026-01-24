@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, BackgroundTasks, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +17,11 @@ import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+async def _call_jira(func, *args, **kwargs):
+    """Run blocking Jira service calls off the event loop."""
+    return await asyncio.to_thread(func, *args, **kwargs)
 
 
 @router.post("/connect")
@@ -41,11 +47,13 @@ async def connect_to_jira(
             bool(connect_email),
         )
 
-        jira_service.connect(base_url, connect_email, api_token, use_pat=resolved_use_pat)
+        await _call_jira(
+            jira_service.connect, base_url, connect_email, api_token, use_pat=resolved_use_pat
+        )
 
         # Validate by calling /myself
         logger.info("Validating Jira connection...")
-        jira_service.validate()
+        await _call_jira(jira_service.validate)
         logger.info("Jira validation successful")
 
         if save:
@@ -82,7 +90,7 @@ async def list_accessible_projects(q: Optional[str] = None):
         operation="list_accessible_projects",
         exception_map={JiraAuthError: 403, JiraUnexpectedResponse: 502},
     ):
-        items = jira_service.list_projects(query=q)
+        items = await _call_jira(jira_service.list_projects, query=q)
         return {"count": len(items), "projects": items}
 
 
@@ -90,7 +98,7 @@ async def list_accessible_projects(q: Optional[str] = None):
 async def check_project_key(project_key: str):
     """Check whether a project key exists and is accessible."""
     try:
-        data = jira_service.get_project(project_key)
+        data = await _call_jira(jira_service.get_project, project_key)
         return {"exists": True, "project": data}
     except Exception as e:
         return {"exists": False, "detail": str(e)}
@@ -99,7 +107,7 @@ async def check_project_key(project_key: str):
 @router.get("/projects/{project_key}/boards")
 async def list_boards(project_key: str):
     """List Agile boards for a given project key."""
-    boards = jira_service.list_boards_for_project(project_key)
+    boards = await _call_jira(jira_service.list_boards_for_project, project_key)
     return {"count": len(boards), "boards": boards}
 
 
@@ -109,7 +117,7 @@ async def get_jira_project(project_key: str):
     with handle_api_error(
         operation="get_jira_project", status_code=404, context={"project_key": project_key}
     ):
-        project = jira_service.get_project(project_key)
+        project = await _call_jira(jira_service.get_project, project_key)
         return project
 
 
@@ -121,7 +129,7 @@ async def get_project_issues(project_key: str, max_results: int = 100):
         context={"project_key": project_key, "max_results": max_results},
         exception_map={JiraAuthError: 403, JiraUnexpectedResponse: 502},
     ):
-        issues = jira_service.get_project_issues(project_key, max_results)
+        issues = await _call_jira(jira_service.get_project_issues, project_key, max_results)
         return {"total": len(issues), "issues": issues}
 
 
@@ -137,7 +145,7 @@ async def sync_project_data(
     jira_project = None
     try:
         logger.info("Sync start project_key=%s", project_key)
-        jira_project = jira_service.get_project(project_key)
+        jira_project = await _call_jira(jira_service.get_project, project_key)
     except Exception as e:
         # Log and continue to syncing issues (many setups restrict /project but allow /search)
         logger.warning("get_project failed for %s: %s", project_key, e)
@@ -213,7 +221,7 @@ async def sync_project_data(
 async def get_active_sprints(board_id: int):
     """Get active sprints for a board"""
     with handle_api_error(operation="get_active_sprints", context={"board_id": board_id}):
-        sprints = jira_service.get_active_sprints(board_id)
+        sprints = await _call_jira(jira_service.get_active_sprints, board_id)
         return {"total": len(sprints), "sprints": sprints}
 
 
@@ -221,7 +229,7 @@ async def get_active_sprints(board_id: int):
 async def get_issue_worklogs(issue_key: str):
     """Get worklogs for an issue"""
     with handle_api_error(operation="get_issue_worklogs", context={"issue_key": issue_key}):
-        worklogs = jira_service.get_worklogs(issue_key)
+        worklogs = await _call_jira(jira_service.get_worklogs, issue_key)
         return {"total": len(worklogs), "worklogs": worklogs}
 
 
@@ -245,7 +253,7 @@ async def debug_jira_project(project_key: str):
 
     # Check 1: Can we get the project?
     try:
-        project = jira_service.get_project(project_key)
+        project = await _call_jira(jira_service.get_project, project_key)
         results["checks"]["project_access"] = {"success": True, "data": project}
     except Exception as e:
         results["checks"]["project_access"] = {"success": False, "error": str(e)}
@@ -253,7 +261,7 @@ async def debug_jira_project(project_key: str):
 
     # Check 2: Can we search for issues?
     try:
-        issues = jira_service.get_project_issues(project_key, max_results=5)
+        issues = await _call_jira(jira_service.get_project_issues, project_key, 5)
         results["checks"]["issue_search"] = {
             "success": True,
             "count": len(issues),
@@ -269,7 +277,7 @@ async def debug_jira_project(project_key: str):
 
     # Check 3: Can we access boards?
     try:
-        boards = jira_service.list_boards_for_project(project_key)
+        boards = await _call_jira(jira_service.list_boards_for_project, project_key)
         results["checks"]["board_access"] = {
             "success": True,
             "count": len(boards),
@@ -285,7 +293,7 @@ async def debug_jira_project(project_key: str):
             else:
                 try:
                     board_id_int = int(board_id_val)
-                    sprints = jira_service.list_sprints(board_id_int)
+                    sprints = await _call_jira(jira_service.list_sprints, board_id_int)
                     results["checks"]["sprint_access"] = {
                         "success": True,
                         "board_id": board_id_int,

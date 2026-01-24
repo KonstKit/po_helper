@@ -18,6 +18,7 @@ from app.core.cache_enhanced import (
 from app.models import Artifact, ArtifactLink, User
 from app.api.deps import get_current_user, ensure_project_access
 from app.utils import get_or_404
+from app.utils.confidence import confidence_filter
 
 router = APIRouter()
 
@@ -74,9 +75,7 @@ async def _traverse_chain(
             )
 
         if min_confidence > 0:
-            link_query = link_query.where(
-                or_(ArtifactLink.confidence >= min_confidence, ArtifactLink.confidence.is_(None))
-            )
+            link_query = link_query.where(confidence_filter(ArtifactLink.confidence, min_confidence))
 
         if project_id is not None:
             link_query = link_query.where(ArtifactLink.project_id == project_id)

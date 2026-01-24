@@ -24,6 +24,7 @@ from app.core.cache_enhanced import (
 )
 from app.services.confluence_service import confluence_service
 from app.services.git_import_service import git_import_service
+from app.services.traceability.link_service import LinkService, LinkCreationMethod
 from app.utils import get_or_404, execute_with_lock
 from app.utils.batch_operations import traverse_graph_batched
 
@@ -49,46 +50,51 @@ async def create_link(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Create a link between two artifacts."""
-    if from_id == to_id:
-        raise HTTPException(status_code=400, detail="from_id cannot equal to_id")
+    """Create a link between two artifacts.
 
+    Uses LinkService for proper provenance tracking and audit logging.
+    """
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
 
+    # Validate artifact access (for project-level permissions)
     res = await db.execute(select(Artifact).where(Artifact.id.in_([from_id, to_id])))
     found = {a.id: a for a in res.scalars().all()}
     if from_id not in found or to_id not in found:
         raise HTTPException(status_code=404, detail="Artifact(s) not found")
 
-    if await _would_create_cycle(db, from_id, to_id, link_type, project_id=project_id):
-        raise HTTPException(status_code=409, detail="Link would create a cycle")
+    if project_id is None:
+        project_ids = {artifact.project_id for artifact in found.values() if artifact.project_id}
+        for proj in sorted(project_ids):
+            await ensure_project_access(proj, db, current_user)
+        # Use first project_id from artifacts if not specified
+        project_id = found[from_id].project_id or found[to_id].project_id
 
     try:
-        async with db.begin():
-            sel = select(ArtifactLink).where(
-                ArtifactLink.from_artifact_id == from_id,
-                ArtifactLink.to_artifact_id == to_id,
-                ArtifactLink.link_type == link_type,
-            )
-            link = (await execute_with_lock(db, sel)).scalar_one_or_none()
-            if link is None:
-                link = ArtifactLink(
-                    from_artifact_id=from_id,
-                    to_artifact_id=to_id,
-                    link_type=link_type,
-                    tenant_id=tenant_id,
-                    project_id=project_id,
-                )
-                db.add(link)
-            if confidence is not None:
-                link.confidence = float(confidence)
-            if confidence_factors is not None:
-                link.confidence_factors = dict(confidence_factors)
-        await db.refresh(link)
-    except IntegrityError:
-        await db.rollback()
-        raise HTTPException(status_code=409, detail="Link already exists")
+        link_service = LinkService(db)
+        link = await link_service.create_link(
+            from_artifact_id=from_id,
+            to_artifact_id=to_id,
+            link_type=link_type,
+            tenant_id=tenant_id,
+            project_id=project_id,
+            created_by_id=current_user.id,
+            created_via=LinkCreationMethod.MANUAL,
+            confidence=confidence,
+            confidence_factors=confidence_factors,
+            calculate_confidence=(confidence is None),
+            create_audit=True,
+        )
+        await db.commit()
+    except ValueError as e:
+        error_msg = str(e)
+        if "cycle" in error_msg.lower():
+            raise HTTPException(status_code=409, detail="Link would create a cycle")
+        if "already exists" in error_msg.lower():
+            raise HTTPException(status_code=409, detail="Link already exists")
+        if "not found" in error_msg.lower():
+            raise HTTPException(status_code=404, detail=error_msg)
+        raise HTTPException(status_code=400, detail=error_msg)
 
     # Invalidate traceability caches for affected project
     await CacheInvalidator.on_artifact_link_change(project_id)
@@ -100,7 +106,7 @@ async def create_link(
 async def artifacts_for_task(
     jira_key: str,
     db: AsyncSession = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Return artifact for task (jira_issue) and its immediate neighbors."""
     task_art = await get_or_404(
@@ -108,6 +114,9 @@ async def artifacts_for_task(
         select(Artifact).where(Artifact.type == "jira_issue", Artifact.external_id == jira_key),
         "Artifact for jira_key",
     )
+
+    if task_art.project_id is not None:
+        await ensure_project_access(task_art.project_id, db, current_user)
 
     outgoing = await db.execute(
         select(ArtifactLink, Artifact)
@@ -227,16 +236,34 @@ async def traceability_matrix(
         return payload
 
     artifact_ids = [art.id for art in artifacts]
-    link_stmt = select(ArtifactLink.from_artifact_id, ArtifactLink.link_type)
-    link_stmt = link_stmt.where(ArtifactLink.from_artifact_id.in_(artifact_ids))
-    res_links = await db.execute(link_stmt)
-    raw_links = res_links.all()
+    artifact_id_set = set(artifact_ids)
 
+    # Query outgoing links (from_artifact_id in our set)
+    outgoing_stmt = select(ArtifactLink.from_artifact_id, ArtifactLink.link_type)
+    outgoing_stmt = outgoing_stmt.where(ArtifactLink.from_artifact_id.in_(artifact_ids))
+    res_outgoing = await db.execute(outgoing_stmt)
+    raw_outgoing = res_outgoing.all()
+
+    # Query incoming links (to_artifact_id in our set)
+    incoming_stmt = select(ArtifactLink.to_artifact_id, ArtifactLink.link_type)
+    incoming_stmt = incoming_stmt.where(ArtifactLink.to_artifact_id.in_(artifact_ids))
+    res_incoming = await db.execute(incoming_stmt)
+    raw_incoming = res_incoming.all()
+
+    # Build link totals and types per artifact (both directions)
     outgoing_link_totals: Dict[int, int] = {}
     outgoing_link_types: Dict[int, Dict[str, int]] = {}
-    for from_id, link_type in raw_links:
+    incoming_link_totals: Dict[int, int] = {}
+    incoming_link_types: Dict[int, Dict[str, int]] = {}
+
+    for from_id, link_type in raw_outgoing:
         outgoing_link_totals[from_id] = outgoing_link_totals.get(from_id, 0) + 1
         type_bucket = outgoing_link_types.setdefault(from_id, {})
+        type_bucket[link_type] = type_bucket.get(link_type, 0) + 1
+
+    for to_id, link_type in raw_incoming:
+        incoming_link_totals[to_id] = incoming_link_totals.get(to_id, 0) + 1
+        type_bucket = incoming_link_types.setdefault(to_id, {})
         type_bucket[link_type] = type_bucket.get(link_type, 0) + 1
 
     by_type: Dict[str, int] = {}
@@ -253,6 +280,8 @@ async def traceability_matrix(
                 "linked": 0,
                 "unlinked": 0,
                 "link_count": 0.0,
+                "outgoing_count": 0.0,
+                "incoming_count": 0.0,
                 "coverage_pct": 0.0,
                 "avg_links_per_artifact": 0.0,
                 "link_type_counts": {},
@@ -261,22 +290,37 @@ async def traceability_matrix(
         )
         stats["total"] += 1
 
-        total_links = outgoing_link_totals.get(art.id, 0)
-        stats["link_count"] += float(total_links)
+        # Count both outgoing AND incoming links for coverage
+        outgoing_links = outgoing_link_totals.get(art.id, 0)
+        incoming_links = incoming_link_totals.get(art.id, 0)
+        total_links = outgoing_links + incoming_links
 
+        stats["link_count"] += float(total_links)
+        stats["outgoing_count"] += float(outgoing_links)
+        stats["incoming_count"] += float(incoming_links)
+
+        # Artifact is "linked" if it has ANY link (outgoing OR incoming)
         if total_links > 0:
             stats["linked"] += 1
             linked_artifact_count += 1
         else:
             stats["unlinked"] += 1
 
-        per_link_type = outgoing_link_types.get(art.id, {})
-        for link_type, count in per_link_type.items():
+        # Aggregate link type counts (both directions)
+        for link_type, count in outgoing_link_types.get(art.id, {}).items():
             type_counts = stats["link_type_counts"]
             type_counts[link_type] = type_counts.get(link_type, 0) + count
-
             artifact_count_map = stats["link_type_artifact_counts"]
             artifact_count_map[link_type] = artifact_count_map.get(link_type, 0) + 1
+
+        for link_type, count in incoming_link_types.get(art.id, {}).items():
+            # Prefix incoming link types for clarity
+            incoming_key = f"incoming_{link_type}"
+            type_counts = stats["link_type_counts"]
+            type_counts[incoming_key] = type_counts.get(incoming_key, 0) + count
+            # Track artifact counts for incoming types too
+            artifact_count_map = stats["link_type_artifact_counts"]
+            artifact_count_map[incoming_key] = artifact_count_map.get(incoming_key, 0) + 1
 
     for stats in per_type.values():
         total = stats["total"] or 1
@@ -398,7 +442,11 @@ async def backfill_artifacts(
         try:
             async with AsyncSessionLocal() as git_db:
                 git_result = await git_import_service.sync_project(
-                    git_db, project_id, include_commits=True, include_pull_requests=True
+                    git_db,
+                    project_id,
+                    include_commits=True,
+                    include_pull_requests=True,
+                    trigger="manual",
                 )
         except Exception as exc:
             logger.error("Git import failed for project %s: %s", project_id, exc)
@@ -449,6 +497,10 @@ async def autolink_confluence_page(
         page_stmt = page_stmt.where(Artifact.project_id == project_id)
     res = await db.execute(page_stmt)
     page_art = res.scalar_one_or_none()
+    checked_project_ids: set[int] = set()
+    if project_id is None and page_art and page_art.project_id is not None:
+        await ensure_project_access(page_art.project_id, db, current_user)
+        checked_project_ids.add(page_art.project_id)
 
     created = 0
     updated = 0
@@ -490,6 +542,14 @@ async def autolink_confluence_page(
             issue_stmt = issue_stmt.where(Artifact.project_id == project_id)
         res_issue = await db.execute(issue_stmt)
         issue_art = res_issue.scalar_one_or_none()
+        if (
+            project_id is None
+            and issue_art
+            and issue_art.project_id is not None
+            and issue_art.project_id not in checked_project_ids
+        ):
+            await ensure_project_access(issue_art.project_id, db, current_user)
+            checked_project_ids.add(issue_art.project_id)
 
         if not page_art or not issue_art:
             suggestions.append(

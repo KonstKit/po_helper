@@ -45,9 +45,17 @@ class RuleExecutionEngine:
         self.db = db
         self.registry = registry or build_default_registry()
 
-    def execute_rule(self, rule_id: int) -> Dict[str, Any]:
-        """Выполнить правило трассировки."""
+    def execute_rule(self, rule_id: int, atomic: bool = True) -> Dict[str, Any]:
+        """Выполнить правило трассировки.
 
+        Args:
+            rule_id: ID правила для выполнения
+            atomic: Если True, откатывает все созданные связи при ошибках.
+                   Если False, сохраняет частичные результаты (legacy behavior).
+
+        Returns:
+            Результат выполнения с execution_id, status, links_created, errors, warnings
+        """
         rule = self.db.query(TraceabilityRule).filter(TraceabilityRule.id == rule_id).first()
         if not rule:
             raise ValueError(f"Rule {rule_id} not found")
@@ -87,15 +95,27 @@ class RuleExecutionEngine:
             except Exception as exc:
                 context.add_error(f"Error executing node {node_id}: {str(exc)}")
 
+        # Determine final status
+        has_errors = bool(context.errors)
+
+        # Rollback created links if atomic mode and errors occurred
+        if atomic and has_errors:
+            self.db.rollback()
+            links_created_count = 0
+        else:
+            links_created_count = len(context.links_created)
+
+        # Create execution record (after potential rollback, in a new mini-transaction)
         execution = TraceabilityRuleExecution(
             rule_id=rule_id,
-            status="success" if not context.errors else "failed",
-            links_created=len(context.links_created),
+            status="success" if not has_errors else "failed",
+            links_created=links_created_count,
             completed_at=datetime.utcnow(),
             error_message="; ".join(context.errors) if context.errors else None,
             error_details={
                 "errors": context.errors,
                 "warnings": context.warnings,
+                "atomic_rollback": atomic and has_errors,
             }
             if context.errors or context.warnings
             else None,
@@ -103,7 +123,7 @@ class RuleExecutionEngine:
         self.db.add(execution)
 
         rule.total_executions += 1
-        if not context.errors:
+        if not has_errors:
             rule.successful_executions += 1
         else:
             rule.failed_executions += 1
@@ -114,9 +134,10 @@ class RuleExecutionEngine:
         return {
             "execution_id": execution.id,
             "status": execution.status,
-            "links_created": len(context.links_created),
+            "links_created": links_created_count,
             "errors": context.errors,
             "warnings": context.warnings,
+            "rolled_back": atomic and has_errors,
         }
 
     def _topological_sort(

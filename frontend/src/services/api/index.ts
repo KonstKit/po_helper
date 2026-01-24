@@ -214,9 +214,19 @@ export {
 
 // Traceability
 export {
-  // Matrix
+  // Matrix Summary (legacy)
   getTraceabilityMatrix,
   backfillTraceability,
+  // RTM Matrix (full grid with pagination/filters)
+  getRTMMatrix,
+  queryRTMMatrix,
+  // Matrix Configurations (saved projections)
+  listMatrixConfigs,
+  getMatrixConfig,
+  createMatrixConfig,
+  updateMatrixConfig,
+  deleteMatrixConfig,
+  applyMatrixConfig,
   // Requirement flow
   getTraceabilityRequirementFlow,
   // Task artifacts
@@ -255,6 +265,12 @@ export {
   executeRule,
   getRuleExecutions,
   getAllRuleExecutions,
+  // Matrix Export
+  createMatrixExport,
+  getExportStatus,
+  listExports,
+  deleteExport,
+  getExportDownloadUrl,
 } from './traceability';
 
 // Knowledge (Confluence)

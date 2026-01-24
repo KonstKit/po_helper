@@ -292,6 +292,8 @@ sync/
 | `Task` | Задачи из Jira |
 | `JiraFieldMapping` | Маппинг custom fields Jira |
 | `IntegrationSetting` | Credentials для интеграций (encrypted) |
+| `ConnectorConfig` | Проектные overrides/enablement для интеграций |
+| `Source` | Рантайм-инстанс коннектора (base_url/auth/scopes) |
 | `TraceabilityMatrix` | Матрица связей артефактов |
 | `TraceabilityRule` | Правила для трассируемости |
 | `QualityMetric` | Метрики качества кода |
@@ -720,6 +722,16 @@ CREATE TABLE integration_settings (
     status ENUM('connected', 'error', 'disconnected')
 );
 ```
+
+**Consolidation note**:
+- `IntegrationSetting` хранит глобальные credentials по провайдеру.
+- `ConnectorConfig` хранит project-scoped overrides и флаг включения.
+- `Source` фиксирует runtime-данные коннектора (base_url/auth/scopes) для sync/health.
+
+**TestRail mapping note**:
+- Поле(я) с Jira ключами для связывания настраиваются через
+  `ConnectorConfig.settings_json.testrail_jira_key_field` или
+  `ConnectorConfig.settings_json.testrail_jira_key_fields` (по умолчанию `refs`).
 
 ### 8.4 Traceability
 

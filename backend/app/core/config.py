@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     JIRA_CB_THRESHOLD: int = 3  # Open circuit after 3 failures
     JIRA_CB_SLEEP_SECONDS: int = 30  # Wait 30 seconds before retrying
 
+    # Shared integration HTTP defaults (non-Jira clients)
+    INTEGRATION_HTTP_TIMEOUT: int = 30
+    INTEGRATION_HTTP_MAX_RETRIES: int = 2
+    INTEGRATION_HTTP_BACKOFF_SECONDS: float = 1.0
+    INTEGRATION_HTTP_BACKOFF_MAX_SECONDS: float = 30.0
+
     # Pagination settings for Jira API
     JIRA_PAGE_SIZE: int = 50  # Fetch 50 items per request
     JIRA_MAX_RESULTS: int = 500  # Maximum total results to fetch
@@ -95,6 +101,10 @@ class Settings(BaseSettings):
     # PR metrics aggregation knobs
     PR_METRICS_CACHE_TTL_SECONDS: int = 60
     PR_METRICS_SAMPLE_LIMIT: int = 20
+
+    # Export settings
+    EXPORTS_DIR: str = "./exports"  # Directory for export files
+    EXPORT_FILE_TTL_HOURS: int = 24  # Auto-delete exports after 24 hours
 
     # WIP limits (simple per-assignee)
     WIP_LIMIT_PER_ASSIGNEE: int = 2

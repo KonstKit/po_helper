@@ -34,8 +34,8 @@ import { getErrorMessage } from '../../utils/errorUtils';
 
 interface TraceabilityGraphProps {
   artifactId: number;
-  width?: number;
-  height?: number;
+  /** Minimum height for the graph container (default: 500) */
+  minHeight?: number;
   onNodeClick?: (node: FullChainNode) => void;
 }
 
@@ -91,8 +91,7 @@ const LINK_TYPE_STYLES: Record<string, { color: string; dasharray: string }> = {
 
 const TraceabilityGraph: React.FC<TraceabilityGraphProps> = ({
   artifactId,
-  width = 900,
-  height = 600,
+  minHeight = 500,
   onNodeClick,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -105,6 +104,29 @@ const TraceabilityGraph: React.FC<TraceabilityGraphProps> = ({
   const [direction, setDirection] = useState<'both' | 'upstream' | 'downstream'>('both');
   const [minConfidence, setMinConfidence] = useState(0);
   const [hoveredNode, setHoveredNode] = useState<D3Node | null>(null);
+  const [dimensions, setDimensions] = useState({ width: 900, height: 600 });
+
+  // Responsive: observe container size changes
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const updateDimensions = () => {
+      const rect = container.getBoundingClientRect();
+      const newWidth = Math.max(rect.width, 400);
+      const newHeight = Math.max(rect.height || minHeight, minHeight);
+      setDimensions({ width: newWidth, height: newHeight });
+    };
+
+    // Initial measurement
+    updateDimensions();
+
+    // Observe resize
+    const resizeObserver = new ResizeObserver(updateDimensions);
+    resizeObserver.observe(container);
+
+    return () => resizeObserver.disconnect();
+  }, [minHeight]);
 
   const handleDirectionChange = (event: SelectChangeEvent) => {
     const value = event.target.value;
@@ -206,6 +228,7 @@ const TraceabilityGraph: React.FC<TraceabilityGraphProps> = ({
     });
 
     // Force simulation
+    const { width, height } = dimensions;
     const simulation = d3.forceSimulation(nodes)
       .force('link', d3.forceLink<D3Node, D3Link>(validLinks)
         .id((d) => d.id)
@@ -351,17 +374,15 @@ const TraceabilityGraph: React.FC<TraceabilityGraphProps> = ({
       const groupNode = g.node();
       if (groupNode) {
         const bounds = groupNode.getBBox();
-        const fullWidth = width;
-        const fullHeight = height;
         const bWidth = bounds.width;
         const bHeight = bounds.height;
         const scale = Math.min(
-          0.9 * fullWidth / bWidth,
-          0.9 * fullHeight / bHeight,
+          0.9 * width / bWidth,
+          0.9 * height / bHeight,
           1.5
         );
-        const tx = (fullWidth - bWidth * scale) / 2 - bounds.x * scale;
-        const ty = (fullHeight - bHeight * scale) / 2 - bounds.y * scale;
+        const tx = (width - bWidth * scale) / 2 - bounds.x * scale;
+        const ty = (height - bHeight * scale) / 2 - bounds.y * scale;
         svg.transition()
           .duration(500)
           .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
@@ -371,7 +392,7 @@ const TraceabilityGraph: React.FC<TraceabilityGraphProps> = ({
     return () => {
       simulation.stop();
     };
-  }, [data, width, height, artifactId, onNodeClick]);
+  }, [data, dimensions, artifactId, onNodeClick]);
 
   const handleZoomIn = () => {
     if (svgRef.current && zoomRef.current) {
@@ -399,7 +420,7 @@ const TraceabilityGraph: React.FC<TraceabilityGraphProps> = ({
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" height={height}>
+      <Box display="flex" justifyContent="center" alignItems="center" height={minHeight}>
         <CircularProgress />
       </Box>
     );
@@ -414,7 +435,7 @@ const TraceabilityGraph: React.FC<TraceabilityGraphProps> = ({
   }
 
   return (
-    <Box ref={containerRef}>
+    <Box ref={containerRef} sx={{ width: '100%' }}>
       {/* Controls */}
       <Paper sx={{ p: 2, mb: 2 }}>
         <Stack direction="row" spacing={3} alignItems="center" flexWrap="wrap">
@@ -502,11 +523,13 @@ const TraceabilityGraph: React.FC<TraceabilityGraphProps> = ({
       </Paper>
 
       {/* Graph */}
-      <Paper sx={{ position: 'relative', overflow: 'hidden' }}>
+      <Paper sx={{ position: 'relative', overflow: 'hidden', minHeight }}>
         <svg
           ref={svgRef}
-          width={width}
-          height={height}
+          width="100%"
+          height={dimensions.height}
+          viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}
+          preserveAspectRatio="xMidYMid meet"
           style={{ display: 'block', background: '#fafafa' }}
         />
 

@@ -5,7 +5,16 @@ from httpx import AsyncClient
 
 from app.main import app
 from app.core.database import AsyncSessionLocal, Base, engine
-from app.models import Project, Task, PullRequest, Sprint, Repository, TestResult, CoverageReport
+from app.models import (
+    Project,
+    Task,
+    PullRequest,
+    Sprint,
+    Repository,
+    ProjectRepository,
+    TestResult,
+    CoverageReport,
+)
 
 
 async def reset_database() -> None:
@@ -24,6 +33,16 @@ async def test_dora_endpoint_returns_metrics():
         session.add(project)
         await session.commit()
         await session.refresh(project)
+
+        repository = Repository(provider="github", repo_slug="org/ops-platform")
+        session.add(repository)
+        await session.commit()
+        await session.refresh(repository)
+
+        session.add(
+            ProjectRepository(project_id=project.id, repository_id=repository.id, is_primary=True)
+        )
+        await session.commit()
 
         task_deploy = Task(
             jira_id="OPS-1",
@@ -49,6 +68,8 @@ async def test_dora_endpoint_returns_metrics():
 
         pr = PullRequest(
             provider="github",
+            repository_id=repository.id,
+            project_id=project.id,
             number=42,
             title="Deploy OPS",
             state="merged",

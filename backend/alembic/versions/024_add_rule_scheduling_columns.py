@@ -17,8 +17,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '024_add_rule_scheduling_columns'
-down_revision = '023_add_composite_performance_indexes'
+revision = "024_add_rule_scheduling_columns"
+down_revision = "023"
 branch_labels = None
 depends_on = None
 

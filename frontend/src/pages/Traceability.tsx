@@ -16,12 +16,14 @@ import {
   Select,
   Stack,
   Switch,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tabs,
   TextField,
   Tooltip,
   Typography,
@@ -29,6 +31,7 @@ import {
 import type { SelectChangeEvent } from '@mui/material/Select';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SyncIcon from '@mui/icons-material/Sync';
+import DownloadIcon from '@mui/icons-material/Download';
 import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import AltRouteIcon from '@mui/icons-material/AltRoute';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
@@ -37,9 +40,16 @@ import BubbleChartIcon from '@mui/icons-material/BubbleChart';
 import HistoryIcon from '@mui/icons-material/History';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
+import GridOnIcon from '@mui/icons-material/GridOn';
+import DashboardIcon from '@mui/icons-material/Dashboard';
 import { Link as RouterLink } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
 import BackfillProgressDialog, { BackfillStep } from '../components/BackfillProgressDialog';
+import MatrixExportDialog from '../components/traceability/MatrixExportDialog';
+import RTMMatrixViewer from '../components/traceability/RTMMatrixViewer';
+import RTMMatrixFilters from '../components/traceability/RTMMatrixFilters';
+import MatrixConfigPanel from '../components/traceability/MatrixConfigPanel';
+import type { RTMFilters, RTMPagination, RTMMatrixResponse } from '../services/api/types';
 
 import {
   Project,
@@ -124,6 +134,36 @@ const Traceability: React.FC = () => {
     setProjectId(parseProjectId(event.target.value));
   };
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+
+  // Tab state: 0 = Overview, 1 = RTM Matrix
+  const [activeTab, setActiveTab] = useState(0);
+
+  // RTM Matrix state
+  const [rtmFilters, setRtmFilters] = useState<RTMFilters>({});
+  const [rtmCoverage, setRtmCoverage] = useState<RTMMatrixResponse['coverage'] | null>(null);
+  const [rtmInitialPagination, setRtmInitialPagination] = useState<RTMPagination | undefined>();
+
+  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+  };
+
+  const handleRtmFiltersChange = useCallback((newFilters: RTMFilters) => {
+    setRtmFilters(newFilters);
+  }, []);
+
+  const handleRtmFiltersReset = useCallback(() => {
+    setRtmFilters({});
+  }, []);
+
+  const handleLoadConfig = useCallback((filters: RTMFilters, pagination?: RTMPagination) => {
+    setRtmFilters(filters);
+    setRtmInitialPagination(pagination);
+  }, []);
+
+  const handleRtmCoverageChange = useCallback((coverage: RTMMatrixResponse['coverage']) => {
+    setRtmCoverage(coverage);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -586,7 +626,36 @@ const Traceability: React.FC = () => {
         </Stack>
       )}
 
-      <Grid container spacing={2} sx={{ mt: 2 }}>
+      {/* Tab Navigation */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mt: 3 }}>
+        <Tabs value={activeTab} onChange={handleTabChange} aria-label="Traceability tabs">
+          <Tab
+            icon={<DashboardIcon />}
+            iconPosition="start"
+            label="Overview"
+            id="traceability-tab-0"
+            aria-controls="traceability-tabpanel-0"
+          />
+          <Tab
+            icon={<GridOnIcon />}
+            iconPosition="start"
+            label="RTM Matrix"
+            id="traceability-tab-1"
+            aria-controls="traceability-tabpanel-1"
+          />
+        </Tabs>
+      </Box>
+
+      {/* Tab Panel: Overview */}
+      <Box
+        role="tabpanel"
+        hidden={activeTab !== 0}
+        id="traceability-tabpanel-0"
+        aria-labelledby="traceability-tab-0"
+      >
+        {activeTab === 0 && (
+          <>
+          <Grid container spacing={2} sx={{ mt: 2 }}>
         <Grid item xs={12} md={4}>
           <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2, height: '100%' }}>
             <Box>
@@ -598,12 +667,12 @@ const Traceability: React.FC = () => {
                 <Select
                   labelId="traceability-project-label"
                   label="Project"
-                  value={projects.length === 0 ? 'all' : projectId}
+                  value={projects.length === 0 ? 'all' : String(projectId)}
                   onChange={handleProjectChange}
                 >
                   <MenuItem value="all">All projects</MenuItem>
                   {projects.map(project => (
-                    <MenuItem key={project.id} value={project.id}>
+                    <MenuItem key={project.id} value={String(project.id)}>
                       {project.name || project.jira_key || `Project ${project.id}`}
                     </MenuItem>
                   ))}
@@ -654,6 +723,15 @@ const Traceability: React.FC = () => {
                 disabled={matrixLoading}
               >
                 Refresh
+              </Button>
+              <Button
+                variant="outlined"
+                fullWidth
+                startIcon={<DownloadIcon />}
+                onClick={() => setExportDialogOpen(true)}
+                disabled={typeof projectId !== 'number' || matrixLoading}
+              >
+                Export
               </Button>
             </Stack>
 
@@ -1086,12 +1164,121 @@ const Traceability: React.FC = () => {
           )}
         </Paper>
       </Box>
+          </>
+        )}
+      </Box>
+
+      {/* Tab Panel: RTM Matrix */}
+      <Box
+        role="tabpanel"
+        hidden={activeTab !== 1}
+        id="traceability-tabpanel-1"
+        aria-labelledby="traceability-tab-1"
+      >
+        {activeTab === 1 && (
+          <Grid container spacing={2} sx={{ mt: 2 }}>
+            {/* Left column: Filters and Saved Projections */}
+            <Grid item xs={12} md={3}>
+              <Stack spacing={2}>
+                {/* Project selector for RTM Matrix */}
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Project
+                  </Typography>
+                  <FormControl size="small" fullWidth disabled={projectsLoading || projects.length === 0}>
+                    <InputLabel id="rtm-project-label">Project</InputLabel>
+                    <Select
+                      labelId="rtm-project-label"
+                      label="Project"
+                      value={projects.length === 0 ? 'all' : String(projectId)}
+                      onChange={handleProjectChange}
+                    >
+                      <MenuItem value="all">All projects</MenuItem>
+                      {projects.map(project => (
+                        <MenuItem key={project.id} value={String(project.id)}>
+                          {project.name || project.jira_key || `Project ${project.id}`}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Paper>
+
+                {/* Filters */}
+                <RTMMatrixFilters
+                  filters={rtmFilters}
+                  onChange={handleRtmFiltersChange}
+                  onReset={handleRtmFiltersReset}
+                  disabled={projectsLoading}
+                />
+
+                {/* Saved Projections */}
+                <MatrixConfigPanel
+                  projectId={typeof projectId === 'number' ? projectId : undefined}
+                  currentFilters={rtmFilters}
+                  onLoadConfig={handleLoadConfig}
+                />
+              </Stack>
+            </Grid>
+
+            {/* Right column: Matrix Viewer */}
+            <Grid item xs={12} md={9}>
+              <Paper sx={{ p: 2 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                  <Typography variant="h6">Requirements Traceability Matrix</Typography>
+                  <Stack direction="row" spacing={1}>
+                    {rtmCoverage && (
+                      <Chip
+                        size="small"
+                        label={`${rtmCoverage.total_links ?? 0} links`}
+                        variant="outlined"
+                      />
+                    )}
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<DownloadIcon />}
+                      onClick={() => setExportDialogOpen(true)}
+                      disabled={typeof projectId !== 'number'}
+                    >
+                      Export
+                    </Button>
+                  </Stack>
+                </Stack>
+
+                {typeof projectId !== 'number' ? (
+                  <Alert severity="info">
+                    Please select a specific project to view the RTM Matrix.
+                  </Alert>
+                ) : (
+                  <RTMMatrixViewer
+                    projectId={projectId}
+                    filters={rtmFilters}
+                    onCoverageChange={handleRtmCoverageChange}
+                    initialPagination={rtmInitialPagination}
+                  />
+                )}
+              </Paper>
+            </Grid>
+          </Grid>
+        )}
+      </Box>
 
       {/* Backfill Progress Dialog */}
       <BackfillProgressDialog
         open={backfillState.running && backfillSteps.length > 0}
         steps={backfillSteps}
       />
+
+      {/* Matrix Export Dialog */}
+      {typeof projectId === 'number' && (
+        <MatrixExportDialog
+          open={exportDialogOpen}
+          onClose={() => setExportDialogOpen(false)}
+          projectId={projectId}
+          projectName={selectedProject?.name}
+          filters={rtmFilters}
+        />
+      )}
     </Box>
   );
 };

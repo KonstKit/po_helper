@@ -4,7 +4,7 @@ file_id: plan_04
 parent: plan_03
 children:
   - plan_05
-status: draft
+status: completed
 created: 2024-05-26
 ---
 
@@ -27,4 +27,3 @@ created: 2024-05-26
 
 ## Acceptance
 - Link CRUD + provenance; rule engine creates derived links; validation rules enforce coverage; coverage counts respect incoming/outgoing links.
-

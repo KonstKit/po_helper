@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 from app.models.traceability import Artifact, ArtifactLink
 from app.services.traceability.engine.context import ExecutionContext
 from app.services.traceability.engine.nodes.base import NodeExecutor
+from app.services.traceability.link_service import REVERSE_LINK_TYPES
+
+# Link types that enforce DAG (no cycles allowed)
+DAG_LINK_TYPES = {"implements", "tests", "deploys", "derives_from"}
 
 
 class CreateLinkActionExecutor(NodeExecutor):
@@ -31,23 +35,39 @@ class CreateLinkActionExecutor(NodeExecutor):
             source_edge = incoming[0]
             target_edge = incoming[1]
 
-            source_artifacts = context.node_outputs.get(source_edge["source"], [])
-            target_artifacts = context.node_outputs.get(target_edge["source"], [])
+            source_artifacts = self._get_artifacts_by_edge(source_edge, context)
+            target_artifacts = self._get_artifacts_by_edge(target_edge, context)
 
             self._create_cross_links(
                 source_artifacts, target_artifacts, link_type, bidirectional, context
             )
         else:
             source_edge = incoming[0]
-            source_artifacts = context.node_outputs.get(source_edge["source"], [])
+            source_artifacts = self._get_artifacts_by_edge(source_edge, context)
 
             for i in range(1, len(incoming)):
-                target_artifacts = context.node_outputs.get(incoming[i]["source"], [])
+                target_artifacts = self._get_artifacts_by_edge(incoming[i], context)
                 self._create_cross_links(
                     source_artifacts, target_artifacts, link_type, bidirectional, context
                 )
 
         return []
+
+    def _get_artifacts_by_edge(
+        self, edge: Dict[str, Any], context: ExecutionContext
+    ) -> List[Artifact]:
+        """Get artifacts from a source edge, respecting sourceHandle for branching."""
+        source_id = edge["source"]
+        source_handle = edge.get("sourceHandle")
+
+        # Try handle-specific output first (for DecisionNode branches)
+        if source_handle:
+            handle_key = f"{source_id}_{source_handle}"
+            if handle_key in context.node_outputs:
+                return context.node_outputs[handle_key]
+
+        # Fall back to node output without handle
+        return context.node_outputs.get(source_id, [])
 
     def _create_self_links(
         self,
@@ -84,7 +104,7 @@ class CreateLinkActionExecutor(NodeExecutor):
         target: Artifact,
         link_type: str,
         context: ExecutionContext,
-        base_confidence: float = 90.0,
+        base_confidence: float = 0.90,
     ) -> None:
         existing = (
             context.db.query(ArtifactLink)
@@ -102,13 +122,28 @@ class CreateLinkActionExecutor(NodeExecutor):
             )
             return
 
+        # DAG cycle check for hierarchical link types
+        if link_type in DAG_LINK_TYPES:
+            if self._would_create_cycle(source.id, target.id, link_type, context):
+                context.add_error(
+                    f"Link would create cycle: {source.external_id} -[{link_type}]-> {target.external_id}"
+                )
+                return
+
         confidence = self._calculate_confidence(source, target, link_type, base_confidence, context)
+
+        # Determine project_id from artifacts (prefer source)
+        project_id = source.project_id or target.project_id
 
         link = ArtifactLink(
             from_artifact_id=source.id,
             to_artifact_id=target.id,
             link_type=link_type,
             confidence=confidence,
+            project_id=project_id,
+            created_via="rule",
+            source_system="rule_engine",
+            source_reference_id=str(context.rule_id),
         )
 
         context.db.add(link)
@@ -122,40 +157,77 @@ class CreateLinkActionExecutor(NodeExecutor):
         base: float,
         context: ExecutionContext,
     ) -> float:
+        """Calculate confidence score (0.0-1.0 scale)."""
         confidence = base
         source_meta = source.meta or {}
 
+        # Hierarchical links get full confidence
         if link_type in ["child_of", "parent_of"]:
-            confidence = 100.0
+            confidence = 1.0
 
         if source.external_id and target.external_id:
             if source.type == "commit" and target.type == "jira_issue":
                 message = source_meta.get("message", "")
                 if target.external_id in message:
+                    # Boost if key is at the start of message
                     if message.startswith(target.external_id):
-                        confidence += 10
-                    confidence = min(100.0, confidence)
+                        confidence += 0.10
+                    confidence = min(1.0, confidence)
 
         if source.type == "commit":
             message = source_meta.get("message", "")
             jira_keys = re.findall(r"\b[A-Z][A-Z0-9_]+-[0-9]+\b", message)
+            # Penalize if multiple keys (ambiguous reference)
             if len(jira_keys) > 1:
-                confidence -= 5
+                confidence -= 0.05
 
         if source.type == "commit" and target.type == "jira_issue":
             branch = source_meta.get("branch", "")
+            # Boost if key is in branch name
             if target.external_id in branch:
-                confidence += 5
+                confidence += 0.05
 
-        return max(0.0, min(100.0, confidence))
+        return max(0.0, min(1.0, confidence))
 
     def _get_reverse_link_type(self, link_type: str) -> str:
-        reverse_map = {
-            "implements": "implemented_by",
-            "tests": "tested_by",
-            "documents": "documented_by",
-            "child_of": "parent_of",
-            "depends_on": "required_by",
-            "blocks": "blocked_by",
-        }
-        return reverse_map.get(link_type, f"reverse_{link_type}")
+        """Get reverse link type using unified mapping from LinkService."""
+        return REVERSE_LINK_TYPES.get(link_type, f"reverse_{link_type}")
+
+    def _would_create_cycle(
+        self,
+        from_id: int,
+        to_id: int,
+        link_type: str,
+        context: ExecutionContext,
+    ) -> bool:
+        """Check if creating this link would create a cycle (BFS from to_id to from_id).
+
+        Uses synchronous DB queries since rule engine runs in sync context.
+        """
+        visited: Set[int] = set()
+        queue = [to_id]
+
+        while queue:
+            current = queue.pop(0)
+            if current == from_id:
+                return True
+
+            if current in visited:
+                continue
+            visited.add(current)
+
+            # Get outgoing links of same type (sync query)
+            links = (
+                context.db.query(ArtifactLink.to_artifact_id)
+                .filter(
+                    ArtifactLink.from_artifact_id == current,
+                    ArtifactLink.link_type == link_type,
+                )
+                .all()
+            )
+
+            for (next_id,) in links:
+                if next_id not in visited:
+                    queue.append(next_id)
+
+        return False

@@ -49,14 +49,28 @@ async def put_jira_settings(
     current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE)),
 ):
     row = await _get_integration(db, "jira")
+    base_url = payload.base_url if payload.base_url is not None else (row.base_url if row else None)
+    token_present = bool(payload.api_token) or bool(row.api_token if row else None)
+    use_pat = payload.use_pat if payload.use_pat is not None else not bool(
+        payload.email or (row.email if row else None)
+    )
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Jira base URL is required")
+    if not token_present:
+        raise HTTPException(status_code=400, detail="Jira API token is required")
+    if not use_pat and not (payload.email or (row.email if row else None)):
+        raise HTTPException(
+            status_code=400, detail="Jira email is required for Basic authentication"
+        )
     if not row:
         row = IntegrationSetting(kind="jira")
         db.add(row)
     async with transactional_session(db):
-        use_pat = payload.use_pat if payload.use_pat is not None else not bool(payload.email)
         # normalize blanks to None and persist according to mode
-        row.base_url = (payload.base_url or None) or None
-        row.email = None if use_pat else ((payload.email or None) or None)
+        row.base_url = base_url
+        row.email = (
+            None if use_pat else (payload.email if payload.email is not None else row.email)
+        )
         if payload.api_token is not None and payload.api_token != "":
             row.api_token = encrypt_str(payload.api_token)
     await db.refresh(row)
@@ -138,12 +152,18 @@ async def put_confluence_settings(
     payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
 ):
     row = await _get_integration(db, "confluence")
+    base_url = payload.base_url if payload.base_url is not None else (row.base_url if row else None)
+    token_present = bool(payload.api_token) or bool(row.api_token if row else None)
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Confluence base URL is required")
+    if not token_present:
+        raise HTTPException(status_code=400, detail="Confluence API token is required")
     if not row:
         row = IntegrationSetting(kind="confluence")
         db.add(row)
     async with transactional_session(db):
-        row.base_url = (payload.base_url or None) or None
-        row.email = (payload.email or None) or None
+        row.base_url = base_url
+        row.email = payload.email if payload.email is not None else row.email
         row.api_token = (
             encrypt_str(payload.api_token)
             if (payload.api_token is not None and payload.api_token != "")
@@ -249,11 +269,18 @@ async def get_github_settings(db: AsyncSession = Depends(get_db)):
 @router.put("/github", response_model=IntegrationSettings)
 async def put_github_settings(payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)):
     row = await _get_integration(db, "github")
+    token_present = bool(payload.api_token or payload.webhook_secret) or bool(
+        row.api_token if row else None
+    )
+    if not token_present:
+        raise HTTPException(
+            status_code=400, detail="GitHub API token or webhook secret is required"
+        )
     if not row:
         row = IntegrationSetting(kind="github")
         db.add(row)
     async with transactional_session(db):
-        row.base_url = (payload.base_url or None) or None
+        row.base_url = payload.base_url if payload.base_url is not None else row.base_url
         row.email = None
         # pack token + webhook_secret into encrypted JSON string for flexibility
         try:
@@ -458,11 +485,18 @@ async def get_gitlab_settings(db: AsyncSession = Depends(get_db)):
 @router.put("/gitlab", response_model=IntegrationSettings)
 async def put_gitlab_settings(payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)):
     row = await _get_integration(db, "gitlab")
+    token_present = bool(payload.api_token or payload.webhook_secret) or bool(
+        row.api_token if row else None
+    )
+    if not token_present:
+        raise HTTPException(
+            status_code=400, detail="GitLab API token or webhook secret is required"
+        )
     if not row:
         row = IntegrationSetting(kind="gitlab")
         db.add(row)
     async with transactional_session(db):
-        row.base_url = (payload.base_url or None) or None
+        row.base_url = payload.base_url if payload.base_url is not None else row.base_url
         row.email = None
         try:
             token_bundle = None

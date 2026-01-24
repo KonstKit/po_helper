@@ -27,9 +27,9 @@ class DecisionNodeExecutor(NodeExecutor):
             handle_id = edge.get("sourceHandle", "true")
 
             if (result and handle_id == "true") or (not result and handle_id == "false"):
-                context.set_node_output(node["id"] + "_" + handle_id, input_artifacts)
+                context.set_node_output_with_handle(node["id"], handle_id, input_artifacts)
             else:
-                context.set_node_output(node["id"] + "_" + handle_id, [])
+                context.set_node_output_with_handle(node["id"], handle_id, [])
 
         context.set_node_output(node["id"], input_artifacts)
         return input_artifacts

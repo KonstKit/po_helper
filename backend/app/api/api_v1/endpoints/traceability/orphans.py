@@ -18,6 +18,7 @@ from app.core.cache_enhanced import (
 from app.models import Artifact, ArtifactLink, User
 from app.api.deps import get_current_user, ensure_project_access
 from app.services.confidence_scoring import confidence_scoring_service
+from app.utils.confidence import normalize_confidence, normalized_confidence_column
 
 router = APIRouter()
 
@@ -147,9 +148,11 @@ async def recalculate_link_confidence(
         query = query.where(ArtifactLink.project_id == project_id)
 
     if min_current_confidence is not None:
+        # Use normalized column to handle legacy 0..100 confidence values
         query = query.where(
             or_(
-                ArtifactLink.confidence <= min_current_confidence, ArtifactLink.confidence.is_(None)
+                normalized_confidence_column(ArtifactLink.confidence) <= min_current_confidence,
+                ArtifactLink.confidence.is_(None),
             )
         )
 
@@ -289,7 +292,8 @@ async def get_confidence_distribution(
 
         by_link_type[lt]["count"] += 1
 
-        conf = link.confidence
+        # Normalize legacy 0..100 confidence values to 0..1 scale
+        conf = normalize_confidence(link.confidence)
         if conf is None:
             histogram["no_score"] += 1
             by_link_type[lt]["no_score"] += 1
