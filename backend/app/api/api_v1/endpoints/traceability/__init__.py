@@ -23,6 +23,7 @@ from .health import router as health_router
 from .baselines import router as baselines_router
 from .projections import router as projections_router
 from .connector_configs import router as connector_configs_router
+from .audit import router as audit_router
 from .sync_tasks import router as sync_tasks_router
 from .matrix import router as matrix_router
 from .validation import router as validation_router
@@ -41,6 +42,7 @@ router.include_router(health_router, tags=["Traceability - Health"])
 router.include_router(baselines_router, tags=["Traceability - Baselines"])
 router.include_router(projections_router, tags=["Traceability - Projections"])
 router.include_router(connector_configs_router, tags=["Traceability - Connector Configs"])
+router.include_router(audit_router, tags=["Traceability - Audit"])
 router.include_router(sync_tasks_router, tags=["Traceability - Sync Tasks"])
 router.include_router(matrix_router, tags=["Traceability - RTM Matrix"])
 router.include_router(validation_router, tags=["Traceability - Validation"])

@@ -184,6 +184,8 @@ async def ci_results(
     - provider: CI provider name (e.g., 'jenkins', 'github-actions', 'gitlab-ci')
     - commit_sha: Git commit SHA
     - pr_number: Pull request number (optional)
+    - baseline_id / baseline_ids: Optional baseline ID(s) to attach CI artifacts/links
+    - projection_id / projection_ids: Optional projection ID(s) to attach CI artifacts/links
     - junit_xml: JUnit XML test results (string)
     - coverage: Coverage object with 'line' and 'branch' percentages
     - jacoco_xml: JaCoCo XML coverage report (string)

@@ -6,16 +6,16 @@ import asyncio
 from typing import Optional, Dict, Any, List, Set, Tuple
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func as sql_func, exists
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.models import Artifact, ArtifactLink, Project, User
+from app.models import Artifact, ArtifactLink, Project, User, Permissions
 from app.models.settings import IntegrationSetting
 from app.models.project_repository import ProjectRepository
-from app.api.deps import get_current_user, ensure_project_access
+from app.api.deps import ensure_project_access, require_permission
 from .common import _dag_types
 
 router = APIRouter()
@@ -254,7 +254,7 @@ async def _detect_all_cycles(
 async def get_sync_health(
     project_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Get synchronization health status across all data sources.
@@ -265,6 +265,8 @@ async def get_sync_health(
     - Last sync times and artifact counts
     - Recent errors or warnings
     """
+    if project_id is None and not current_user.has_permission(Permissions.ADMIN):
+        raise HTTPException(status_code=403, detail="project_id is required")
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
 
@@ -429,7 +431,7 @@ async def get_sync_health(
 async def get_detailed_sync_health(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Get detailed sync health for a specific project.
@@ -545,7 +547,7 @@ async def run_consistency_check(
     check_stale: bool = Query(True, description="Check for stale artifacts"),
     stale_days: int = Query(90, ge=7, le=365, description="Days threshold for stale artifacts"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Run comprehensive data consistency checks on the traceability graph.
@@ -557,6 +559,8 @@ async def run_consistency_check(
     - Broken references (links to non-existent artifacts)
     - Stale artifacts (not updated for N days)
     """
+    if project_id is None and not current_user.has_permission(Permissions.ADMIN):
+        raise HTTPException(status_code=403, detail="project_id is required")
 
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
@@ -765,7 +769,7 @@ async def fix_consistency_issues(
     ),
     dry_run: bool = Query(True, description="Preview changes without applying them"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Fix common consistency issues automatically.
@@ -777,6 +781,8 @@ async def fix_consistency_issues(
     - fixed: Number of issues fixed
     - preview: List of fixes that would be applied (in dry_run mode)
     """
+    if project_id is None and not current_user.has_permission(Permissions.ADMIN):
+        raise HTTPException(status_code=403, detail="project_id is required")
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
 
@@ -916,13 +922,15 @@ async def detect_cycles_detailed(
     project_id: Optional[int] = None,
     link_type: Optional[str] = Query(None, description="Filter by link type"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Get detailed cycle detection analysis.
 
     Returns all cycles found with full artifact information.
     """
+    if project_id is None and not current_user.has_permission(Permissions.ADMIN):
+        raise HTTPException(status_code=403, detail="project_id is required")
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
 

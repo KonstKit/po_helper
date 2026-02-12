@@ -8,10 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
-import uuid
 from datetime import datetime, timezone
-from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
@@ -19,7 +16,7 @@ from celery import Task
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from sqlalchemy import select, update
+from sqlalchemy import update
 
 from app.core.cache import redis_client as _redis_client
 from app.core.celery_app import celery_app
@@ -143,7 +140,7 @@ def export_matrix_task(
                     {
                         "type": "complete",
                         "percent": 100,
-                        "message": f"Export complete! File ready for download.",
+                        "message": "Export complete! File ready for download.",
                         "task_id": export_task_id,
                         "download_url": f"/api/v1/traceability/exports/{export_task_id}/download",
                         "file_size": result.get("file_size_bytes"),
@@ -359,8 +356,13 @@ async def _generate_xlsx(
             ws.cell(row=row_idx, column=6, value=art["url"])
 
             if data["include_details"] and art["links"]:
-                link_types = ", ".join(set(l["link_type"] for l in art["links"]))
-                avg_conf = sum(l["confidence"] or 0 for l in art["links"]) / len(art["links"])
+                link_types = ", ".join(
+                    set(link_item["link_type"] for link_item in art["links"])
+                )
+                avg_conf = (
+                    sum(link_item["confidence"] or 0 for link_item in art["links"])
+                    / len(art["links"])
+                )
                 ws.cell(row=row_idx, column=7, value=link_types)
                 ws.cell(row=row_idx, column=8, value=f"{avg_conf:.2f}")
 
@@ -414,8 +416,13 @@ async def _generate_csv(
                     art["url"],
                 ]
                 if data["include_details"] and art["links"]:
-                    link_types = "|".join(set(l["link_type"] for l in art["links"]))
-                    avg_conf = sum(l["confidence"] or 0 for l in art["links"]) / len(art["links"])
+                    link_types = "|".join(
+                        set(link_item["link_type"] for link_item in art["links"])
+                    )
+                    avg_conf = (
+                        sum(link_item["confidence"] or 0 for link_item in art["links"])
+                        / len(art["links"])
+                    )
                     row.extend([link_types, f"{avg_conf:.2f}"])
                 elif data["include_details"]:
                     row.extend(["", ""])

@@ -29,6 +29,7 @@ from app.models.quality import QualityGateHistory
 from app.models.jira_field_mapping import JiraFieldMapping
 from app.models.audit import BusinessValueAudit
 from app.models.capacity import CapacitySettings, TeamHealthCheck, CFDSnapshot
+from app.models.traceability_rule import TraceabilityRule, TraceabilityRuleExecution
 
 __all__ = [
     "User",
@@ -71,4 +72,6 @@ __all__ = [
     "CapacitySettings",
     "TeamHealthCheck",
     "CFDSnapshot",
+    "TraceabilityRule",
+    "TraceabilityRuleExecution",
 ]

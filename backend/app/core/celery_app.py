@@ -48,6 +48,18 @@ celery_app.conf.update(
             "task": "git.scheduled_sync",
             "schedule": crontab(minute="*/30"),
         },
+        "testrail-sync-every-6-hours": {
+            "task": "testrail.scheduled_sync",
+            "schedule": crontab(minute=0, hour="*/6"),
+        },
+        "cleanup-exports-daily": {
+            "task": "maintenance.cleanup_exports",
+            "schedule": crontab(minute=0, hour=2),
+        },
+        "cleanup-baselines-daily": {
+            "task": "maintenance.cleanup_baselines",
+            "schedule": crontab(minute=30, hour=2),
+        },
     },
 )
 

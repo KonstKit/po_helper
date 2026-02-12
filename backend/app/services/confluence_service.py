@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import requests
 from requests.auth import HTTPBasicAuth
 from app.core.config import settings
+from app.core.redaction import redact_headers
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +268,9 @@ class ConfluenceService:
 
                 # Log detailed response info for debugging
                 logger.debug(
-                    "Validation response: status=%s, headers=%s", r.status_code, dict(r.headers)
+                    "Validation response: status=%s, headers=%s",
+                    r.status_code,
+                    redact_headers(dict(r.headers)),
                 )
 
                 if r.status_code == 200:
@@ -425,7 +428,7 @@ class ConfluenceService:
                 logger.info(
                     "Requesting spaces: url=%s, headers=%s, auth=%s",
                     url,
-                    self._headers(),
+                    redact_headers(self._headers()),
                     "Basic" if self.auth else "Bearer",
                 )
                 r = self._request_with_retry(
@@ -447,7 +450,7 @@ class ConfluenceService:
                     location = r.headers.get("Location", "")
                     if "/login" in location:
                         logger.error("Got redirect to login page - authentication failed")
-                        logger.error("Headers sent: %s", self._headers())
+                        logger.error("Headers sent: %s", redact_headers(self._headers()))
                         logger.error("Auth mode: %s", "Basic" if self.auth else "Bearer")
                     else:
                         logger.error("Got redirect to: %s", location)

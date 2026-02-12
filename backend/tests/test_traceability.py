@@ -1,3 +1,4 @@
+import importlib
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,9 +36,9 @@ rate_limit_module.RateLimitExceeded = Exception
 rate_limit_module._rate_limit_exceeded_handler = lambda *args, **kwargs: None
 sys.modules['app.core.rate_limit'] = rate_limit_module
 
-import app.api.api_v1.endpoints.traceability.links as links_module
-import app.api.api_v1.endpoints.traceability.common as common_module
-from app.core.config import settings
+links_module = importlib.import_module("app.api.api_v1.endpoints.traceability.links")
+common_module = importlib.import_module("app.api.api_v1.endpoints.traceability.common")
+settings = importlib.import_module("app.core.config").settings
 
 traceability_matrix = links_module.traceability_matrix
 _would_create_cycle = common_module._would_create_cycle

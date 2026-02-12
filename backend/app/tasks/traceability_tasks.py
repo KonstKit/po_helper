@@ -23,16 +23,13 @@ logger = logging.getLogger(__name__)
 async def _execute_rule_async(rule_id: int) -> Dict[str, Any]:
     """Execute a traceability rule asynchronously."""
     from app.services.traceability.engine import RuleExecutionEngine
+    # Note: RuleExecutionEngine uses sync SQLAlchemy, need sync session
+    from app.core.database import SessionLocal
 
-    async with AsyncSessionLocal() as db:
-        # Note: RuleExecutionEngine uses sync SQLAlchemy, need sync session
-        from sqlalchemy.orm import Session
-        from app.core.database import SessionLocal
-
-        with SessionLocal() as sync_db:
-            engine = RuleExecutionEngine(sync_db)
-            result = engine.execute_rule(rule_id)
-            return result
+    with SessionLocal() as sync_db:
+        engine = RuleExecutionEngine(sync_db)
+        result = engine.execute_rule(rule_id)
+        return result
 
 
 async def _execute_all_enabled_rules_async(project_id: Optional[int] = None) -> List[Dict[str, Any]]:

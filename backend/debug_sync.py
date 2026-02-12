@@ -5,7 +5,6 @@ Run this to see detailed logging of the sync process.
 
 import asyncio
 import logging
-from datetime import datetime
 from sqlalchemy import select
 from app.core.database import AsyncSessionLocal
 from app.models import Project, Task

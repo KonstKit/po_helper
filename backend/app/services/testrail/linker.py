@@ -319,15 +319,15 @@ def _collect_commit_texts(
     fields: Sequence[str],
 ) -> List[str]:
     values: List[str] = []
-    for field in fields:
-        if field.startswith("run."):
-            run_field = field.split(".", 1)[1]
+    for field_name in fields:
+        if field_name.startswith("run."):
+            run_field = field_name.split(".", 1)[1]
             if run_field in {"title", "name"} and run_title:
                 values.append(run_title)
                 continue
             value = _extract_field_value(run_meta or {}, run_field)
         else:
-            value = _extract_field_value(meta, field)
+            value = _extract_field_value(meta, field_name)
         if value is not None:
             values.append(_normalize_text(value))
     return values
@@ -335,8 +335,8 @@ def _collect_commit_texts(
 
 def _collect_field_texts(meta: Dict[str, Any], fields: Sequence[str]) -> List[str]:
     values: List[str] = []
-    for field in fields:
-        value = _extract_field_value(meta, field)
+    for field_name in fields:
+        value = _extract_field_value(meta, field_name)
         if value is not None:
             values.append(_normalize_text(value))
     return values

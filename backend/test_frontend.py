@@ -20,7 +20,7 @@ async def test():
             "http://localhost:8000/api/v1/projects/3",
             headers=headers
         )
-        print(f"GET /api/v1/projects/3")
+        print("GET /api/v1/projects/3")
         print(f"  Status: {response.status_code}")
         print(f"  Response type: {type(response.json()).__name__}")
         print(f"  Response: {response.json()}")

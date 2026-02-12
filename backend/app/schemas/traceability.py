@@ -203,6 +203,29 @@ class SyncTask(SyncTaskInDB):
     pass
 
 
+class AuditLogBase(BaseModel):
+    tenant_id: Optional[str] = None
+    project_id: Optional[int] = None
+    actor_id: Optional[int] = None
+    action: str
+    entity_type: str
+    entity_id: int
+    request_id: Optional[str] = None
+    outcome: Optional[str] = None
+    payload: Optional[Dict[str, Any]] = None
+
+
+class AuditLogInDB(AuditLogBase):
+    id: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AuditLog(AuditLogInDB):
+    pass
+
+
 class ConnectorConfigSettings(BaseModel):
     """Known keys for ConnectorConfig.settings_json (provider-specific extras allowed)."""
 
@@ -212,7 +235,7 @@ class ConnectorConfigSettings(BaseModel):
     )
     api_token: Optional[str] = Field(
         default=None,
-        description="Override token/PAT for the provider (stored in plain text in settings_json).",
+        description="Override token/PAT for the provider (stored encrypted in settings_json).",
     )
     email: Optional[str] = Field(
         default=None,

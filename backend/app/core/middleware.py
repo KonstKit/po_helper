@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from fastapi import FastAPI, Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 from app.core.metrics import metrics
 from app.core.query_metrics import set_query_context
+from app.core.request_context import set_request_id, reset_request_id
 from slowapi.middleware import SlowAPIMiddleware
 from app.core.rate_limit import limiter, RateLimitExceeded, _rate_limit_exceeded_handler
 
@@ -70,10 +72,46 @@ class CancelMetricsMiddleware:
             raise
 
 
+class RequestIdMiddleware:
+    """Assign or propagate a request_id for each HTTP request."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request_id = None
+        for key, value in scope.get("headers") or []:
+            if key.lower() == b"x-request-id":
+                request_id = value.decode("utf-8", errors="ignore").strip() or None
+                break
+        if request_id is None:
+            request_id = str(uuid.uuid4())
+
+        token = set_request_id(request_id)
+
+        async def _send(message):
+            if message.get("type") == "http.response.start":
+                headers = list(message.get("headers") or [])
+                headers.append((b"x-request-id", request_id.encode("utf-8")))
+                message["headers"] = headers
+            await send(message)
+
+        try:
+            await self.app(scope, receive, _send)
+        finally:
+            reset_request_id(token)
+
+
 def register_middlewares(app: FastAPI) -> None:
     app.state.limiter = limiter
     app.add_middleware(SlowAPIMiddleware)
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(CancelMetricsMiddleware)
-    # QueryContextMiddleware should be added last (runs first) to set context for all queries
+    # RequestIdMiddleware should run first to populate context for logs/audit entries
+    app.add_middleware(RequestIdMiddleware)
+    # QueryContextMiddleware should run early to set context for all queries
     app.add_middleware(QueryContextMiddleware)

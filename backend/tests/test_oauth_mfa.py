@@ -15,8 +15,6 @@ from app.core.oauth import (
     GoogleOAuth2Client,
     MicrosoftOAuth2Client,
     OAuth2Error,
-    OAuth2UserInfo,
-    get_oauth_providers,
     is_email_allowed,
 )
 from app.core.mfa import (
@@ -29,7 +27,6 @@ from app.core.mfa import (
     verify_backup_code,
     get_current_totp,
     remaining_time_in_period,
-    MFAError,
 )
 
 

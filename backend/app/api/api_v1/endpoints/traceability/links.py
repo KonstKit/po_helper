@@ -12,9 +12,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db, AsyncSessionLocal
-from app.models import Artifact, ArtifactLink, Task, ConfluencePage, User
+from app.models import Artifact, ArtifactLink, Task, ConfluencePage, User, Permissions
 from app.core.config import settings
-from app.api.deps import get_current_user, ensure_project_access
+from app.api.deps import ensure_project_access, require_permission
 from app.core.rate_limit import limiter
 from app.core.cache_enhanced import (
     CacheTier,
@@ -28,7 +28,7 @@ from app.services.traceability.link_service import LinkService, LinkCreationMeth
 from app.utils import get_or_404, execute_with_lock
 from app.utils.batch_operations import traverse_graph_batched
 
-from .common import logger, _would_create_cycle
+from .common import logger
 
 router = APIRouter()
 
@@ -48,7 +48,7 @@ async def create_link(
     tenant_id: Optional[str] = None,
     project_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """Create a link between two artifacts.
 
@@ -106,7 +106,7 @@ async def create_link(
 async def artifacts_for_task(
     jira_key: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """Return artifact for task (jira_issue) and its immediate neighbors."""
     task_art = await get_or_404(
@@ -170,7 +170,7 @@ async def requirement_flow(
     artifact_id: int,
     depth: int = 3,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """Return a BFS flow graph from a requirement artifact up to given depth."""
     depth = max(1, min(depth, 6))
@@ -203,7 +203,7 @@ async def requirement_flow(
 async def traceability_matrix(
     project_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """Return a lightweight coverage-style matrix summary for a project."""
     if project_id is not None:
@@ -236,7 +236,6 @@ async def traceability_matrix(
         return payload
 
     artifact_ids = [art.id for art in artifacts]
-    artifact_id_set = set(artifact_ids)
 
     # Query outgoing links (from_artifact_id in our set)
     outgoing_stmt = select(ArtifactLink.from_artifact_id, ArtifactLink.link_type)
@@ -355,7 +354,7 @@ async def backfill_artifacts(
     include_confluence: bool = True,
     include_git: bool = False,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """Project backfill: project tasks and optionally Confluence pages to artifacts."""
     await ensure_project_access(project_id, db, current_user)
@@ -467,7 +466,7 @@ async def autolink_confluence_page(
     page_id: str,
     project_id: int | None = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """Parse a Confluence page, detect Jira keys, and create links."""
     if not settings.ENABLE_CONFLUENCE_AUTOLINK:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional, Dict, Any, List
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func as sql_func, exists, or_
 
@@ -15,8 +15,8 @@ from app.core.cache_enhanced import (
     TraceabilityCacheKeys,
     get_enhanced_cache_service,
 )
-from app.models import Artifact, ArtifactLink, User
-from app.api.deps import get_current_user, ensure_project_access
+from app.models import Artifact, ArtifactLink, User, Permissions
+from app.api.deps import ensure_project_access, require_permission
 from app.services.confidence_scoring import confidence_scoring_service
 from app.utils.confidence import normalize_confidence, normalized_confidence_column
 
@@ -44,7 +44,7 @@ async def get_orphaned_artifacts(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Find artifacts with no incoming or outgoing links (orphans).
@@ -52,6 +52,8 @@ async def get_orphaned_artifacts(
     Orphaned artifacts may indicate incomplete traceability, stale items,
     or missing link creation.
     """
+    if project_id is None and not current_user.has_permission(Permissions.ADMIN):
+        raise HTTPException(status_code=403, detail="project_id is required")
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
 
@@ -129,7 +131,7 @@ async def recalculate_link_confidence(
         None, description="Only recalculate links with confidence <= this value"
     ),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """
     Recalculate confidence scores for existing links.
@@ -137,7 +139,15 @@ async def recalculate_link_confidence(
     Can target a specific link (by link_id), all links in a project (by project_id),
     or links below a confidence threshold.
     """
-    if project_id is not None:
+    if link_id is None and project_id is None and not current_user.has_permission(Permissions.ADMIN):
+        raise HTTPException(status_code=403, detail="project_id is required")
+    if link_id is not None:
+        link = await db.get(ArtifactLink, link_id)
+        if link is None:
+            raise HTTPException(status_code=404, detail="Link not found")
+        if link.project_id is not None:
+            await ensure_project_access(link.project_id, db, current_user)
+    elif project_id is not None:
         await ensure_project_access(project_id, db, current_user)
 
     query = select(ArtifactLink)
@@ -245,13 +255,15 @@ async def get_confidence_distribution(
     project_id: Optional[int] = None,
     link_type: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Get distribution of confidence scores for analysis.
 
     Returns histogram buckets, stats by link type, and low confidence links that need review.
     """
+    if project_id is None and not current_user.has_permission(Permissions.ADMIN):
+        raise HTTPException(status_code=403, detail="project_id is required")
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
 

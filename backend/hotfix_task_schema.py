@@ -4,8 +4,6 @@ Hotfix for task schema without restarting the server.
 Run this script to patch the running application.
 """
 
-import requests
-import json
 
 # This is a temporary fix that modifies the schema validation
 # without needing to restart the backend

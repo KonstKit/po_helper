@@ -11,18 +11,16 @@ from __future__ import annotations
 import csv
 import io
 import logging
-import os
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.traceability import ExportTask
-from app.schemas.traceability import RTMFilters, RTMPagination
+from app.schemas.traceability import RTMFilters
 from app.services.analytics.rtm_matrix_service import get_rtm_matrix
 
 logger = logging.getLogger(__name__)

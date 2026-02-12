@@ -42,19 +42,19 @@ def test_tasks_endpoint(limit=500):
                 print(f"  ✓ Success: Retrieved {count} tasks in {elapsed_time:.3f} seconds")
 
                 if elapsed_time > 5:
-                    print(f"  ⚠ Warning: Response time exceeded 5 seconds")
+                    print("  ⚠ Warning: Response time exceeded 5 seconds")
                 elif elapsed_time > 2:
-                    print(f"  ⚠ Notice: Response time exceeded 2 seconds")
+                    print("  ⚠ Notice: Response time exceeded 2 seconds")
                 else:
-                    print(f"  ✓ Good: Response time is acceptable")
+                    print("  ✓ Good: Response time is acceptable")
             else:
                 print(f"  ✗ Error: HTTP {response.status_code}")
                 print(f"    Response: {response.text[:200]}")
 
         except requests.exceptions.Timeout:
-            print(f"  ✗ TIMEOUT: Request exceeded 30 seconds")
+            print("  ✗ TIMEOUT: Request exceeded 30 seconds")
         except requests.exceptions.ConnectionError:
-            print(f"  ✗ CONNECTION ERROR: Could not connect to backend")
+            print("  ✗ CONNECTION ERROR: Could not connect to backend")
             print("    Make sure the backend is running on port 8000")
             sys.exit(1)
         except Exception as e:

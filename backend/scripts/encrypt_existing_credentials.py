@@ -83,12 +83,12 @@ async def encrypt_integration_settings(session: AsyncSession, dry_run: bool = Tr
         logger.info(f"\nProcessing: kind={row.kind}, id={row.id}")
 
         if not row.api_token:
-            logger.info(f"  → SKIP: api_token is empty")
+            logger.info("  → SKIP: api_token is empty")
             stats['empty'] += 1
             continue
 
         if is_encrypted(row.api_token):
-            logger.info(f"  → SKIP: already encrypted (prefix detected)")
+            logger.info("  → SKIP: already encrypted (prefix detected)")
             stats['already_encrypted'] += 1
             continue
 
@@ -103,7 +103,7 @@ async def encrypt_integration_settings(session: AsyncSession, dry_run: bool = Tr
             encrypted_value = encrypt_str(original_value)
 
             if not encrypted_value:
-                logger.error(f"  → ERROR: encrypt_str returned None")
+                logger.error("  → ERROR: encrypt_str returned None")
                 stats['errors'] += 1
                 continue
 
@@ -111,7 +111,7 @@ async def encrypt_integration_settings(session: AsyncSession, dry_run: bool = Tr
             decrypted_value = decrypt_str(encrypted_value)
 
             if decrypted_value != original_value:
-                logger.error(f"  → ERROR: Decryption validation failed!")
+                logger.error("  → ERROR: Decryption validation failed!")
                 logger.error(f"     Original length: {len(original_value)}")
                 logger.error(f"     Decrypted length: {len(decrypted_value) if decrypted_value else 0}")
                 stats['errors'] += 1

@@ -6,7 +6,7 @@ from typing import Optional, Dict, Any, List, Set, Tuple
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.config import settings
@@ -15,8 +15,8 @@ from app.core.cache_enhanced import (
     TraceabilityCacheKeys,
     get_enhanced_cache_service,
 )
-from app.models import Artifact, ArtifactLink, User
-from app.api.deps import get_current_user, ensure_project_access
+from app.models import Artifact, ArtifactLink, User, Permissions
+from app.api.deps import ensure_project_access, require_permission
 from app.utils import get_or_404
 from app.utils.confidence import confidence_filter
 
@@ -149,7 +149,7 @@ async def get_full_chain(
     min_confidence: float = Query(0.0, ge=0.0, le=1.0, description="Minimum confidence threshold"),
     include_factors: bool = Query(True, description="Include confidence factors breakdown"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Get full traceability chain for an artifact with bidirectional traversal.
@@ -342,7 +342,7 @@ async def get_impact_analysis(
         "modify", description="Type of change: modify, delete, or status_change"
     ),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Analyze impact of changing an artifact.

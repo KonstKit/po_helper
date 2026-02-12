@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.traceability import Source, SyncState, SyncTask
+from app.services.audit_log import record_audit_event
 
 
 async def get_or_create_source(
@@ -74,6 +75,18 @@ async def start_sync_task(
     )
     db.add(task)
     await db.flush()
+    await record_audit_event(
+        db,
+        action="sync_start",
+        entity_type="sync_task",
+        entity_id=task.id,
+        project_id=task.project_id,
+        payload={
+            "task_type": task.task_type,
+            "source_id": task.source_id,
+            "trigger": task.trigger,
+        },
+    )
     return task
 
 
@@ -104,6 +117,19 @@ async def finish_sync_task(
         task.error_message = error_message
     if cursor_out is not None:
         task.cursor_out = cursor_out
+
+    await record_audit_event(
+        db,
+        action="sync_finish",
+        entity_type="sync_task",
+        entity_id=task.id,
+        project_id=task.project_id,
+        outcome=status,
+        payload={
+            "status": status,
+            "error_code": error_code,
+        },
+    )
 
     return task
 

@@ -12,7 +12,6 @@ import hashlib
 from unittest.mock import patch, AsyncMock, MagicMock
 
 import pytest
-import httpx
 
 from app.services.bitbucket_client import (
     detect_instance_type,
@@ -24,8 +23,6 @@ from app.services.bitbucket_client import (
     test_connection as bitbucket_test_connection,
     fetch_pull_requests,
     fetch_commits,
-    fetch_branches,
-    fetch_repositories,
 )
 
 
