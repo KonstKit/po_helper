@@ -87,3 +87,6 @@ tree.txt
 nul
 
 codex/
+
+# Generated exports
+backend/exports/

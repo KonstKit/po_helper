@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.settings import IntegrationSetting
 from app.models.traceability import Source, SyncState
 from app.services.integration_config import get_connector_overrides
+from app.services.testrail.linker import TestRailLinker
 from app.services.testrail.sync import DEFAULT_LOOKBACK_DAYS, TestRailSyncService
 from app.services.testrail.sync_orchestrator import TestRailSyncOrchestrator
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -98,8 +102,38 @@ async def sync_testrail(
     project_id: Optional[int] = Query(default=None, description="Internal project ID"),
     cursor: Optional[int] = Query(default=None, description="Unix timestamp cursor"),
     lookback_days: int = Query(default=DEFAULT_LOOKBACK_DAYS, ge=1),
+    link: bool = Query(default=False, description="Link TestRail artifacts after sync"),
     db: AsyncSession = Depends(get_db),
 ):
+    use_celery = getattr(settings, "CELERY_ENABLED", False)
+    if use_celery and getattr(settings, "is_development", False):
+        if not getattr(settings, "CELERY_USE_IN_DEV", True):
+            use_celery = False
+
+    if use_celery:
+        try:
+            from app.tasks.testrail_tasks import sync_testrail_project
+
+            task = sync_testrail_project.delay(
+                project_id,
+                testrail_project_id,
+                None,
+                cursor,
+                lookback_days,
+                link,
+                "manual",
+            )
+            return {
+                "status": "syncing",
+                "task_id": task.id,
+                "project_id": project_id,
+                "testrail_project_id": testrail_project_id,
+                "link": link,
+                "method": "celery",
+            }
+        except Exception as exc:
+            logger.warning("Celery dispatch failed; falling back to in-process sync: %s", exc)
+
     orchestrator = TestRailSyncOrchestrator()
     result = await orchestrator.sync_project(
         db,
@@ -109,4 +143,30 @@ async def sync_testrail(
         lookback_days=lookback_days,
         trigger="manual",
     )
+    payload = {"sync": asdict(result)}
+
+    if link:
+        try:
+            linker = await TestRailLinker.from_settings(db, project_id)
+            link_result = await linker.link_project(db, project_id=project_id)
+            payload["link"] = asdict(link_result)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.warning("TestRail link step failed: %s", exc)
+            payload["link_error"] = str(exc)
+
+    return payload
+
+
+@router.post("/link")
+async def link_testrail(
+    project_id: Optional[int] = Query(default=None, description="Internal project ID"),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        linker = await TestRailLinker.from_settings(db, project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    result = await linker.link_project(db, project_id=project_id)
     return asdict(result)

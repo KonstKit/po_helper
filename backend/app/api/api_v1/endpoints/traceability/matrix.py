@@ -7,19 +7,17 @@ Provides:
 - Async exports
 """
 
-from __future__ import annotations
-
 import os
 import uuid
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import ensure_project_access, get_current_user
+from app.api.deps import ensure_project_access, require_permission
+from app.core.rate_limit import limiter
 from app.core.cache_enhanced import (
     CacheInvalidator,
     CacheTier,
@@ -28,10 +26,9 @@ from app.core.cache_enhanced import (
 )
 from app.core.config import settings
 from app.core.database import get_db
-from app.models import User
+from app.models import User, Permissions
 from app.models.traceability import ExportTask, MatrixConfig as MatrixConfigModel
 from app.schemas.traceability import (
-    CoverageAnalyticsResponse,
     ExportTaskCreate,
     ExportTaskStatus,
     MatrixConfig,
@@ -41,6 +38,7 @@ from app.schemas.traceability import (
     RTMMatrixResponse,
     RTMPagination,
 )
+from app.services.audit_log import record_audit_event
 from app.services.analytics.coverage_analytics_service import get_coverage_analytics
 from app.services.analytics.rtm_matrix_service import get_rtm_matrix
 from app.utils import get_by_id_or_404, transactional_session
@@ -91,7 +89,7 @@ async def get_rtm_matrix_endpoint(
         default=False, description="Include detailed link info in cells"
     ),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Get RTM matrix with server-side pagination and filtering.
@@ -101,6 +99,8 @@ async def get_rtm_matrix_endpoint(
 
     Each cell indicates whether links exist between the row and column artifacts.
     """
+    if project_id is None and not current_user.has_permission(Permissions.ADMIN):
+        raise HTTPException(status_code=403, detail="project_id is required")
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
 
@@ -169,13 +169,15 @@ async def query_rtm_matrix_endpoint(
     include_link_details: bool = False,
     project_id: Optional[int] = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Query RTM matrix with complex filters via POST body.
 
     Use this endpoint when you need to pass complex filter configurations.
     """
+    if project_id is None and not current_user.has_permission(Permissions.ADMIN):
+        raise HTTPException(status_code=403, detail="project_id is required")
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
 
@@ -221,7 +223,7 @@ async def get_coverage_analytics_endpoint(
         default=30, ge=1, le=365, description="Days of trend data to include"
     ),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Get comprehensive coverage analytics.
@@ -233,6 +235,8 @@ async def get_coverage_analytics_endpoint(
     - Coverage trends over time (optional)
     - Quality gate evaluation
     """
+    if project_id is None and not current_user.has_permission(Permissions.ADMIN):
+        raise HTTPException(status_code=403, detail="project_id is required")
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
 
@@ -278,7 +282,7 @@ async def get_coverage_analytics_endpoint(
 async def list_matrix_configs(
     project_id: Optional[int] = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """List saved matrix configurations for a project."""
     stmt = select(MatrixConfigModel).order_by(MatrixConfigModel.created_at.desc())
@@ -286,6 +290,8 @@ async def list_matrix_configs(
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
         stmt = stmt.where(MatrixConfigModel.project_id == project_id)
+    elif not current_user.has_permission(Permissions.ADMIN):
+        raise HTTPException(status_code=403, detail="project_id is required")
 
     result = await db.execute(stmt)
     configs = result.scalars().all()
@@ -313,7 +319,7 @@ async def list_matrix_configs(
 async def create_matrix_config(
     payload: MatrixConfigCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """Create a new matrix configuration."""
     if payload.project_id is not None:
@@ -369,7 +375,7 @@ async def create_matrix_config(
 async def get_matrix_config(
     config_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """Get a specific matrix configuration."""
     config = await get_by_id_or_404(db, MatrixConfigModel, config_id)
@@ -397,7 +403,7 @@ async def update_matrix_config(
     config_id: int,
     payload: MatrixConfigUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """Update a matrix configuration."""
     config = await get_by_id_or_404(db, MatrixConfigModel, config_id)
@@ -453,7 +459,7 @@ async def update_matrix_config(
 async def delete_matrix_config(
     config_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """Delete a matrix configuration."""
     config = await get_by_id_or_404(db, MatrixConfigModel, config_id)
@@ -472,7 +478,7 @@ async def apply_matrix_config(
     config_id: int,
     include_link_details: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """Apply a saved matrix configuration and return the matrix."""
     config = await get_by_id_or_404(db, MatrixConfigModel, config_id)
@@ -511,10 +517,12 @@ async def apply_matrix_config(
 
 
 @router.post("/exports", response_model=ExportTaskStatus)
+@limiter.limit("10/minute")
 async def create_export_task(
+    request: Request,
     payload: ExportTaskCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """
     Create an async export task for RTM matrix.
@@ -554,6 +562,19 @@ async def create_export_task(
 
     async with transactional_session(db):
         db.add(export_task)
+        await db.flush()
+        await record_audit_event(
+            db,
+            action="create",
+            entity_type="export_task",
+            entity_id=export_task.id,
+            actor_id=current_user.id,
+            project_id=export_task.project_id,
+            payload={
+                "export_type": export_task.export_type,
+                "format": export_task.format,
+            },
+        )
 
     await db.refresh(export_task)
 
@@ -599,7 +620,7 @@ async def create_export_task(
 async def get_export_task_status(
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """Get the status of an export task."""
     stmt = select(ExportTask).where(ExportTask.task_id == task_id)
@@ -634,7 +655,7 @@ async def list_export_tasks(
     status: Optional[str] = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """List export tasks for a project."""
     stmt = select(ExportTask).order_by(ExportTask.created_at.desc()).limit(limit)
@@ -642,6 +663,8 @@ async def list_export_tasks(
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
         stmt = stmt.where(ExportTask.project_id == project_id)
+    else:
+        stmt = stmt.where(ExportTask.created_by_id == current_user.id)
 
     if status:
         stmt = stmt.where(ExportTask.status == status)
@@ -666,10 +689,12 @@ async def list_export_tasks(
 
 
 @router.get("/exports/{task_id}/download")
+@limiter.limit("30/minute")
 async def download_export(
+    request: Request,
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """Download the completed export file."""
     stmt = select(ExportTask).where(ExportTask.task_id == task_id)
@@ -702,6 +727,17 @@ async def download_export(
         media_type = "text/csv"
         filename = f"traceability_matrix_{task_id[:8]}.csv"
 
+    async with transactional_session(db):
+        await record_audit_event(
+            db,
+            action="download",
+            entity_type="export_task",
+            entity_id=export_task.id,
+            actor_id=current_user.id,
+            project_id=export_task.project_id,
+            payload={"format": export_task.format},
+        )
+
     return FileResponse(
         path=export_task.file_path,
         media_type=media_type,
@@ -710,10 +746,12 @@ async def download_export(
 
 
 @router.delete("/exports/{task_id}")
+@limiter.limit("10/minute")
 async def delete_export(
+    request: Request,
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """Delete an export task and its file."""
     stmt = select(ExportTask).where(ExportTask.task_id == task_id)
@@ -738,6 +776,15 @@ async def delete_export(
             pass  # Ignore file deletion errors
 
     async with transactional_session(db):
+        await record_audit_event(
+            db,
+            action="delete",
+            entity_type="export_task",
+            entity_id=export_task.id,
+            actor_id=current_user.id,
+            project_id=export_task.project_id,
+            payload={"format": export_task.format},
+        )
         await db.delete(export_task)
 
     return {"status": "deleted", "task_id": task_id}

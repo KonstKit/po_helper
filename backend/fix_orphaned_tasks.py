@@ -4,10 +4,8 @@ Fix orphaned tasks (tasks with NULL project_id) without restarting the server.
 """
 
 import asyncio
-import sys
 from sqlalchemy import text
 from app.core.database import engine
-from app.core.config import settings
 
 async def fix_orphaned_tasks():
     """Fix tasks with NULL project_id by assigning them to the first available project."""

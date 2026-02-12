@@ -10,10 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func as sql_func
 
 from app.core.database import get_db
-from app.models import Artifact, ArtifactLink, User
+from app.models import Artifact, User, Permissions
 from app.models.traceability import SuggestedLink
-from app.api.deps import get_current_user, ensure_project_access
+from app.api.deps import ensure_project_access, require_permission
 from app.services.text_similarity import get_similarity_service
+from app.services.traceability.link_service import LinkCreationMethod, LinkService
 from app.utils import get_or_404
 from app.core.cache_enhanced import CacheInvalidator
 from .common import _would_create_cycle, _link_exists
@@ -35,7 +36,7 @@ async def generate_link_suggestions(
     max_per_artifact: int = Query(5, ge=1, le=20, description="Max suggestions per artifact"),
     artifact_types: Optional[List[str]] = Query(None, description="Artifact types to analyze"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """
     Generate link suggestions using TF-IDF text similarity.
@@ -47,6 +48,8 @@ async def generate_link_suggestions(
     - suggestions_created: Number of new suggestions generated
     - duplicates_skipped: Suggestions that already exist
     """
+    if project_id is None and not current_user.has_permission(Permissions.ADMIN):
+        raise HTTPException(status_code=403, detail="project_id is required")
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
 
@@ -94,13 +97,15 @@ async def list_suggested_links(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     List suggested links with optional filtering.
 
     Returns paginated list of suggestions with artifact details.
     """
+    if project_id is None and not current_user.has_permission(Permissions.ADMIN):
+        raise HTTPException(status_code=403, detail="project_id is required")
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
 
@@ -177,7 +182,7 @@ async def approve_suggestion(
     suggestion_id: int,
     note: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """
     Approve a suggested link and create the actual artifact link.
@@ -232,13 +237,15 @@ async def approve_suggestion(
 
         raise HTTPException(status_code=409, detail="Cannot approve: link would create a cycle")
 
-    # Create the actual link
-    new_link = ArtifactLink(
-        from_artifact_id=suggestion.from_artifact_id,
-        to_artifact_id=suggestion.to_artifact_id,
-        link_type=suggestion.suggested_link_type,
+    link_service = LinkService(db)
+    new_link = await link_service.create_link(
+        suggestion.from_artifact_id,
+        suggestion.to_artifact_id,
+        suggestion.suggested_link_type,
         project_id=suggestion.project_id,
         tenant_id=suggestion.tenant_id,
+        created_by_id=current_user.id,
+        created_via=LinkCreationMethod.AUTOLINK,
         confidence=suggestion.similarity_score,
         confidence_factors={
             "method": suggestion.method,
@@ -246,8 +253,8 @@ async def approve_suggestion(
             "similarity_score": suggestion.similarity_score,
             "approved_by_user": True,
         },
+        calculate_confidence=False,
     )
-    db.add(new_link)
 
     # Update suggestion status
     suggestion.status = "approved"
@@ -274,7 +281,7 @@ async def reject_suggestion(
     suggestion_id: int,
     note: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """
     Reject a suggested link.
@@ -309,13 +316,15 @@ async def reject_suggestion(
 async def get_suggestion_stats(
     project_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Get statistics about link suggestions.
 
     Returns counts by status, method, and link type.
     """
+    if project_id is None and not current_user.has_permission(Permissions.ADMIN):
+        raise HTTPException(status_code=403, detail="project_id is required")
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
 
@@ -372,7 +381,7 @@ async def bulk_approve_suggestions(
     suggestion_ids: List[int],
     note: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """
     Approve multiple suggestions at once.
@@ -405,6 +414,9 @@ async def bulk_approve_suggestions(
                 results["already_processed"] += 1
                 continue
 
+            if suggestion.project_id is not None:
+                await ensure_project_access(suggestion.project_id, db, current_user)
+
             # Check for cycles
             if await _would_create_cycle(
                 db,
@@ -429,21 +441,23 @@ async def bulk_approve_suggestions(
             )
 
             if not existing:
-                # Create the link
-                new_link = ArtifactLink(
-                    from_artifact_id=suggestion.from_artifact_id,
-                    to_artifact_id=suggestion.to_artifact_id,
-                    link_type=suggestion.suggested_link_type,
+                link_service = LinkService(db)
+                await link_service.create_link(
+                    suggestion.from_artifact_id,
+                    suggestion.to_artifact_id,
+                    suggestion.suggested_link_type,
                     project_id=suggestion.project_id,
                     tenant_id=suggestion.tenant_id,
+                    created_by_id=current_user.id,
+                    created_via=LinkCreationMethod.AUTOLINK,
                     confidence=suggestion.similarity_score,
                     confidence_factors={
                         "method": suggestion.method,
                         "auto_suggested": True,
                         "bulk_approved": True,
                     },
+                    calculate_confidence=False,
                 )
-                db.add(new_link)
 
             suggestion.status = "approved"
             suggestion.reviewed_by = current_user.id

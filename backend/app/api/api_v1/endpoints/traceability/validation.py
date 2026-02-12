@@ -9,19 +9,17 @@ Provides endpoints to:
 
 from __future__ import annotations
 
-from typing import List, Optional, Set
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query, HTTPException
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_db
-from app.models import Artifact, User
-from app.api.deps import get_current_user, ensure_project_access
+from app.models import Artifact, User, Permissions
+from app.api.deps import ensure_project_access, require_permission
 from app.services.traceability import (
-    ValidationRulesService,
     ValidationSeverity,
     get_validation_rules_service,
 )
@@ -48,7 +46,7 @@ class CoverageGapRequest(BaseModel):
 
 @router.get("/validation/rules")
 async def list_validation_rules(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -77,7 +75,7 @@ async def validate_artifact(
     rule_ids: Optional[str] = Query(None, description="Comma-separated rule IDs to run"),
     severities: Optional[str] = Query(None, description="Comma-separated severities to include"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Validate a single artifact against all applicable rules.
@@ -134,7 +132,7 @@ async def validate_project(
     project_id: int,
     request: ValidationRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Run validation on all artifacts in a project.
@@ -196,7 +194,7 @@ async def get_coverage_gaps(
     project_id: int,
     request: CoverageGapRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Find artifacts that lack required coverage.
@@ -224,7 +222,7 @@ async def get_coverage_gaps(
 async def get_quick_validation_stats(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Get quick validation statistics for a project.

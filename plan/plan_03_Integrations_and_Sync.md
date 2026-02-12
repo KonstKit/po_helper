@@ -61,8 +61,6 @@ created: 2024-05-26
 - `SyncTask`/`SyncState` are not updated by sync workers (no durable progress history).
 - Jira API calls are mostly sync (requests) and some endpoints call them directly → potential event-loop blocking.
 - Git polling import not scheduled; no retry policy or backoff for API rate limits.
-- TestRail integration exists only as settings + traceability node (no ingestion).
-- CI ingest supports JUnit/Cobertura/JaCoCo but lacks mapping to baseline/projection workflows.
 
 ## Decisions (Draft)
 - Keep `IntegrationSetting` as global default and allow `ConnectorConfig` to override per project (aligned with plan_02).
@@ -130,9 +128,11 @@ created: 2024-05-26
 - ConnectorConfig settings schema documented with explicit keys in code.
 - Required fields validation added for Jira/Confluence/GitHub/GitLab settings.
 - Unified retry/backoff config added for non-Jira integrations and applied in clients.
+- CI ingest can attach test_run artifacts and test links to baselines/projections via baseline_id(s)/projection_id(s) in payload.
+- TestRail integration completed: client, sync, linker, API endpoints, Celery tasks, and scheduled sync; /testrail/sync supports optional linking and background execution.
 
 ## Remaining Steps
-- Implement TestRail integration (client, sync, linker, endpoints) per CI/Test scope decision.
+- None for TestRail; remaining gaps tracked above.
 
 ## Visualizations (Draft)
 ```mermaid

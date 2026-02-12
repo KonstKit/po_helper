@@ -181,12 +181,23 @@ class AuditLog(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     tenant_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id"), index=True, nullable=True
+    )
     actor_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     action: Mapped[str] = mapped_column(String, nullable=False)
     entity_type: Mapped[str] = mapped_column(String, nullable=False)
     entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    request_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String, nullable=True)
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_audit_log_action", "action"),
+        Index("ix_audit_log_actor_id", "actor_id"),
+        Index("ix_audit_log_created_at", "created_at"),
+    )
 
 
 class SuggestedLink(Base):

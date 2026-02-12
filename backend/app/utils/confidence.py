@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from typing import Optional, TYPE_CHECKING
 
-from sqlalchemy import case, and_, or_
+from sqlalchemy import case, or_
 from sqlalchemy.sql.elements import ColumnElement
 
 if TYPE_CHECKING:

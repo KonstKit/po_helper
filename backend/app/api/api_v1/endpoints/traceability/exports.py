@@ -8,7 +8,6 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -18,20 +17,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.api.deps import get_current_user, ensure_project_access
-from app.models import User
+from app.api.deps import ensure_project_access, require_permission
+from app.core.rate_limit import limiter
+from app.models import User, Permissions
 from app.models.traceability import ExportTask as ExportTaskModel
 from app.schemas.traceability import ExportTaskCreate, ExportTaskStatus
+from app.services.audit_log import record_audit_event
 from app.utils import transactional_session
 
 router = APIRouter()
 
 
 @router.post("/exports/matrix", response_model=ExportTaskStatus)
+@limiter.limit("10/minute")
 async def create_matrix_export(
     payload: ExportTaskCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """
     Create an async export task for the traceability matrix.
@@ -71,6 +73,19 @@ async def create_matrix_export(
 
     async with transactional_session(db):
         db.add(export_task)
+        await db.flush()
+        await record_audit_event(
+            db,
+            action="create",
+            entity_type="export_task",
+            entity_id=export_task.id,
+            actor_id=current_user.id,
+            project_id=export_task.project_id,
+            payload={
+                "export_type": export_task.export_type,
+                "format": export_task.format,
+            },
+        )
 
     await db.refresh(export_task)
 
@@ -91,8 +106,6 @@ async def create_matrix_export(
         )
     else:
         # Run synchronously for development without Celery
-        from app.tasks.export_tasks import _async_export_matrix
-        import asyncio
 
         # Update status to processing
         export_task.status = "processing"
@@ -143,7 +156,7 @@ async def _run_sync_export(
 ) -> dict:
     """Run export synchronously (for non-Celery mode)."""
     from app.core.database import AsyncSessionLocal
-    from app.models.traceability import Artifact, ArtifactLink, ExportTask
+    from app.models.traceability import Artifact, ArtifactLink
     from app.tasks.export_tasks import (
         _build_matrix_data,
         _generate_xlsx,
@@ -199,7 +212,7 @@ async def _run_sync_export(
 async def get_export_status(
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """Get the status of an export task."""
     result = await db.execute(
@@ -230,10 +243,11 @@ async def get_export_status(
 
 
 @router.get("/exports/{task_id}/download")
+@limiter.limit("30/minute")
 async def download_export(
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """Download the completed export file."""
     result = await db.execute(
@@ -268,6 +282,17 @@ async def download_export(
         media_type = "text/csv"
         filename = f"traceability_matrix_{task_id[:8]}.csv"
 
+    async with transactional_session(db):
+        await record_audit_event(
+            db,
+            action="download",
+            entity_type="export_task",
+            entity_id=export_task.id,
+            actor_id=current_user.id,
+            project_id=export_task.project_id,
+            payload={"format": export_task.format},
+        )
+
     return FileResponse(
         path=export_task.file_path,
         media_type=media_type,
@@ -282,7 +307,7 @@ async def list_exports(
     limit: int = Query(default=20, le=100),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """List export tasks for the current user or project."""
     stmt = select(ExportTaskModel).order_by(desc(ExportTaskModel.created_at))
@@ -320,10 +345,11 @@ async def list_exports(
 
 
 @router.delete("/exports/{task_id}")
+@limiter.limit("10/minute")
 async def delete_export(
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """Delete an export task and its file."""
     result = await db.execute(
@@ -350,6 +376,15 @@ async def delete_export(
 
     # Delete record
     async with transactional_session(db):
+        await record_audit_event(
+            db,
+            action="delete",
+            entity_type="export_task",
+            entity_id=export_task.id,
+            actor_id=current_user.id,
+            project_id=export_task.project_id,
+            payload={"format": export_task.format},
+        )
         await db.delete(export_task)
 
     return {"status": "deleted", "task_id": task_id}

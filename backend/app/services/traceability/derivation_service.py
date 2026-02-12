@@ -12,13 +12,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from sqlalchemy import select, func, delete, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.traceability import Artifact, ArtifactLink, AuditLog
+from app.models.traceability import Artifact, ArtifactLink
 from app.utils.confidence import confidence_filter, normalize_confidence
 
 logger = logging.getLogger(__name__)

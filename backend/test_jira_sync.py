@@ -2,7 +2,7 @@ import asyncio
 from app.services.jira_service import jira_service
 from app.core.database import AsyncSessionLocal
 from app.services.jira_sync import perform_project_sync
-from sqlalchemy import select, text
+from sqlalchemy import text
 from app.models import Project
 import json
 
@@ -43,7 +43,7 @@ async def test_sync():
 
     # Try to fetch issues directly from Jira
     try:
-        jql = f"project = PRIM"
+        jql = "project = PRIM"
         print(f"Fetching issues with JQL: {jql}")
         issues = jira_service.get_project_issues("PRIM", max_results=5)
         print(f"Found {len(issues) if issues else 0} issues in PRIM project")

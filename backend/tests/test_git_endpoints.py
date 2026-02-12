@@ -5,7 +5,6 @@ import json
 import hmac
 import hashlib
 from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock
 
 import pytest
 from httpx import AsyncClient

@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.request_context import set_actor_id
 from app.core.security import decode_token, get_password_hash
 from app.models import Project, Role, User
 from app.utils import handle_api_error
@@ -33,6 +34,7 @@ async def _get_or_create_demo_user(db: AsyncSession) -> User:
     )
     user = result.scalar_one_or_none()
     if user:
+        set_actor_id(user.id)
         return user
 
     # Create demo user
@@ -105,6 +107,7 @@ async def get_current_user(
         user = result.scalar_one_or_none()
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        set_actor_id(user.id)
         return user
     # In non-debug environments, require a valid token; do not auto-create demo users.
     if settings.DEBUG:

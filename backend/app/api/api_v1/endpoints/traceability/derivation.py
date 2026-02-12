@@ -17,10 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_db
-from app.models import Artifact, User
-from app.api.deps import get_current_user, ensure_project_access
+from app.models import Artifact, User, Permissions
+from app.api.deps import ensure_project_access, require_permission
 from app.services.traceability import (
-    DerivationService,
     get_derivation_service,
 )
 
@@ -60,7 +59,7 @@ class MaterializeRequest(BaseModel):
 async def find_paths_between_artifacts(
     request: PathFindingRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Find all paths between two artifacts.
@@ -137,7 +136,7 @@ async def find_reachable_artifacts(
     artifact_types: Optional[str] = Query(None, description="Comma-separated artifact types"),
     link_types: Optional[str] = Query(None, description="Comma-separated link types"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Find all artifacts reachable from a starting artifact.
@@ -193,7 +192,7 @@ async def compute_derived_links(
     project_id: int,
     request: DerivedLinksRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Compute derived links between artifact types.
@@ -239,7 +238,7 @@ async def materialize_derived_links(
     project_id: int,
     request: MaterializeRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """
     Compute and persist derived links to the database.
@@ -286,7 +285,7 @@ async def invalidate_derived_links(
     artifact_id: int,
     project_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """
     Invalidate (delete) derived links affected by an artifact change.
@@ -320,7 +319,7 @@ async def invalidate_derived_links(
 async def get_derivation_stats(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Get statistics about derived links in a project.
@@ -342,7 +341,7 @@ async def compute_transitive_closure(
     link_type: str = Query(..., description="Link type to compute closure for"),
     max_depth: int = Query(10, ge=1, le=20),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """
     Compute transitive closure for a link type.

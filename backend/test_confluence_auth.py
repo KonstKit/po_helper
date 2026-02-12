@@ -4,9 +4,7 @@ Test script for Confluence authentication fix.
 This script tests both Cloud and Data Center authentication scenarios.
 """
 
-import asyncio
 import logging
-import sys
 from app.services.confluence_service import confluence_service
 
 # Set up logging
@@ -31,7 +29,7 @@ def test_cloud_auth():
         confluence_service.connect(base_url, email, api_token)
         confluence_service.validate()
         status = confluence_service.status()
-        print(f"✓ Cloud authentication successful!")
+        print("✓ Cloud authentication successful!")
         print(f"  Instance type: {status['instance_type']}")
         print(f"  Auth mode: {status['auth_mode']}")
         return True
@@ -53,7 +51,7 @@ def test_datacenter_auth():
         confluence_service.connect(base_url, None, pat_token, is_cloud=False)
         confluence_service.validate()
         status = confluence_service.status()
-        print(f"✓ Data Center authentication successful!")
+        print("✓ Data Center authentication successful!")
         print(f"  Instance type: {status['instance_type']}")
         print(f"  Auth mode: {status['auth_mode']}")
         return True

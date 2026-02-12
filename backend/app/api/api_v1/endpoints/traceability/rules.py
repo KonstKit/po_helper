@@ -91,7 +91,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db, get_sync_db
-from app.models import User
+from app.models import User, Permissions, Project
 from app.models.traceability_rule import TraceabilityRule, TraceabilityRuleExecution
 from app.schemas.traceability_rule import (
     TraceabilityRuleCreate,
@@ -109,7 +109,8 @@ from app.schemas.traceability_rule import (
     RuleScheduleResponse,
     RuleWebhookResponse,
 )
-from app.api.deps import get_current_user
+from app.api.deps import ensure_project_access, require_permission
+from app.services.audit_log import record_audit_event, record_audit_event_sync
 from app.utils import (
     transactional_session,
     handle_api_error,
@@ -344,7 +345,7 @@ def _validate_node_configuration(node) -> list[ValidationErrorSchema]:
 @router.post("/rules/validate", response_model=ValidationResult)
 async def validate_rule_flow(
     request: FlowValidationRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ) -> ValidationResult:
     """
     Validate a traceability rule flow JSON without saving.
@@ -363,7 +364,7 @@ async def list_rules(
     category: Optional[str] = None,
     project_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """List all traceability rules with optional filters."""
     query = select(TraceabilityRule)
@@ -374,6 +375,7 @@ async def list_rules(
         filters.append(TraceabilityRule.category == category)
     if project_id:
         filters.append(TraceabilityRule.project_id == project_id)
+        await ensure_project_access(project_id, db, current_user)
 
     if filters:
         query = query.where(and_(*filters))
@@ -395,7 +397,7 @@ async def get_all_rule_executions(
     limit: int = Query(100, ge=1, le=1000),
     status: Optional[str] = Query(None, description="Filter by status: success, failed"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """Get all traceability rule executions with pagination and filtering."""
     query = select(TraceabilityRuleExecution).order_by(TraceabilityRuleExecution.started_at.desc())
@@ -442,7 +444,7 @@ async def get_all_rule_executions(
 async def get_rule(
     rule_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """Get a specific traceability rule by ID."""
     rule = await get_or_404(
@@ -450,6 +452,8 @@ async def get_rule(
         select(TraceabilityRule).where(TraceabilityRule.id == rule_id),
         f"Rule with id {rule_id}",
     )
+    if rule.project_id is not None:
+        await ensure_project_access(rule.project_id, db, current_user)
     return TraceabilityRuleResponse.from_db(rule)
 
 
@@ -457,7 +461,7 @@ async def get_rule(
 async def create_rule(
     rule_data: TraceabilityRuleCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """Create a new traceability rule."""
     existing_query = select(TraceabilityRule).where(TraceabilityRule.name == rule_data.name)
@@ -466,6 +470,9 @@ async def create_rule(
         raise HTTPException(
             status_code=400, detail=f"Rule with name '{rule_data.name}' already exists"
         )
+
+    if rule_data.project_id is not None:
+        await ensure_project_access(rule_data.project_id, db, current_user)
 
     new_rule = TraceabilityRule(
         name=rule_data.name,
@@ -480,6 +487,21 @@ async def create_rule(
 
     async with transactional_session(db):
         db.add(new_rule)
+        await db.flush()
+        await record_audit_event(
+            db,
+            action="create",
+            entity_type="traceability_rule",
+            entity_id=new_rule.id,
+            actor_id=current_user.id,
+            project_id=new_rule.project_id,
+            payload={
+                "name": new_rule.name,
+                "enabled": new_rule.enabled,
+                "category": new_rule.category,
+                "tags": new_rule.tags,
+            },
+        )
     await db.refresh(new_rule)
 
     return TraceabilityRuleResponse.from_db(new_rule)
@@ -490,7 +512,7 @@ async def update_rule(
     rule_id: int,
     rule_data: TraceabilityRuleUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """Update an existing traceability rule."""
     rule = await get_or_404(
@@ -498,6 +520,8 @@ async def update_rule(
         select(TraceabilityRule).where(TraceabilityRule.id == rule_id),
         f"Rule with id {rule_id}",
     )
+    if rule.project_id is not None:
+        await ensure_project_access(rule.project_id, db, current_user)
 
     if rule_data.name and rule_data.name != rule.name:
         existing_query = select(TraceabilityRule).where(TraceabilityRule.name == rule_data.name)
@@ -511,9 +535,21 @@ async def update_rule(
     if "flow_json" in update_data and update_data["flow_json"]:
         update_data["flow_json"] = update_data["flow_json"]
 
+    changed_fields = sorted(update_data.keys())
+
     async with transactional_session(db):
         for field, value in update_data.items():
             setattr(rule, field, value)
+        if changed_fields:
+            await record_audit_event(
+                db,
+                action="update",
+                entity_type="traceability_rule",
+                entity_id=rule.id,
+                actor_id=current_user.id,
+                project_id=rule.project_id,
+                payload={"fields": changed_fields},
+            )
     await db.refresh(rule)
 
     return TraceabilityRuleResponse.from_db(rule)
@@ -523,7 +559,7 @@ async def update_rule(
 async def delete_rule(
     rule_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """Delete a traceability rule."""
     rule = await get_or_404(
@@ -531,8 +567,19 @@ async def delete_rule(
         select(TraceabilityRule).where(TraceabilityRule.id == rule_id),
         f"Rule with id {rule_id}",
     )
+    if rule.project_id is not None:
+        await ensure_project_access(rule.project_id, db, current_user)
 
     async with transactional_session(db):
+        await record_audit_event(
+            db,
+            action="delete",
+            entity_type="traceability_rule",
+            entity_id=rule.id,
+            actor_id=current_user.id,
+            project_id=rule.project_id,
+            payload={"name": rule.name},
+        )
         await db.delete(rule)
 
 
@@ -542,14 +589,16 @@ async def list_rule_executions(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """List execution history for a specific rule."""
-    await get_or_404(
+    rule = await get_or_404(
         db,
         select(TraceabilityRule).where(TraceabilityRule.id == rule_id),
         f"Rule with id {rule_id}",
     )
+    if rule.project_id is not None:
+        await ensure_project_access(rule.project_id, db, current_user)
 
     filters = [TraceabilityRuleExecution.rule_id == rule_id]
     total = await count_with_filters(db, TraceabilityRuleExecution, filters)
@@ -568,7 +617,9 @@ async def list_rule_executions(
 
 @router.post("/rules/{rule_id}/execute", response_model=dict)
 def execute_rule(
-    rule_id: int, db: Session = Depends(get_sync_db), current_user: User = Depends(get_current_user)
+    rule_id: int,
+    db: Session = Depends(get_sync_db),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """
     Execute a traceability rule.
@@ -577,6 +628,18 @@ def execute_rule(
     performs complex graph traversal and link creation operations.
     """
     from app.services.rule_execution_engine import RuleExecutionEngine
+
+    rule = (
+        db.query(TraceabilityRule).filter(TraceabilityRule.id == rule_id).first()
+    )
+    if rule is None:
+        raise HTTPException(status_code=404, detail=f"Rule with id {rule_id}")
+    if rule.project_id is not None:
+        project = db.query(Project).filter(Project.id == rule.project_id).first()
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if not current_user.is_active:
+            raise HTTPException(status_code=403, detail="Inactive user")
 
     engine = RuleExecutionEngine(db)
 
@@ -587,6 +650,19 @@ def execute_rule(
         exception_map={ValueError: 400},
     ):
         result = engine.execute_rule(rule_id)
+        record_audit_event_sync(
+            db,
+            action="execute",
+            entity_type="traceability_rule",
+            entity_id=rule_id,
+            actor_id=current_user.id,
+            project_id=rule.project_id,
+            outcome=str(result.get("status", "success")),
+            payload={
+                "execution_id": result.get("execution_id"),
+                "links_created": result.get("links_created"),
+            },
+        )
         return result
 
 
@@ -632,7 +708,7 @@ def _generate_webhook_token() -> str:
 async def get_rule_schedule(
     rule_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """Get schedule settings for a specific rule."""
     rule = await get_or_404(
@@ -640,6 +716,8 @@ async def get_rule_schedule(
         select(TraceabilityRule).where(TraceabilityRule.id == rule_id),
         f"Rule with id {rule_id}",
     )
+    if rule.project_id is not None:
+        await ensure_project_access(rule.project_id, db, current_user)
 
     return RuleScheduleResponse(
         rule_id=rule.id,
@@ -654,7 +732,7 @@ async def update_rule_schedule(
     rule_id: int,
     schedule_data: RuleScheduleUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """
     Update schedule settings for a rule.
@@ -670,6 +748,8 @@ async def update_rule_schedule(
         select(TraceabilityRule).where(TraceabilityRule.id == rule_id),
         f"Rule with id {rule_id}",
     )
+    if rule.project_id is not None:
+        await ensure_project_access(rule.project_id, db, current_user)
 
     # Validate cron expression if provided
     if schedule_data.schedule_cron is not None:
@@ -697,6 +777,18 @@ async def update_rule_schedule(
                 rule.next_scheduled_run = None
             elif rule.schedule_cron:
                 rule.next_scheduled_run = _calculate_next_run(rule.schedule_cron)
+        await record_audit_event(
+            db,
+            action="update_schedule",
+            entity_type="traceability_rule",
+            entity_id=rule.id,
+            actor_id=current_user.id,
+            project_id=rule.project_id,
+            payload={
+                "schedule_cron": rule.schedule_cron,
+                "schedule_enabled": rule.schedule_enabled,
+            },
+        )
 
     await db.refresh(rule)
 
@@ -712,7 +804,7 @@ async def update_rule_schedule(
 async def get_rule_webhook(
     rule_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """Get webhook settings for a specific rule (token is hidden)."""
     rule = await get_or_404(
@@ -720,6 +812,8 @@ async def get_rule_webhook(
         select(TraceabilityRule).where(TraceabilityRule.id == rule_id),
         f"Rule with id {rule_id}",
     )
+    if rule.project_id is not None:
+        await ensure_project_access(rule.project_id, db, current_user)
 
     webhook_url = None
     if rule.trigger_on_webhook and rule.webhook_token:
@@ -738,7 +832,7 @@ async def get_rule_webhook(
 async def enable_rule_webhook(
     rule_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """
     Enable webhook triggering for a rule and generate a new token.
@@ -751,12 +845,23 @@ async def enable_rule_webhook(
         select(TraceabilityRule).where(TraceabilityRule.id == rule_id),
         f"Rule with id {rule_id}",
     )
+    if rule.project_id is not None:
+        await ensure_project_access(rule.project_id, db, current_user)
 
     new_token = _generate_webhook_token()
 
     async with transactional_session(db):
         rule.trigger_on_webhook = True
         rule.webhook_token = new_token
+        await record_audit_event(
+            db,
+            action="enable_webhook",
+            entity_type="traceability_rule",
+            entity_id=rule.id,
+            actor_id=current_user.id,
+            project_id=rule.project_id,
+            payload={"trigger_on_webhook": True},
+        )
 
     await db.refresh(rule)
 
@@ -774,7 +879,7 @@ async def enable_rule_webhook(
 async def disable_rule_webhook(
     rule_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """Disable webhook triggering for a rule and clear the token."""
     rule = await get_or_404(
@@ -782,10 +887,21 @@ async def disable_rule_webhook(
         select(TraceabilityRule).where(TraceabilityRule.id == rule_id),
         f"Rule with id {rule_id}",
     )
+    if rule.project_id is not None:
+        await ensure_project_access(rule.project_id, db, current_user)
 
     async with transactional_session(db):
         rule.trigger_on_webhook = False
         rule.webhook_token = None
+        await record_audit_event(
+            db,
+            action="disable_webhook",
+            entity_type="traceability_rule",
+            entity_id=rule.id,
+            actor_id=current_user.id,
+            project_id=rule.project_id,
+            payload={"trigger_on_webhook": False},
+        )
 
     await db.refresh(rule)
 
@@ -837,4 +953,16 @@ def execute_rule_by_webhook(
         exception_map={ValueError: 400},
     ):
         result = engine.execute_rule(rule.id)
+        record_audit_event_sync(
+            db,
+            action="execute_webhook",
+            entity_type="traceability_rule",
+            entity_id=rule.id,
+            project_id=rule.project_id,
+            outcome=str(result.get("status", "success")),
+            payload={
+                "execution_id": result.get("execution_id"),
+                "links_created": result.get("links_created"),
+            },
+        )
         return {"rule_id": rule.id, "rule_name": rule.name, **result}

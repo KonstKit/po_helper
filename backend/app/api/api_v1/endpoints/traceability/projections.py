@@ -5,8 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.api.deps import get_current_user, ensure_project_access
-from app.models import User
+from app.api.deps import ensure_project_access, require_permission
+from app.models import User, Permissions
 from app.models.traceability import Projection as ProjectionModel
 from app.models.traceability import ProjectionItem as ProjectionItemModel
 from app.schemas.traceability import (
@@ -24,12 +24,14 @@ router = APIRouter()
 async def list_projections(
     project_id: Optional[int] = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     stmt = select(ProjectionModel).order_by(ProjectionModel.created_at.desc())
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
         stmt = stmt.where(ProjectionModel.project_id == project_id)
+    elif not current_user.has_permission(Permissions.ADMIN):
+        raise HTTPException(status_code=403, detail="project_id is required")
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
@@ -38,7 +40,7 @@ async def list_projections(
 async def create_projection(
     payload: ProjectionBase,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     if payload.project_id is None:
         raise HTTPException(status_code=400, detail="project_id is required")
@@ -54,7 +56,7 @@ async def create_projection(
 async def get_projection(
     projection_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     projection = await get_by_id_or_404(db, ProjectionModel, projection_id)
     if projection.project_id is not None:
@@ -66,7 +68,7 @@ async def get_projection(
 async def delete_projection(
     projection_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     projection = await get_by_id_or_404(db, ProjectionModel, projection_id)
     if projection.project_id is not None:
@@ -80,7 +82,7 @@ async def delete_projection(
 async def list_projection_items(
     projection_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     projection = await get_by_id_or_404(db, ProjectionModel, projection_id)
     if projection.project_id is not None:
@@ -96,7 +98,7 @@ async def add_projection_item(
     projection_id: int,
     payload: ProjectionItemBase,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     projection = await get_by_id_or_404(db, ProjectionModel, projection_id)
     if projection.project_id is not None:
@@ -117,7 +119,7 @@ async def delete_projection_item(
     projection_id: int,
     item_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     projection = await get_by_id_or_404(db, ProjectionModel, projection_id)
     if projection.project_id is not None:

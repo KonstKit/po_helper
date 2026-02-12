@@ -1,20 +1,16 @@
 """Tests for traceability services: LinkService, ValidationRulesService, DerivationService, ImpactAnalysisService."""
 
 import pytest
-import pytest_asyncio
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-from app.models.traceability import Artifact, ArtifactLink, AuditLog
+from app.models.traceability import Artifact, ArtifactLink
 from app.services.traceability import (
     LinkService,
-    LinkCreationMethod,
-    LinkType,
     ValidationRulesService,
     ValidationSeverity,
     ValidationStatus,
     RequirementMustHaveTest,
-    TestMustVerifyRequirement,
     DerivationService,
     ImpactAnalysisService,
 )
@@ -169,7 +165,7 @@ class TestLinkService:
 
         # Mock confidence calculation
         with patch.object(service, "_calculate_link_confidence", return_value=(0.85, {"test": 1})):
-            link = await service.create_link(
+            await service.create_link(
                 from_artifact_id=1,
                 to_artifact_id=2,
                 link_type="implements",
@@ -613,7 +609,6 @@ class TestRuleEngineCycleDetection:
         """Test detection of direct A->B->A cycle."""
         from app.services.traceability.engine.nodes.create_link_action import (
             CreateLinkActionExecutor,
-            DAG_LINK_TYPES,
         )
 
         # Mock context with DB that returns links forming a cycle

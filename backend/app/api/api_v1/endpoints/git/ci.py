@@ -11,7 +11,16 @@ from typing import Dict, Any, List, Optional, cast
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models import Artifact, ArtifactLink, CoverageReport, TestResult
+from app.models import (
+    Artifact,
+    ArtifactLink,
+    Baseline,
+    BaselineItem,
+    CoverageReport,
+    Projection,
+    ProjectionItem,
+    TestResult,
+)
 from app.utils import transactional_session
 from app.core.metrics import metrics
 from app.services.sync_tracking import (
@@ -238,8 +247,153 @@ def parse_jacoco_xml(xml_text: str) -> Optional[Dict[str, Any]]:
     return result if result else None
 
 
+def _parse_id_list(raw: Any) -> List[int]:
+    if raw is None:
+        return []
+    if isinstance(raw, (list, tuple, set)):
+        values = list(raw)
+    else:
+        values = [raw]
+    parsed: List[int] = []
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str):
+            parts = [part.strip() for part in value.split(",") if part.strip()]
+        else:
+            parts = [value]
+        for part in parts:
+            try:
+                parsed.append(int(part))
+            except (TypeError, ValueError):
+                continue
+    return parsed
+
+
+def _collect_ids(*values: Any) -> List[int]:
+    seen: set[int] = set()
+    collected: List[int] = []
+    for value in values:
+        for parsed in _parse_id_list(value):
+            if parsed in seen:
+                continue
+            seen.add(parsed)
+            collected.append(parsed)
+    return collected
+
+
+async def _attach_ci_traceability_items(
+    db: AsyncSession,
+    *,
+    baseline_ids: List[int],
+    projection_ids: List[int],
+    artifact_ids: List[int],
+    link_id: Optional[int],
+    project_id: Optional[int],
+) -> tuple[Dict[str, Any], Optional[int]]:
+    updates: Dict[str, Any] = {}
+    effective_project_id = project_id
+
+    async def _add_items(
+        *,
+        target_id: int,
+        target_key: str,
+        item_model: Any,
+    ) -> tuple[int, int]:
+        artifact_added = 0
+        link_added = 0
+        target_col = getattr(item_model, target_key)
+        for artifact_id in artifact_ids:
+            exists = await db.execute(
+                select(item_model).where(
+                    target_col == target_id,
+                    item_model.artifact_id == artifact_id,
+                )
+            )
+            if exists.scalar_one_or_none() is None:
+                db.add(item_model(**{target_key: target_id, "artifact_id": artifact_id}))
+                artifact_added += 1
+        if link_id is not None:
+            exists = await db.execute(
+                select(item_model).where(
+                    target_col == target_id,
+                    item_model.link_id == link_id,
+                )
+            )
+            if exists.scalar_one_or_none() is None:
+                db.add(item_model(**{target_key: target_id, "link_id": link_id}))
+                link_added += 1
+        return artifact_added, link_added
+
+    if baseline_ids:
+        result = await db.execute(select(Baseline).where(Baseline.id.in_(baseline_ids)))
+        baselines = {baseline.id: baseline for baseline in result.scalars().all()}
+        stats = {
+            "requested": len(baseline_ids),
+            "missing": 0,
+            "skipped_project_mismatch": 0,
+            "artifacts_added": 0,
+            "links_added": 0,
+        }
+        for baseline_id in baseline_ids:
+            baseline = baselines.get(baseline_id)
+            if baseline is None:
+                stats["missing"] += 1
+                continue
+            if baseline.project_id is not None:
+                if effective_project_id is None:
+                    effective_project_id = baseline.project_id
+                elif effective_project_id != baseline.project_id:
+                    stats["skipped_project_mismatch"] += 1
+                    continue
+            added_artifacts, added_links = await _add_items(
+                target_id=baseline_id,
+                target_key="baseline_id",
+                item_model=BaselineItem,
+            )
+            stats["artifacts_added"] += added_artifacts
+            stats["links_added"] += added_links
+        updates["baselines"] = stats
+
+    if projection_ids:
+        result = await db.execute(select(Projection).where(Projection.id.in_(projection_ids)))
+        projections = {projection.id: projection for projection in result.scalars().all()}
+        stats = {
+            "requested": len(projection_ids),
+            "missing": 0,
+            "skipped_project_mismatch": 0,
+            "artifacts_added": 0,
+            "links_added": 0,
+        }
+        for projection_id in projection_ids:
+            projection = projections.get(projection_id)
+            if projection is None:
+                stats["missing"] += 1
+                continue
+            if projection.project_id is not None:
+                if effective_project_id is None:
+                    effective_project_id = projection.project_id
+                elif effective_project_id != projection.project_id:
+                    stats["skipped_project_mismatch"] += 1
+                    continue
+            added_artifacts, added_links = await _add_items(
+                target_id=projection_id,
+                target_key="projection_id",
+                item_model=ProjectionItem,
+            )
+            stats["artifacts_added"] += added_artifacts
+            stats["links_added"] += added_links
+        updates["projections"] = stats
+
+    return updates, effective_project_id
+
+
 async def process_ci_results(db: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Process CI/CD results including tests and coverage."""
+    """Process CI/CD results including tests and coverage.
+
+    Optional payload keys: baseline_id/baseline_ids, projection_id/projection_ids to
+    attach created test artifacts and links to traceability baselines/projections.
+    """
 
     provider = (payload.get("provider") or "generic").lower()
     commit_sha = payload.get("commit_sha")
@@ -247,11 +401,14 @@ async def process_ci_results(db: AsyncSession, payload: Dict[str, Any]) -> Dict[
     junit_xml = payload.get("junit_xml")
     coverage = payload.get("coverage") or {}
     report_url = payload.get("report_url")
+    baseline_ids = _collect_ids(payload.get("baseline_id"), payload.get("baseline_ids"))
+    projection_ids = _collect_ids(payload.get("projection_id"), payload.get("projection_ids"))
 
     sync_task_id: Optional[int] = None
     sync_source_id: Optional[int] = None
     sync_source = None
     project_id: Optional[int] = None
+    traceability_updates: Optional[Dict[str, Any]] = None
 
     try:
         source = await get_or_create_source(
@@ -462,6 +619,31 @@ async def process_ci_results(db: AsyncSession, payload: Dict[str, Any]) -> Dict[
                     confidence_factors={"source": "ci_results"},
                 )
                 db.add(link)
+                await db.flush()
+
+            if baseline_ids or projection_ids:
+                if commit_art.id not in {test_art.id}:
+                    artifact_ids = [test_art.id, commit_art.id]
+                else:
+                    artifact_ids = [test_art.id]
+                updates, resolved_project_id = await _attach_ci_traceability_items(
+                    db,
+                    baseline_ids=baseline_ids,
+                    projection_ids=projection_ids,
+                    artifact_ids=artifact_ids,
+                    link_id=link.id if link else None,
+                    project_id=project_id,
+                )
+                traceability_updates = updates
+                if resolved_project_id is not None and project_id is None:
+                    project_id = resolved_project_id
+                if project_id is not None:
+                    if commit_art.project_id is None:
+                        commit_art.project_id = project_id
+                    if test_art.project_id is None:
+                        test_art.project_id = project_id
+                    if link.project_id is None:
+                        link.project_id = project_id
 
         except Exception as e:
             logger.error(f"Error creating test artifacts: {e}")
@@ -527,4 +709,5 @@ async def process_ci_results(db: AsyncSession, payload: Dict[str, Any]) -> Dict[
         "coverage": {"line": coverage.get("line"), "branch": coverage.get("branch")}
         if coverage
         else None,
+        "traceability_updates": traceability_updates,
     }

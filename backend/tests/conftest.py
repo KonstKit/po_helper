@@ -1,4 +1,9 @@
+import importlib
 import os
+
+import pytest
+import pytest_asyncio
+from httpx import AsyncClient
 
 # Ensure configuration exists before the app loads settings.
 TEST_SECRET = "test-secret-key-should-be-long-enough-1234567890"
@@ -17,15 +22,15 @@ os.environ.setdefault("GOOGLE_CLIENT_SECRET", "")
 os.environ.setdefault("MICROSOFT_CLIENT_ID", "")
 os.environ.setdefault("MICROSOFT_CLIENT_SECRET", "")
 
-import pytest
-import pytest_asyncio
-from httpx import AsyncClient
-
-from app.main import app
-from app.core.database import AsyncSessionLocal, Base, engine, get_db
-from app.api.deps import get_current_user
-from app.core import cache_enhanced
-from app.core.rate_limit import limiter
+app = importlib.import_module("app.main").app
+db_module = importlib.import_module("app.core.database")
+AsyncSessionLocal = db_module.AsyncSessionLocal
+Base = db_module.Base
+engine = db_module.engine
+get_db = db_module.get_db
+get_current_user = importlib.import_module("app.api.deps").get_current_user
+cache_enhanced = importlib.import_module("app.core.cache_enhanced")
+limiter = importlib.import_module("app.core.rate_limit").limiter
 
 
 class _DummyUser:
@@ -77,6 +82,17 @@ async def db_session():
     async with AsyncSessionLocal() as session:
         yield session
         await session.rollback()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def reset_db_schema():
+    """Ensure a clean SQLite schema before each test to avoid duplicate indexes."""
+    # Import models to register all tables/indexes before drop/create.
+    import app.models  # noqa: F401
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+    yield
 
 
 @pytest_asyncio.fixture

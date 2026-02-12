@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.traceability import Artifact, ArtifactLink
@@ -65,10 +65,7 @@ async def get_coverage_analytics(
         if not artifact_types:
             artifact_types = ["requirement"]
 
-        # --- Step 1: Get artifact counts by type ---
-        type_counts = await _count_artifacts_by_type(db, project_id)
-
-        # --- Step 2: Calculate coverage for specified types ---
+        # --- Step 1: Calculate coverage for specified types ---
         coverage_stats = await _calculate_coverage_stats(
             db, project_id, artifact_types
         )
@@ -175,7 +172,6 @@ async def _calculate_coverage_stats(
         }
 
     artifact_ids = [a.id for a in artifacts]
-    artifact_types_map = {a.id: a.type for a in artifacts}
 
     # Get links for these artifacts (both directions) including confidence
     link_stmt = select(

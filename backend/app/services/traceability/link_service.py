@@ -12,14 +12,14 @@ This service provides:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, or_, select, func, delete
+from sqlalchemy import or_, select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
+from app.core.request_context import get_request_id
 from app.models.traceability import Artifact, ArtifactLink, AuditLog
 from app.services.confidence_scoring import confidence_scoring_service
 from app.utils.confidence import normalize_confidence, confidence_filter
@@ -195,6 +195,7 @@ class LinkService:
                     "confidence": normalized_confidence,
                 },
                 tenant_id=tenant_id,
+                project_id=link.project_id,
             )
 
         logger.info(
@@ -262,17 +263,20 @@ class LinkService:
 
         # Batch audit
         if created and created_by_id:
-            await self._create_audit_log(
-                actor_id=created_by_id,
-                action="batch_create",
-                entity_type="artifact_link",
-                entity_id=0,  # Batch operation
-                payload={
-                    "count": len(created),
-                    "link_ids": [l.id for l in created],
-                    "created_via": created_via,
-                },
-            )
+                await self._create_audit_log(
+                    actor_id=created_by_id,
+                    action="batch_create",
+                    entity_type="artifact_link",
+                    entity_id=0,  # Batch operation
+                    payload={
+                        "count": len(created),
+                        "link_ids": [link_item.id for link_item in created],
+                        "project_ids": sorted(
+                            {link_item.project_id for link_item in created if link_item.project_id}
+                        ),
+                        "created_via": created_via,
+                    },
+                )
 
         return created, errors
 
@@ -493,6 +497,7 @@ class LinkService:
                 entity_id=link_id,
                 payload=changes,
                 tenant_id=link.tenant_id,
+                project_id=link.project_id,
             )
 
         # Invalidate derived links if confidence changed
@@ -578,6 +583,7 @@ class LinkService:
                 entity_id=link_id,
                 payload=link_info,
                 tenant_id=link.tenant_id,
+                project_id=link.project_id,
             )
 
         # Invalidate derived links affected by this deletion
@@ -599,6 +605,13 @@ class LinkService:
         deleted_by_id: Optional[int] = None,
     ) -> int:
         """Delete all links for an artifact."""
+        project_id = None
+        if deleted_by_id:
+            result = await self.db.execute(
+                select(Artifact.project_id).where(Artifact.id == artifact_id)
+            )
+            project_id = result.scalar_one_or_none()
+
         conditions = []
 
         if direction in ("outgoing", "both"):
@@ -625,6 +638,7 @@ class LinkService:
                 entity_type="artifact_link",
                 entity_id=artifact_id,
                 payload={"artifact_id": artifact_id, "direction": direction, "count": count},
+                project_id=project_id,
             )
 
         # Invalidate derived links for the affected artifact
@@ -734,14 +748,19 @@ class LinkService:
         entity_id: int,
         payload: Dict[str, Any],
         tenant_id: Optional[str] = None,
+        project_id: Optional[int] = None,
+        outcome: str = "success",
     ) -> None:
         """Create audit log entry."""
         audit = AuditLog(
             tenant_id=tenant_id,
+            project_id=project_id,
             actor_id=actor_id,
             action=action,
             entity_type=entity_type,
             entity_id=entity_id,
+            request_id=get_request_id(),
+            outcome=outcome,
             payload=payload,
         )
         self.db.add(audit)

@@ -17,9 +17,8 @@ Requirements:
 import asyncio
 import time
 import statistics
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Dict, Any
-from contextlib import asynccontextmanager
 
 # Database setup
 import sys
@@ -105,7 +104,7 @@ async def profile_endpoint(
 
         start = time.perf_counter()
         try:
-            result = await query_func(session)
+            await query_func(session)
         except Exception as e:
             success = False
             if i == 0:  # Only print error once
@@ -411,7 +410,7 @@ async def run_profiling():
 
         index_info = await analyze_indexes(session)
         print(f"\n  Total indexes: {index_info['existing_indexes']}")
-        print(f"\n  Table sizes:")
+        print("\n  Table sizes:")
         for ts in index_info['table_sizes'][:10]:
             print(f"    {ts['table']:<30} {ts['total_size']:<12} ({ts['rows']} rows)")
 
@@ -433,12 +432,12 @@ async def run_profiling():
                 if r['avg_queries'] > 5:
                     print(f"      → Consider batching ({r['avg_queries']:.0f} queries)")
                 if r['avg_time_ms'] > 500:
-                    print(f"      → Consider caching (response time > 500ms)")
+                    print("      → Consider caching (response time > 500ms)")
 
         # Cache recommendation
         slow_endpoints = [r for r in results if r['avg_time_ms'] > 300]
         if slow_endpoints:
-            print(f"\n  📦 Redis cache recommended for:")
+            print("\n  📦 Redis cache recommended for:")
             for r in slow_endpoints:
                 print(f"    - {r['name']} (would reduce {r['avg_time_ms']:.0f}ms → ~5ms)")
 

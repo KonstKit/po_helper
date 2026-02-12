@@ -47,6 +47,7 @@ class Settings(BaseSettings):
 
     # Encryption
     ENCRYPTION_SECRET: Optional[str] = None  # if not set, falls back to SECRET_KEY
+    ENCRYPTION_SECRET_PREVIOUS: List[str] = []
 
     # Feature flags
     ENABLE_CONFLUENCE_AUTOLINK: bool = False
@@ -105,6 +106,7 @@ class Settings(BaseSettings):
     # Export settings
     EXPORTS_DIR: str = "./exports"  # Directory for export files
     EXPORT_FILE_TTL_HOURS: int = 24  # Auto-delete exports after 24 hours
+    BASELINE_RETENTION_DAYS: int = 90  # Auto-delete baselines older than N days
 
     # WIP limits (simple per-assignee)
     WIP_LIMIT_PER_ASSIGNEE: int = 2
@@ -199,6 +201,17 @@ class Settings(BaseSettings):
         if len(normalized) < 32:
             raise ValueError("SECRET_KEY must be at least 32 characters long.")
         return normalized
+
+    @field_validator("ENCRYPTION_SECRET_PREVIOUS", mode="before")
+    @classmethod
+    def _normalize_encryption_secret_previous(cls, value: object) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(",") if part.strip()]
+        if isinstance(value, list):
+            return [str(part).strip() for part in value if str(part).strip()]
+        return []
 
 
 settings = Settings()

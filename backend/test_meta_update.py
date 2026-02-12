@@ -1,6 +1,6 @@
 import asyncio
 from app.core.database import AsyncSessionLocal
-from sqlalchemy import select, text
+from sqlalchemy import select
 from app.models import Project
 import json
 from datetime import datetime
@@ -27,7 +27,7 @@ async def test_meta_update():
         if isinstance(metadata, str):
             try:
                 metadata = json.loads(metadata)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 metadata = {}
 
         metadata['last_sync_at'] = datetime.now().isoformat()

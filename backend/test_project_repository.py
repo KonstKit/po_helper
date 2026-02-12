@@ -31,7 +31,6 @@ async def test_project_repository_binding():
             if resp.status == 200:
                 data = await resp.json()
                 print(f"   Repository bound successfully: {json.dumps(data, indent=2)}")
-                repo_id = data.get("repository_id")
             else:
                 print(f"   Error: {resp.status} - {await resp.text()}")
                 return

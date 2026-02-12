@@ -15,10 +15,10 @@ async def check():
             try:
                 meta = json.loads(row[3]) if isinstance(row[3], str) else row[3]
                 print(f"  Meta: {json.dumps(meta, indent=2)}")
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 print(f"  Meta (raw): {row[3]}")
         else:
-            print(f"  Meta: None (no sync data)")
+            print("  Meta: None (no sync data)")
 
         # Check if there are tasks
         result = await conn.execute(text("SELECT COUNT(*) FROM tasks WHERE project_id = (SELECT id FROM projects WHERE jira_key = 'PRIM')"))

@@ -306,13 +306,21 @@ class GitImportService:
         try:
             if config.provider == "github":
                 url = f"{config.api_base}/repos/{repo.repo_slug}"
-                resp = await self._session_get(url, headers=config.headers, timeout=REQUEST_TIMEOUT)
+                resp = await self._session_get(
+                    url,
+                    headers=config.headers,
+                    timeout=settings.INTEGRATION_HTTP_TIMEOUT,
+                )
                 if resp.status_code < 400:
                     branch = resp.json().get("default_branch")
             elif config.provider == "gitlab":
                 project_path = quote(repo.repo_slug, safe="")
                 url = f"{config.api_base}/projects/{project_path}"
-                resp = await self._session_get(url, headers=config.headers, timeout=REQUEST_TIMEOUT)
+                resp = await self._session_get(
+                    url,
+                    headers=config.headers,
+                    timeout=settings.INTEGRATION_HTTP_TIMEOUT,
+                )
                 if resp.status_code < 400:
                     branch = resp.json().get("default_branch")
         except Exception as exc:

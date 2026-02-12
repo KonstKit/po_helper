@@ -7,7 +7,7 @@ import asyncio
 import logging
 from datetime import datetime
 from sqlalchemy import select, func
-from app.core.database import AsyncSessionLocal, engine
+from app.core.database import AsyncSessionLocal
 from app.models import Project, Task
 
 # Configure logging
@@ -41,7 +41,7 @@ async def test_database_operations():
                 project_id = project.id
                 logger.info(f"  ✓ Found project PRIM with id={project_id}")
             else:
-                logger.error(f"  ✗ Project PRIM not found!")
+                logger.error("  ✗ Project PRIM not found!")
                 return
     except Exception as e:
         logger.error(f"  ✗ Error finding project: {e}")
@@ -78,7 +78,7 @@ async def test_database_operations():
 
             # Commit
             await db.commit()
-            logger.info(f"  - Commit successful")
+            logger.info("  - Commit successful")
 
             # Verify it was saved
             result = await db.execute(select(Task).where(Task.key == test_key))
@@ -86,7 +86,7 @@ async def test_database_operations():
             if saved_task:
                 logger.info(f"  ✓ Test task successfully created and verified: {saved_task.key}")
             else:
-                logger.error(f"  ✗ Task was not found after commit!")
+                logger.error("  ✗ Task was not found after commit!")
 
     except Exception as e:
         logger.error(f"  ✗ Error creating test task: {e}", exc_info=True)
