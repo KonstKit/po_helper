@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Typography, Grid, TextField, Button, Divider, Alert, Switch, FormControlLabel, ToggleButtonGroup, ToggleButton } from '@mui/material';
+import { Box, Typography, Grid, TextField, Button, Divider, Alert, Switch, FormControlLabel, ToggleButtonGroup, ToggleButton, Chip } from '@mui/material';
 import CircularProgressWithLabel from '../components/CircularProgressWithLabel';
 import EmptyState from '../components/EmptyState';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
@@ -568,7 +568,23 @@ const Knowledge = () => {
       </Grid>
       <Box sx={{ mt: 1, mb: 2 }}>
         {spaces.length > 0 && (
-          <Typography variant="body2">Spaces: {spaces.map(s => `${s.key}`).join(', ')}</Typography>
+          <>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Found {spaces.length} space{spaces.length === 1 ? '' : 's'}. Click a chip to fill Space Key.
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              {spaces.map((space) => (
+                <Chip
+                  key={space.key}
+                  label={space.name ? `${space.key} - ${space.name}` : space.key}
+                  variant={spaceKey === space.key ? 'filled' : 'outlined'}
+                  color={spaceKey === space.key ? 'primary' : 'default'}
+                  size="small"
+                  onClick={() => setSpaceKey(space.key)}
+                />
+              ))}
+            </Box>
+          </>
         )}
       </Box>
 
