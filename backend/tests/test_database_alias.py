@@ -1,0 +1,13 @@
+def test_sessionlocal_alias_matches_sync():
+    from app.core.database import SessionLocal, SyncSessionLocal
+
+    assert SessionLocal is SyncSessionLocal
+
+
+def test_traceability_scheduler_registered_in_beat():
+    from app.core.celery_app import celery_app
+
+    schedule = celery_app.conf.beat_schedule or {}
+    assert "traceability-rule-scheduler-every-minute" in schedule
+    entry = schedule["traceability-rule-scheduler-every-minute"]
+    assert entry.get("task") == "traceability.scheduled_rule_execution"
