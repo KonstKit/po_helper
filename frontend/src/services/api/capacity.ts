@@ -91,7 +91,7 @@ export const updateCapacitySetting = async (
   if (update.validTo !== undefined) body.valid_to = update.validTo;
   if (update.notes !== undefined) body.notes = update.notes;
 
-  const { data } = await api.patch(`/v1/capacity/settings/${settingId}`, body);
+  const { data } = await api.put(`/v1/capacity/settings/${settingId}`, body);
   return data as CapacitySetting;
 };
 
@@ -107,11 +107,11 @@ export const getTeamCapacitySummary = async (
   projectId: number,
   opts?: { sprintWeeks?: number; referenceDate?: string }
 ): Promise<TeamCapacitySummary> => {
-  const params: Record<string, unknown> = { project_id: projectId };
+  const params: Record<string, unknown> = {};
   if (opts?.sprintWeeks !== undefined) params.sprint_weeks = opts.sprintWeeks;
   if (opts?.referenceDate) params.reference_date = opts.referenceDate;
 
-  const { data } = await api.get('/v1/capacity/summary', { params });
+  const { data } = await api.get(`/v1/capacity/team-summary/${projectId}`, { params });
   return data as TeamCapacitySummary;
 };
 
@@ -171,10 +171,12 @@ export const getTeamHealthSummary = async (
   projectId: number,
   opts?: { periodDays?: number }
 ): Promise<TeamHealthSummary> => {
-  const params: Record<string, unknown> = { project_id: projectId };
-  if (opts?.periodDays) params.period_days = opts.periodDays;
+  const params: Record<string, unknown> = {};
+  if (opts?.periodDays) {
+    params.limit = Math.max(1, Math.min(50, Math.round(opts.periodDays)));
+  }
 
-  const { data } = await api.get('/v1/capacity/health-summary', { params });
+  const { data } = await api.get(`/v1/capacity/health-summary/${projectId}`, { params });
   return data as TeamHealthSummary;
 };
 
@@ -186,13 +188,12 @@ export const getCFDData = async (
   projectId: number,
   opts?: { sprintId?: number; startDate?: string; endDate?: string; limit?: number }
 ): Promise<CFDData> => {
-  const params: Record<string, unknown> = { project_id: projectId };
+  const params: Record<string, unknown> = {};
   if (opts?.sprintId) params.sprint_id = opts.sprintId;
   if (opts?.startDate) params.start_date = opts.startDate;
   if (opts?.endDate) params.end_date = opts.endDate;
-  if (opts?.limit !== undefined) params.limit = opts.limit;
 
-  const { data } = await api.get('/v1/capacity/cfd', { params });
+  const { data } = await api.get(`/v1/capacity/cfd/${projectId}`, { params });
   return data as CFDData;
 };
 
@@ -200,11 +201,11 @@ export const getFlowMetrics = async (
   projectId: number,
   opts?: { sprintId?: number; days?: number }
 ): Promise<FlowMetrics> => {
-  const params: Record<string, unknown> = { project_id: projectId };
+  const params: Record<string, unknown> = {};
   if (opts?.sprintId) params.sprint_id = opts.sprintId;
   if (opts?.days) params.days = opts.days;
 
-  const { data } = await api.get('/v1/capacity/flow-metrics', { params });
+  const { data } = await api.get(`/v1/capacity/cfd/${projectId}/metrics`, { params });
   return data as FlowMetrics;
 };
 

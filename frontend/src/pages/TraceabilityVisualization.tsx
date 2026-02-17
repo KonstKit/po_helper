@@ -170,6 +170,18 @@ const TraceabilityVisualization: React.FC = () => {
     return confidenceData.histogram;
   }, [confidenceData]);
 
+  const confidenceStats = useMemo(
+    () =>
+      confidenceData?.stats || {
+        total_links: 0,
+        avg_confidence: 0,
+        median_confidence: 0,
+        min_confidence: 0,
+        max_confidence: 0,
+      },
+    [confidenceData]
+  );
+
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
@@ -322,7 +334,7 @@ const TraceabilityVisualization: React.FC = () => {
                     Total Links
                   </Typography>
                   <Typography variant="h4">
-                    {confidenceData.stats.total_links.toLocaleString()}
+                    {confidenceStats.total_links.toLocaleString()}
                   </Typography>
                 </Paper>
               </Grid>
@@ -332,7 +344,7 @@ const TraceabilityVisualization: React.FC = () => {
                     Average Confidence
                   </Typography>
                   <Typography variant="h4">
-                    {Math.round(confidenceData.stats.avg_confidence * 100)}%
+                    {Math.round(confidenceStats.avg_confidence * 100)}%
                   </Typography>
                 </Paper>
               </Grid>
@@ -342,7 +354,7 @@ const TraceabilityVisualization: React.FC = () => {
                     Median Confidence
                   </Typography>
                   <Typography variant="h4">
-                    {Math.round(confidenceData.stats.median_confidence * 100)}%
+                    {Math.round(confidenceStats.median_confidence * 100)}%
                   </Typography>
                 </Paper>
               </Grid>
@@ -354,7 +366,9 @@ const TraceabilityVisualization: React.FC = () => {
                 </Typography>
                 <Stack direction="row" spacing={0.5} alignItems="flex-end" sx={{ height: 150 }}>
                   {confidenceHistogramData.map((bucket, idx) => {
-                    const maxCount = Math.max(...confidenceHistogramData.map((b) => b.count));
+                    const maxCount = confidenceHistogramData.length > 0
+                      ? Math.max(...confidenceHistogramData.map((b) => b.count))
+                      : 0;
                     const heightPct = maxCount > 0 ? (bucket.count / maxCount) * 100 : 0;
                     return (
                       <Box
