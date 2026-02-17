@@ -14,10 +14,14 @@ import {
   Code as CodeIcon,
   BugReport as BugIcon,
   Description as DescIcon,
+  FactCheck as TestRailIcon,
+  EditNote as ManualIcon,
   FilterAlt as FilterIcon,
   FilterList as FilterListIcon,
+  Transform as TransformIcon,
   CallSplit as DecisionIcon,
   Link as LinkIcon,
+  RateReview as QueueReviewIcon,
   Upload as UploadIcon,
   Download as DownloadIcon,
   LibraryBooks as TemplateIcon,
@@ -50,7 +54,8 @@ const nodeTemplates: NodeTemplate[] = [
       filters: {
         branch: '',
         author: '',
-        after_date: '',
+        date_from: '',
+        date_to: '',
       },
     },
   },
@@ -78,6 +83,40 @@ const nodeTemplates: NodeTemplate[] = [
       filters: {
         space: '',
         labels: [],
+      },
+    },
+  },
+  {
+    type: 'testrailSource',
+    label: 'TestRail',
+    icon: <TestRailIcon />,
+    category: 'source',
+    defaultData: {
+      label: 'TestRail',
+      filters: {
+        project_id: '',
+        suite_id: '',
+        status: [],
+        type: [],
+        priority: [],
+        date_from: '',
+        date_to: '',
+      },
+    },
+  },
+  {
+    type: 'manualSource',
+    label: 'Manual Source',
+    icon: <ManualIcon />,
+    category: 'source',
+    defaultData: {
+      label: 'Manual Source',
+      config: {
+        artifact_ids: [],
+        external_ids: [],
+        artifact_types: [],
+        project_id: '',
+        tags: [],
       },
     },
   },
@@ -114,6 +153,18 @@ const nodeTemplates: NodeTemplate[] = [
     },
   },
   {
+    type: 'transformNode',
+    label: 'Transform',
+    icon: <TransformIcon />,
+    category: 'processor',
+    defaultData: {
+      label: 'Transform',
+      config: {
+        transform_type: 'passthrough',
+      },
+    },
+  },
+  {
     type: 'decisionNode',
     label: 'Decision',
     icon: <DecisionIcon />,
@@ -128,6 +179,19 @@ const nodeTemplates: NodeTemplate[] = [
   },
 
   // Action Nodes
+  {
+    type: 'queueReviewAction',
+    label: 'Queue Review',
+    icon: <QueueReviewIcon />,
+    category: 'action',
+    defaultData: {
+      label: 'Queue Review',
+      config: {
+        reason: 'Manual review requested by traceability rule',
+        priority: 'normal',
+      },
+    },
+  },
   {
     type: 'createLinkAction',
     label: 'Create Link',
@@ -177,6 +241,7 @@ const Toolbox: React.FC<ToolboxProps> = ({ onImportExportClick, onTemplateClick 
 
   return (
     <Paper
+      data-testid="toolbox"
       sx={{
         width: 250,
         height: '100%',
