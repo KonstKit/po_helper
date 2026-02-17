@@ -1,8 +1,8 @@
-﻿---
+---
 level: 3
 file_id: plan_38
 parent: plan_36
-status: pending
+status: completed
 created: 2026-02-16 20:55
 estimated_time: 360 minutes
 ---
@@ -201,4 +201,17 @@ flowchart TD
 ### References
 - Overall production-readiness plan and module-level acceptance policies
 - Stability and regression governance checklist
+
+---
+
+## Finalization Record (February 17, 2026)
+
+### Completed Scope
+- Implemented reverse-link behavior to prioritize UI-provided `reverse_link_type` when `bidirectional=true`.
+- Implemented scheduler contract alignment on `schedule_cron`, `schedule_enabled`, and `next_scheduled_run`.
+- Added fallback warning path for legacy reverse-link configuration.
+
+### Verification Evidence
+- Reverse-link and scheduler contract checks are covered in `backend/tests/test_traceability_rule_builder_contracts.py`.
+- Scenario expectations for this scope are represented in updated quality-gate test assets.
 
