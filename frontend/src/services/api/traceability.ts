@@ -35,6 +35,10 @@ import type {
   ListRulesOptions,
   ListRuleExecutionsOptions,
   RuleExecutionResult,
+  FlowValidationResult,
+  RuleScheduleResponse,
+  RuleScheduleUpdate,
+  RuleWebhookResponse,
   // RTM Matrix types
   RTMFilters,
   RTMPagination,
@@ -430,6 +434,21 @@ export const getDetailedCycles = async (
 // Traceability Rules CRUD
 // =============================================================================
 
+const resolveSkip = (opts?: { skip?: number; offset?: number }): number =>
+  opts?.skip ?? opts?.offset ?? 0;
+
+/**
+ * Validate a flow without saving it.
+ */
+export const validateRuleFlow = async (
+  flowJson: TraceabilityRuleCreate['flow_json']
+): Promise<FlowValidationResult> => {
+  const { data } = await api.post('/v1/traceability/rules/validate', { flow_json: flowJson }, {
+    timeout: 30000,
+  });
+  return data as FlowValidationResult;
+};
+
 /**
  * List traceability rules with optional filtering
  */
@@ -440,17 +459,17 @@ export const getRules = async (
   if (opts?.enabled !== undefined) params.enabled = opts.enabled;
   if (opts?.category) params.category = opts.category;
   if (opts?.projectId !== undefined) params.project_id = opts.projectId;
-  const offset = opts?.offset ?? 0;
+  const skip = resolveSkip(opts);
   const limit = opts?.limit ?? DEFAULT_PAGE_SIZE;
   params.limit = limit;
-  params.offset = offset;
+  params.skip = skip;
 
   const { data } = await withRetry(
     () => api.get('/v1/traceability/rules', { params, timeout: 30000 }),
     { retries: 2, baseDelayMs: 500, maxDelayMs: 3000 }
   );
   return normalizePaginatedResponse<TraceabilityRule>(data, {
-    skip: offset,
+    skip,
     limit,
     legacyKey: 'items',
   });
@@ -518,20 +537,20 @@ export const executeRule = async (
  */
 export const getRuleExecutions = async (
   ruleId: number,
-  opts?: { limit?: number; offset?: number }
+  opts?: { limit?: number; skip?: number; offset?: number }
 ): Promise<TraceabilityRuleExecutionListResponse> => {
   const params: Record<string, unknown> = {};
-  const offset = opts?.offset ?? 0;
+  const skip = resolveSkip(opts);
   const limit = opts?.limit ?? DEFAULT_PAGE_SIZE;
   params.limit = limit;
-  params.offset = offset;
+  params.skip = skip;
 
   const { data } = await withRetry(
     () => api.get(`/v1/traceability/rules/${ruleId}/executions`, { params, timeout: 30000 }),
     { retries: 1, baseDelayMs: 400, maxDelayMs: 2500 }
   );
   return normalizePaginatedResponse<TraceabilityRuleExecution>(data, {
-    skip: offset,
+    skip,
     limit,
     legacyKey: 'items',
   });
@@ -546,20 +565,73 @@ export const getAllRuleExecutions = async (
   const params: Record<string, unknown> = {};
   if (opts?.ruleId !== undefined) params.rule_id = opts.ruleId;
   if (opts?.status) params.status = opts.status;
-  const offset = opts?.offset ?? 0;
+  const skip = resolveSkip(opts);
   const limit = opts?.limit ?? DEFAULT_PAGE_SIZE;
   params.limit = limit;
-  params.offset = offset;
+  params.skip = skip;
 
   const { data } = await withRetry(
     () => api.get('/v1/traceability/rules/executions', { params, timeout: 30000 }),
     { retries: 2, baseDelayMs: 500, maxDelayMs: 3000 }
   );
   return normalizePaginatedResponse<TraceabilityRuleExecution>(data, {
-    skip: offset,
+    skip,
     limit,
     legacyKey: 'items',
   });
+};
+
+/**
+ * Get schedule settings for a saved rule.
+ */
+export const getRuleSchedule = async (ruleId: number): Promise<RuleScheduleResponse> => {
+  const { data } = await api.get(`/v1/traceability/rules/${ruleId}/schedule`, {
+    timeout: 20000,
+  });
+  return data as RuleScheduleResponse;
+};
+
+/**
+ * Update schedule settings for a saved rule.
+ */
+export const updateRuleSchedule = async (
+  ruleId: number,
+  payload: RuleScheduleUpdate
+): Promise<RuleScheduleResponse> => {
+  const { data } = await api.put(`/v1/traceability/rules/${ruleId}/schedule`, payload, {
+    timeout: 30000,
+  });
+  return data as RuleScheduleResponse;
+};
+
+/**
+ * Get webhook status for a saved rule.
+ */
+export const getRuleWebhook = async (ruleId: number): Promise<RuleWebhookResponse> => {
+  const { data } = await api.get(`/v1/traceability/rules/${ruleId}/webhook`, {
+    timeout: 20000,
+  });
+  return data as RuleWebhookResponse;
+};
+
+/**
+ * Enable webhook and return one-time token.
+ */
+export const enableRuleWebhook = async (ruleId: number): Promise<RuleWebhookResponse> => {
+  const { data } = await api.post(`/v1/traceability/rules/${ruleId}/webhook/enable`, undefined, {
+    timeout: 30000,
+  });
+  return data as RuleWebhookResponse;
+};
+
+/**
+ * Disable webhook and clear token.
+ */
+export const disableRuleWebhook = async (ruleId: number): Promise<RuleWebhookResponse> => {
+  const { data } = await api.post(`/v1/traceability/rules/${ruleId}/webhook/disable`, undefined, {
+    timeout: 30000,
+  });
+  return data as RuleWebhookResponse;
 };
 
 // =============================================================================

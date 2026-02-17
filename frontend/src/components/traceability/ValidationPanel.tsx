@@ -30,7 +30,7 @@ const ValidationPanel: React.FC<ValidationPanelProps> = ({ validation, onNodeCli
 
   if (validation.valid && validation.warnings.length === 0) {
     return (
-      <Alert severity="success" sx={{ m: 2 }}>
+      <Alert data-testid="validation-panel" severity="success" sx={{ m: 2 }}>
         <AlertTitle>Rule is Valid</AlertTitle>
         This rule has no errors or warnings and is ready to use.
       </Alert>
@@ -38,7 +38,7 @@ const ValidationPanel: React.FC<ValidationPanelProps> = ({ validation, onNodeCli
   }
 
   return (
-    <Paper sx={{ m: 2, p: 2 }}>
+    <Paper data-testid="validation-panel" sx={{ m: 2, p: 2 }}>
       <Box sx={{ mb: 2 }}>
         {validation.errors.length > 0 && (
           <>

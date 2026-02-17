@@ -1406,7 +1406,8 @@ export interface DoraMetrics {
 
 /** Team member activity summary */
 export interface TeamMemberActivity {
-  assignee: string;
+  assignee?: string;
+  name?: string | null;
   count?: number;
   estimate_hours?: number;
   spent_hours?: number;
@@ -1483,6 +1484,10 @@ export interface TraceabilityRule {
   tags: string[];
   project_id?: number | null;
   created_by_id?: number | null;
+  schedule_cron?: string | null;
+  schedule_enabled?: boolean;
+  trigger_on_webhook?: boolean;
+  next_scheduled_run?: string | null;
   total_executions: number;
   successful_executions: number;
   failed_executions: number;
@@ -1501,6 +1506,9 @@ export interface TraceabilityRuleCreate {
   category?: 'basic' | 'advanced' | 'custom';
   tags?: string[];
   project_id?: number;
+  schedule_cron?: string;
+  schedule_enabled?: boolean;
+  trigger_on_webhook?: boolean;
 }
 
 /** Data for updating a traceability rule */
@@ -1512,6 +1520,9 @@ export interface TraceabilityRuleUpdate {
   category?: 'basic' | 'advanced' | 'custom';
   tags?: string[];
   project_id?: number;
+  schedule_cron?: string;
+  schedule_enabled?: boolean;
+  trigger_on_webhook?: boolean;
 }
 
 /** Traceability rule execution record */
@@ -1526,13 +1537,30 @@ export interface TraceabilityRuleExecution {
   links_created: number;
   links_updated?: number;
   artifacts_processed?: number;
+  rolled_back?: boolean;
   error_message?: string | null;
   error_details?: Record<string, unknown> | null;
   execution_log?: {
     errors: string[];
     warnings: string[];
     links_created: number;
+    links_updated?: number;
+    artifacts_processed?: number;
+    rolled_back?: boolean;
   };
+}
+
+export interface FlowValidationIssue {
+  type: 'error' | 'warning';
+  message: string;
+  node_id?: string | null;
+  edge_id?: string | null;
+}
+
+export interface FlowValidationResult {
+  valid: boolean;
+  errors: FlowValidationIssue[];
+  warnings: FlowValidationIssue[];
 }
 
 /** Response for listing traceability rules */
@@ -1546,16 +1574,18 @@ export interface ListRulesOptions {
   enabled?: boolean;
   category?: string;
   projectId?: number;
+  skip?: number;
   limit?: number;
-  offset?: number;
+  offset?: number; // legacy alias
 }
 
 /** Options for listing rule executions */
 export interface ListRuleExecutionsOptions {
   ruleId?: number;
   status?: string;
+  skip?: number;
   limit?: number;
-  offset?: number;
+  offset?: number; // legacy alias
 }
 
 /** Result from executing a rule */
@@ -1567,6 +1597,26 @@ export interface RuleExecutionResult {
   artifacts_processed: number;
   errors: string[];
   warnings: string[];
+  rolled_back: boolean;
+}
+
+export interface RuleScheduleUpdate {
+  schedule_cron?: string | null;
+  schedule_enabled?: boolean;
+}
+
+export interface RuleScheduleResponse {
+  rule_id: number;
+  schedule_cron?: string | null;
+  schedule_enabled: boolean;
+  next_scheduled_run?: string | null;
+}
+
+export interface RuleWebhookResponse {
+  rule_id: number;
+  trigger_on_webhook: boolean;
+  webhook_token?: string | null;
+  webhook_url?: string | null;
 }
 
 // =============================================================================
