@@ -84,6 +84,13 @@ import ProjectDetailTabs from "./projectDetail/ProjectDetailTabs";
 const cacheKeyForTasks = (projectId: number) =>
   `project_tasks_cache_${projectId}`;
 
+const formatHours = (value: unknown): string => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "0";
+  const rounded = Math.round(num * 10) / 10;
+  return Number(rounded.toFixed(1)).toString();
+};
+
 const ProjectDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -349,12 +356,16 @@ const ProjectDetail = () => {
         }));
       }, 300);
       await syncJiraProject(project.jira_key, { timeout: 15000 });
-      // Reload current page with paginated API after sync
-      await loadTasksPage();
-      await loadProjectDetails(true);
-      setSyncProgress({ active: false, percent: 100, step: "Sync complete" });
-      setSyncing(false);
-      setToast({ open: true, type: "success", msg: "Sync completed" });
+      setSyncProgress((p) => ({
+        ...p,
+        percent: Math.max(p.percent, 15),
+        step: "Background sync in progress...",
+      }));
+      setToast({
+        open: true,
+        type: "info",
+        msg: "Sync started in background. Data will refresh automatically when complete.",
+      });
     } catch (e) {
       setSyncing(false);
       setSyncProgress({ active: false, percent: 0, step: "" });
@@ -846,7 +857,9 @@ const ProjectDetail = () => {
               const b = await getBoardsForProject(data.jira_key);
               setBoards(b.boards || []);
               if ((b.boards || []).length) {
-                const primaryBoardId = b.boards[0].id;
+                const primaryBoard =
+                  (b.boards || []).find((board) => board.type === "scrum") || b.boards[0];
+                const primaryBoardId = primaryBoard.id;
                 setBoardId(primaryBoardId);
                 boardIdRef.current = primaryBoardId;
               }
@@ -1113,6 +1126,12 @@ const ProjectDetail = () => {
               typeof id === "string" &&
               Number(id) === Number(msg?.project_id)
             ) {
+              if (syncTimerRef.current) {
+                clearInterval(syncTimerRef.current);
+                syncTimerRef.current = null;
+              }
+              setSyncProgress({ active: false, percent: 100, step: "Sync complete" });
+              setSyncing(false);
               // Reload current page with paginated API after sync
               await loadTasksPage();
               await loadProjectDetails(true);
@@ -1126,6 +1145,12 @@ const ProjectDetail = () => {
               typeof id === "string" &&
               Number(id) === Number(msg?.project_id)
             ) {
+              if (syncTimerRef.current) {
+                clearInterval(syncTimerRef.current);
+                syncTimerRef.current = null;
+              }
+              setSyncing(false);
+              setSyncProgress({ active: false, percent: 0, step: "" });
               autoSyncDisabledRef.current = true;
               const detail = typeof msg?.detail === "string" ? msg.detail : "";
               let message = "Jira sync failed";
@@ -1303,9 +1328,9 @@ const ProjectDetail = () => {
               <Typography color="textSecondary" gutterBottom>
                 Time Spent
               </Typography>
-              <Typography variant="h5">{project.total_spent_hours}h</Typography>
+              <Typography variant="h5">{formatHours(project.total_spent_hours)}h</Typography>
               <Typography variant="body2" color="text.secondary">
-                of {project.total_estimate_hours}h estimated
+                of {formatHours(project.total_estimate_hours)}h estimated
               </Typography>
             </CardContent>
           </Card>
@@ -1317,14 +1342,14 @@ const ProjectDetail = () => {
                 Budget Hours
               </Typography>
               <Typography variant="h5">
-                {budgetHours ? `${budgetHours.total_spent_hours}h` : "—"}
+                {budgetHours ? `${formatHours(budgetHours.total_spent_hours)}h` : "—"}
               </Typography>
               <Typography
                 variant="body2"
                 color={budgetHours?.overrun ? "error" : "text.secondary"}
               >
                 {budgetHours
-                  ? `of ${budgetHours.total_estimate_hours}h ${budgetHours.overrun ? `(over by ${budgetHours.overrun_hours}h)` : ""}`
+                  ? `of ${formatHours(budgetHours.total_estimate_hours)}h ${budgetHours.overrun ? `(over by ${formatHours(budgetHours.overrun_hours)}h)` : ""}`
                   : "—"}
               </Typography>
               {budgetHours && (
@@ -1354,7 +1379,7 @@ const ProjectDetail = () => {
               </Typography>
               {valueMetrics ? (
                 <Tooltip
-                  title={`${valueMetrics.value_delivered} value / ${valueMetrics.total_spent_hours} hours`}
+                  title={`${valueMetrics.value_delivered} value / ${formatHours(valueMetrics.total_spent_hours)} hours`}
                 >
                   <Chip
                     label={`ROI: ${Math.round((valueMetrics.roi || 0) * 1000) / 1000}`}

@@ -232,7 +232,7 @@ const ProjectDetailTabs = ({
       <Grid container spacing={2}>
         {(teamMembers.length > 0
           ? teamMembers.map((m): TeamMemberDisplay => ({
-              name: m.assignee,
+              name: m.assignee || m.name || m.email || "unassigned",
               email: m.email ?? undefined,
               active_tasks: m.active_tasks ?? m.count ?? 0,
               last_activity: m.last_activity ?? null,
@@ -349,6 +349,11 @@ const ProjectDetailTabs = ({
               }
             }}
           >
+            {sprints.length === 0 && (
+              <MenuItem disabled value="">
+                No sprints found for selected board
+              </MenuItem>
+            )}
             {sprints.map((s) => {
               const sprintId = s.sprint_id ?? s.id;
               if (typeof sprintId !== "number") return null;

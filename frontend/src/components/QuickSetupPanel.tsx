@@ -88,12 +88,12 @@ export const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
   );
 
   return (
-    <Paper sx={{ p: 3, mb: 3, bgcolor: 'primary.light', color: 'primary.contrastText' }}>
+    <Paper variant="outlined" sx={{ p: 3, mb: 3, bgcolor: 'background.paper', borderColor: 'divider' }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h6" fontWeight={600}>
-          🚀 Quick Setup (Recommended)
+        <Typography variant="h6" fontWeight={600} color="primary.main">
+          Quick Setup (Recommended)
         </Typography>
-        <IconButton onClick={() => setShowHelp(!showHelp)} size="small">
+        <IconButton onClick={() => setShowHelp(!showHelp)} size="small" color="primary">
           <HelpIcon />
         </IconButton>
       </Box>
@@ -104,13 +104,13 @@ export const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
             <strong>Quick Setup automatically maps common Jira fields:</strong>
           </Typography>
           <Typography variant="body2" component="div">
-            • <strong>Sprint:</strong> Links tasks to sprints for burndown tracking
+            - <strong>Sprint:</strong> Links tasks to sprints for burndown tracking
             <br />
-            • <strong>Story Points:</strong> Enables velocity calculation
+            - <strong>Story Points:</strong> Enables velocity calculation
             <br />
-            • <strong>Epic Link:</strong> Groups tasks by epic
+            - <strong>Epic Link:</strong> Groups tasks by epic
             <br />
-            • <strong>Business Value:</strong> Tracks ROI
+            - <strong>Business Value:</strong> Tracks ROI
           </Typography>
         </Alert>
       </Collapse>
@@ -135,7 +135,7 @@ export const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
         <Typography variant="subtitle2" gutterBottom>
           Essential Fields
         </Typography>
-        <List dense sx={{ bgcolor: 'background.paper', borderRadius: 1 }}>
+        <List dense sx={{ bgcolor: 'background.default', borderRadius: 1 }}>
           {ESSENTIAL_FIELDS.map((field) => {
             const isMapped = mappedFields[field.key];
             return (
@@ -209,7 +209,7 @@ export const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
       {requiredFieldsMapped && (
         <Alert severity="success" sx={{ mt: 2 }}>
           <Typography variant="body2" fontWeight={600}>
-            ✓ All required fields mapped!
+            All required fields mapped!
           </Typography>
           <Typography variant="body2">
             {allFieldsMapped
@@ -230,3 +230,4 @@ export const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
     </Paper>
   );
 };
+

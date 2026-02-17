@@ -1,7 +1,6 @@
 import { createAsyncThunk } from '@reduxjs/toolkit';
 import {
   listProjects,
-  getProjectById,
   listTasks,
   listSprints
 } from '../services/api';
@@ -42,22 +41,9 @@ export const loadAllProjects = createAsyncThunk<
       const projects = projectsResp.data;
 
       dispatch(setProjects(projects));
-
-      // Load project details in parallel for dashboard stats
-      const projectDetails = await Promise.allSettled(
-        projects.map(p => getProjectById(p.id, { timeout: 30000 }))
-      );
-
-      // Merge details into projects
-      const enhancedProjects = projects.map((p, idx) => {
-        const result = projectDetails[idx];
-        if (result.status === 'fulfilled') {
-          return { ...p, ...result.value };
-        }
-        return p;
-      });
-
-      dispatch(setProjects(enhancedProjects));
+      // Do not eagerly fetch details for every project here.
+      // For large workspaces this creates long blocking startup loads and UI freezes.
+      // Pages that need detailed project stats fetch them on demand.
       dispatch(setError(null));
     } catch (err: unknown) {
       console.error('[Redux] Failed to load projects:', err);

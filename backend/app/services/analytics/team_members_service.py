@@ -51,7 +51,9 @@ async def get_team_members_activity(
         now = datetime.now()
         result: List[Dict[str, Any]] = []
         for row in team_rows:
+            display_assignee = row["name"] or row["email"] or "unassigned"
             member = {
+                "assignee": display_assignee,
                 "name": row["name"],
                 "email": row["email"],
                 "total_tasks": row["total_tasks"],

@@ -73,6 +73,13 @@ const EMPTY_PROJECT: NewProject = {
 
 const PROJECTS_TTL_MS = 60_000; // 1 minute cache for projects list
 
+const formatHours = (value: unknown): string => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "0";
+  const rounded = Math.round(num * 10) / 10;
+  return Number(rounded.toFixed(1)).toString();
+};
+
 const Projects = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
@@ -113,8 +120,13 @@ const Projects = () => {
 
   const loadProjects = useCallback(async (force: boolean = false) => {
     try {
-      // Prevent duplicate loads
-      if (!force && hasLoadedRef.current && projects.length > 0) {
+      // Prevent duplicate loads while cache is still fresh
+      if (
+        !force &&
+        hasLoadedRef.current &&
+        lastLoadedAt &&
+        Date.now() - lastLoadedAt <= PROJECTS_TTL_MS
+      ) {
         return;
       }
 
@@ -126,7 +138,7 @@ const Projects = () => {
       abortRef.current = controller;
       const shouldFetchList =
         force ||
-        projects.length === 0 ||
+        !hasLoadedRef.current ||
         !lastLoadedAt ||
         Date.now() - lastLoadedAt > PROJECTS_TTL_MS;
       let data: Project[] = projects;
@@ -185,7 +197,7 @@ const Projects = () => {
     const load = async () => {
       // Only load if we don't have projects or cache is expired
       const needsLoad =
-        projects.length === 0 ||
+        !hasLoadedRef.current ||
         !lastLoadedAt ||
         Date.now() - lastLoadedAt > PROJECTS_TTL_MS;
 
@@ -348,7 +360,7 @@ const Projects = () => {
       </Box>
 
       <Grid container spacing={3}>
-        {projectsState.loading && (
+        {progress.loading && (
           <Grid item xs={12}>
             <Box display="flex" justifyContent="center" my={2}>
               <CircularProgressWithLabel
@@ -358,7 +370,7 @@ const Projects = () => {
             </Box>
           </Grid>
         )}
-        {!projectsState.loading && projects.length === 0 && (
+        {!progress.loading && projects.length === 0 && (
           <Grid item xs={12}>
             <Typography variant="body1" color="text.secondary" align="center">
               No projects found. Click &quot;New Project&quot; to create one.
@@ -475,10 +487,10 @@ const Projects = () => {
                     {hasEstimateStats ? (
                       <>
                         <Typography variant="body2" color="text.secondary">
-                          Estimate: {details?.total_estimate_hours ?? 0}h
+                          Estimate: {formatHours(details?.total_estimate_hours)}h
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          Spent: {details?.total_spent_hours ?? 0}h
+                          Spent: {formatHours(details?.total_spent_hours)}h
                         </Typography>
                       </>
                     ) : (
