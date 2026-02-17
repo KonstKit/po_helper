@@ -56,7 +56,7 @@ import { getErrorMessage } from '../../utils/errorUtils';
 
 interface SyncHealthDashboardProps {
   projectId?: number;
-  onProjectSelect?: (projectId: number) => void;
+  onProjectSelect?: (projectId: number | undefined) => void;
 }
 
 const HEALTH_COLORS: Record<string, string> = {
@@ -112,6 +112,10 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
   const [expandedProject, setExpandedProject] = useState<number | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
+  useEffect(() => {
+    setSelectedProjectId(initialProjectId);
+  }, [initialProjectId]);
+
   const parseProjectValue = (value: string): number | undefined => {
     if (value === '') return undefined;
     const parsed = Number(value);
@@ -160,9 +164,7 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
 
   const handleProjectChange = (projectId: number | undefined) => {
     setSelectedProjectId(projectId);
-    if (projectId) {
-      onProjectSelect?.(projectId);
-    }
+    onProjectSelect?.(projectId);
   };
 
   const renderSourceCard = (source: SyncSourceHealth) => (
