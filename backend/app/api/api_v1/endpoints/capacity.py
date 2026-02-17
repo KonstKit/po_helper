@@ -8,7 +8,6 @@ team health checks, and CFD snapshot management.
 from typing import Optional, Dict, Any
 from datetime import date
 import logging
-import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, and_, or_
@@ -86,10 +85,9 @@ async def list_capacity_settings(
         count_query = select(func.count()).select_from(base_query.subquery())
         data_query = base_query.order_by(CapacitySettings.assignee_email).offset(skip).limit(limit)
 
-        # Execute in parallel
-        count_result, data_result = await asyncio.gather(
-            db.execute(count_query), db.execute(data_query)
-        )
+        # AsyncSession does not support concurrent operations on the same session.
+        count_result = await db.execute(count_query)
+        data_result = await db.execute(data_query)
 
         total = count_result.scalar() or 0
         settings = data_result.scalars().all()
@@ -302,6 +300,24 @@ async def get_team_capacity_summary(
         )
 
 
+@router.get("/summary", response_model=TeamCapacitySummary)
+async def get_team_capacity_summary_legacy(
+    project_id: int = Query(..., ge=1),
+    sprint_weeks: float = Query(2.0, ge=0.5, le=8.0),
+    reference_date: Optional[date] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Backward-compatible alias for older clients using query-based summary path.
+    """
+    return await get_team_capacity_summary(
+        project_id=project_id,
+        sprint_weeks=sprint_weeks,
+        reference_date=reference_date,
+        db=db,
+    )
+
+
 # =============================================================================
 # Helper function for analytics endpoint integration
 # =============================================================================
@@ -378,10 +394,9 @@ async def list_health_checks(
             base_query.order_by(TeamHealthCheck.check_date.desc()).offset(skip).limit(limit)
         )
 
-        # Execute in parallel
-        count_result, data_result = await asyncio.gather(
-            db.execute(count_query), db.execute(data_query)
-        )
+        # AsyncSession does not support concurrent operations on the same session.
+        count_result = await db.execute(count_query)
+        data_result = await db.execute(data_query)
 
         total = count_result.scalar() or 0
         checks = data_result.scalars().all()
@@ -509,6 +524,23 @@ async def get_health_summary(
         )
 
 
+@router.get("/health-summary", response_model=TeamHealthSummary)
+async def get_health_summary_legacy(
+    project_id: int = Query(..., ge=1),
+    period_days: Optional[int] = Query(None, ge=1, le=365),
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Backward-compatible alias for older clients using query-based health summary path.
+    """
+    resolved_limit = limit
+    if period_days is not None:
+        # Older clients pass period_days; map it to bounded sample count.
+        resolved_limit = max(1, min(50, period_days))
+    return await get_health_summary(project_id=project_id, limit=resolved_limit, db=db)
+
+
 # =============================================================================
 # CFD Snapshot Endpoints
 # =============================================================================
@@ -557,6 +589,26 @@ async def get_cfd_data(
             },
             status_labels=["Backlog", "To Do", "In Progress", "In Review", "Testing", "Done"],
         )
+
+
+@router.get("/cfd", response_model=CFDData)
+async def get_cfd_data_legacy(
+    project_id: int = Query(..., ge=1),
+    sprint_id: Optional[int] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Backward-compatible alias for older clients using query-based CFD path.
+    """
+    return await get_cfd_data(
+        project_id=project_id,
+        sprint_id=sprint_id,
+        start_date=start_date,
+        end_date=end_date,
+        db=db,
+    )
 
 
 @router.post("/cfd/snapshot", response_model=CFDSnapshotSchema)
@@ -732,3 +784,16 @@ async def get_flow_metrics(
             wip_trend=wip_trend,
             bottleneck_status=bottleneck,
         )
+
+
+@router.get("/flow-metrics", response_model=FlowMetrics)
+async def get_flow_metrics_legacy(
+    project_id: int = Query(..., ge=1),
+    sprint_id: Optional[int] = None,
+    days: int = Query(30, ge=7, le=90),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Backward-compatible alias for older clients using query-based flow metrics path.
+    """
+    return await get_flow_metrics(project_id=project_id, sprint_id=sprint_id, days=days, db=db)

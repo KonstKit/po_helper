@@ -51,6 +51,119 @@ import type {
 } from './types';
 import { normalizePaginatedResponse } from './pagination';
 
+const CONFIDENCE_RANGES = ['0.0-0.2', '0.2-0.4', '0.4-0.6', '0.6-0.8', '0.8-1.0'] as const;
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+
+const asFiniteNumber = (value: unknown, fallback = 0): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+
+const rangeMidpoint = (range: string): number => {
+  const [startRaw, endRaw] = range.split('-');
+  const start = Number(startRaw);
+  const end = Number(endRaw);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
+  return (start + end) / 2;
+};
+
+const toHistogram = (rawHistogram: unknown): { range: string; count: number }[] => {
+  if (Array.isArray(rawHistogram)) {
+    return rawHistogram.map((item) => {
+      const bucket = asRecord(item);
+      return {
+        range: String(bucket.range || ''),
+        count: asFiniteNumber(bucket.count, 0),
+      };
+    });
+  }
+
+  const histogramRecord = asRecord(rawHistogram);
+  return CONFIDENCE_RANGES.map((range) => ({
+    range,
+    count: asFiniteNumber(histogramRecord[range], 0),
+  }));
+};
+
+const normalizeConfidenceDistribution = (raw: unknown): ConfidenceDistribution => {
+  const payload = asRecord(raw);
+  const histogram = toHistogram(payload.histogram);
+  const totalFromHistogram = histogram.reduce((sum, item) => sum + item.count, 0);
+
+  const byLinkTypeRaw = asRecord(payload.by_link_type);
+  const byLinkType: Record<string, { count: number; avg_confidence: number }> = {};
+  let weightedConfidenceSum = 0;
+  let weightedConfidenceCount = 0;
+
+  Object.entries(byLinkTypeRaw).forEach(([linkType, value]) => {
+    const row = asRecord(value);
+    const count = asFiniteNumber(row.count, 0);
+    const avgFromField = row.avg_confidence;
+    const avg = typeof avgFromField === 'number' && Number.isFinite(avgFromField)
+      ? avgFromField
+      : asFiniteNumber(row.avg, 0);
+
+    byLinkType[linkType] = {
+      count,
+      avg_confidence: avg,
+    };
+
+    if (count > 0 && Number.isFinite(avg)) {
+      weightedConfidenceSum += avg * count;
+      weightedConfidenceCount += count;
+    }
+  });
+
+  const statsRaw = asRecord(payload.stats);
+  const totalLinks = asFiniteNumber(
+    statsRaw.total_links,
+    asFiniteNumber(payload.total, totalFromHistogram)
+  );
+  const avgConfidence = asFiniteNumber(
+    statsRaw.avg_confidence,
+    weightedConfidenceCount > 0 ? weightedConfidenceSum / weightedConfidenceCount : 0
+  );
+
+  const sortedHistogram = [...histogram].sort((a, b) => rangeMidpoint(a.range) - rangeMidpoint(b.range));
+  const scoredCount = sortedHistogram.reduce((sum, item) => sum + item.count, 0);
+  let medianConfidence = asFiniteNumber(statsRaw.median_confidence, 0);
+  if (medianConfidence === 0 && scoredCount > 0) {
+    const midpoint = scoredCount / 2;
+    let cumulative = 0;
+    for (const bucket of sortedHistogram) {
+      cumulative += bucket.count;
+      if (cumulative >= midpoint) {
+        medianConfidence = rangeMidpoint(bucket.range);
+        break;
+      }
+    }
+  }
+
+  let minConfidence = asFiniteNumber(statsRaw.min_confidence, 0);
+  let maxConfidence = asFiniteNumber(statsRaw.max_confidence, 0);
+  if (minConfidence === 0 && maxConfidence === 0) {
+    const nonZero = sortedHistogram.filter((item) => item.count > 0);
+    if (nonZero.length > 0) {
+      const [minRangeStartRaw] = nonZero[0].range.split('-');
+      const [, maxRangeEndRaw] = nonZero[nonZero.length - 1].range.split('-');
+      minConfidence = Number(minRangeStartRaw) || 0;
+      maxConfidence = Number(maxRangeEndRaw) || 0;
+    }
+  }
+
+  return {
+    histogram,
+    stats: {
+      total_links: totalLinks,
+      avg_confidence: avgConfidence,
+      median_confidence: medianConfidence,
+      min_confidence: minConfidence,
+      max_confidence: maxConfidence,
+    },
+    by_link_type: byLinkType,
+  };
+};
+
 // =============================================================================
 // Traceability Matrix
 // =============================================================================
@@ -237,7 +350,7 @@ export const getConfidenceDistribution = async (
     params,
     timeout: 30000,
   });
-  return data as ConfidenceDistribution;
+  return normalizeConfidenceDistribution(data);
 };
 
 export const recalculateLinkConfidence = async (
