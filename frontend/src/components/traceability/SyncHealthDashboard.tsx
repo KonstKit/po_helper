@@ -439,8 +439,8 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
       <Card
         sx={{
           mb: 3,
-          bgcolor: `${HEALTH_COLORS[healthData.health]}15`,
-          borderLeft: `4px solid ${HEALTH_COLORS[healthData.health]}`,
+          bgcolor: `${HEALTH_COLORS[String(healthData.health || 'unknown')]}15`,
+          borderLeft: `4px solid ${HEALTH_COLORS[String(healthData.health || 'unknown')]}`,
         }}
       >
         <CardContent>
@@ -451,7 +451,7 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
                   width: 80,
                   height: 80,
                   borderRadius: '50%',
-                  bgcolor: `${HEALTH_COLORS[healthData.health]}20`,
+                  bgcolor: `${HEALTH_COLORS[String(healthData.health || 'unknown')]}20`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -459,7 +459,7 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
               >
                 <Typography
                   variant="h4"
-                  sx={{ color: HEALTH_COLORS[healthData.health], fontWeight: 700 }}
+                  sx={{ color: HEALTH_COLORS[String(healthData.health || 'unknown')], fontWeight: 700 }}
                 >
                   {Math.round(healthData.health_score)}%
                 </Typography>
@@ -467,9 +467,12 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
             </Grid>
             <Grid item xs>
               <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-                {HEALTH_ICONS[healthData.health]}
+                {HEALTH_ICONS[String(healthData.health || 'unknown')]}
                 <Typography variant="h5" fontWeight={600}>
-                  System {healthData.health.charAt(0).toUpperCase() + healthData.health.slice(1)}
+                  {(() => {
+                    const status = typeof healthData.health === 'string' ? healthData.health : 'unknown';
+                    return `System ${status.charAt(0).toUpperCase()}${status.slice(1)}`;
+                  })()}
                 </Typography>
               </Stack>
               <Typography variant="body2" color="text.secondary">
