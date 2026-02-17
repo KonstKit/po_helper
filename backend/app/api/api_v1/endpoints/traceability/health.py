@@ -287,13 +287,11 @@ async def get_sync_health(
     if project_id is not None:
         repos_query = repos_query.where(ProjectRepository.project_id == project_id)
 
-    # Execute all queries in parallel using asyncio.gather
-    integrations_result, source_result, projects_result, repos_result = await asyncio.gather(
-        db.execute(integrations_query),
-        db.execute(source_counts_query),
-        db.execute(projects_query),
-        db.execute(repos_query),
-    )
+    # NOTE: AsyncSession is not safe for concurrent use; avoid asyncio.gather(db.execute(...)).
+    integrations_result = await db.execute(integrations_query)
+    source_result = await db.execute(source_counts_query)
+    projects_result = await db.execute(projects_query)
+    repos_result = await db.execute(repos_query)
 
     # Process results
     integrations = {row.kind: row for row in integrations_result.scalars().all()}
@@ -468,13 +466,11 @@ async def get_detailed_sync_health(
         Artifact.project_id == project_id, ~has_link
     )
 
-    # Execute all queries in parallel
-    type_source_result, link_result, repos_result, orphan_result = await asyncio.gather(
-        db.execute(type_source_query),
-        db.execute(link_query),
-        db.execute(repos_query),
-        db.execute(orphan_count_query),
-    )
+    # NOTE: AsyncSession is not safe for concurrent use; avoid asyncio.gather(db.execute(...)).
+    type_source_result = await db.execute(type_source_query)
+    link_result = await db.execute(link_query)
+    repos_result = await db.execute(repos_query)
+    orphan_result = await db.execute(orphan_count_query)
 
     # Process results
     type_source_counts = type_source_result.all()
