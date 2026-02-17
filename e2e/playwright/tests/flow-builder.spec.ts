@@ -96,8 +96,8 @@ test.describe('Flow Builder', () => {
   test.describe('Node Operations', () => {
     test('can drag source node from toolbox to canvas', async ({ page }) => {
       // Find a source node in toolbox
-      const sourceNode = page.getByText(/commit source/i)
-        .or(page.getByText(/git commits/i))
+      const sourceNode = page.getByText(/commit source|git commit/i)
+        .or(page.getByText(/git commits|git commit/i))
         .first();
 
       // Get canvas position
@@ -125,8 +125,8 @@ test.describe('Flow Builder', () => {
 
       if (canvasBounds) {
         // Add source node
-        const sourceNode = page.getByText(/commit source/i)
-          .or(page.getByText(/git commits/i))
+        const sourceNode = page.getByText(/commit source|git commit/i)
+          .or(page.getByText(/git commits|git commit/i))
           .first();
         await sourceNode.dragTo(canvas, {
           targetPosition: { x: 100, y: 100 },
@@ -152,8 +152,8 @@ test.describe('Flow Builder', () => {
 
       if (canvasBounds) {
         // Add a node first
-        const sourceNode = page.getByText(/jira.*source/i)
-          .or(page.getByText(/jira issues/i))
+        const sourceNode = page.getByText(/jira.*source|jira issue/i)
+          .or(page.getByText(/jira issues|jira issue/i))
           .first();
         await sourceNode.dragTo(canvas, {
           targetPosition: { x: 200, y: 200 },
@@ -179,7 +179,7 @@ test.describe('Flow Builder', () => {
 
       if (canvasBounds) {
         // Add source node
-        const sourceNode = page.getByText(/commit source/i).first();
+        const sourceNode = page.getByText(/commit source|git commit/i).first();
         await sourceNode.dragTo(canvas, {
           targetPosition: { x: 100, y: 200 },
         });
@@ -231,7 +231,7 @@ test.describe('Flow Builder', () => {
 
       if (canvasBounds) {
         // Create a valid flow: source -> action
-        const sourceNode = page.getByText(/commit source/i).first();
+        const sourceNode = page.getByText(/commit source|git commit/i).first();
         await sourceNode.dragTo(canvas, { targetPosition: { x: 100, y: 200 } });
 
         const actionNode = page.getByText(/create link/i).first();
@@ -278,7 +278,7 @@ test.describe('Flow Builder', () => {
         await nameInput.fill('E2E Test Rule');
 
         // Add a minimal valid flow
-        const sourceNode = page.getByText(/commit source/i).first();
+        const sourceNode = page.getByText(/commit source|git commit/i).first();
         await sourceNode.dragTo(canvas, { targetPosition: { x: 100, y: 200 } });
 
         const actionNode = page.getByText(/create link/i).first();
