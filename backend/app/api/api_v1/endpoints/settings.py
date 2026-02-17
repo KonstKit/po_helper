@@ -207,7 +207,10 @@ async def test_jira_connection(
 
 
 @router.get("/confluence", response_model=IntegrationSettings)
-async def get_confluence_settings(db: AsyncSession = Depends(get_db)):
+async def get_confluence_settings(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_VIEW)),
+):
     row = await _get_integration(db, "confluence")
     if row:
         return {
@@ -228,7 +231,9 @@ async def get_confluence_settings(db: AsyncSession = Depends(get_db)):
 
 @router.put("/confluence", response_model=IntegrationSettings)
 async def put_confluence_settings(
-    payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
+    payload: IntegrationSettingsBase,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE)),
 ):
     row = await _get_integration(db, "confluence")
     base_url = payload.base_url if payload.base_url is not None else (row.base_url if row else None)
@@ -295,7 +300,9 @@ async def put_confluence_settings(
 
 @router.post("/confluence/test")
 async def test_confluence_connection(
-    payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
+    payload: IntegrationSettingsBase,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE)),
 ):
     """Test Confluence connectivity using provided or stored credentials."""
     row = await _get_integration(db, "confluence")
@@ -366,7 +373,10 @@ async def test_confluence_connection(
 
 
 @router.post("/confluence/reload")
-async def reload_confluence_settings(db: AsyncSession = Depends(get_db)):
+async def reload_confluence_settings(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE)),
+):
     """Reload Confluence settings from database and reconnect"""
     row = await _get_integration(db, "confluence")
     if not row or not row.base_url or not row.api_token:
@@ -395,7 +405,10 @@ async def reload_confluence_settings(db: AsyncSession = Depends(get_db)):
 
 # ---- GitHub settings ----
 @router.get("/github", response_model=IntegrationSettings)
-async def get_github_settings(db: AsyncSession = Depends(get_db)):
+async def get_github_settings(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_VIEW)),
+):
     row = await _get_integration(db, "github")
     if row:
         # If token stored as encrypted JSON bundle, we still mask it
@@ -418,7 +431,11 @@ async def get_github_settings(db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/github", response_model=IntegrationSettings)
-async def put_github_settings(payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)):
+async def put_github_settings(
+    payload: IntegrationSettingsBase,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE)),
+):
     row = await _get_integration(db, "github")
     token_present = bool(payload.api_token or payload.webhook_secret) or bool(
         row.api_token if row else None
@@ -462,7 +479,9 @@ async def put_github_settings(payload: IntegrationSettingsBase, db: AsyncSession
 
 @router.post("/github/test")
 async def test_github_connection(
-    payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
+    payload: IntegrationSettingsBase,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE)),
 ):
     row = await _get_integration(db, "github")
     base_url = payload.base_url or (row.base_url if row and row.base_url else None)
