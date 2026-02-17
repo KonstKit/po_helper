@@ -30,7 +30,8 @@ export const ruleTemplates: RuleTemplate[] = [
           filters: {
             branch: '',
             author: '',
-            after_date: '',
+            date_from: '',
+            date_to: '',
           },
         },
       },
@@ -84,7 +85,8 @@ export const ruleTemplates: RuleTemplate[] = [
           filters: {
             branch: '',
             author: '',
-            after_date: '',
+            date_from: '',
+            date_to: '',
           },
         },
       },
@@ -95,7 +97,7 @@ export const ruleTemplates: RuleTemplate[] = [
         data: {
           label: 'Extract Story Keys',
           config: {
-            search_in: ['message', 'branch_name'],
+            search_in: ['message', 'branch'],
             pattern: '\\b[A-Z][A-Z0-9_]+-[0-9]+\\b',
             case_sensitive: false,
             must_be_uppercase: true,
@@ -189,7 +191,8 @@ export const ruleTemplates: RuleTemplate[] = [
           filters: {
             branch: 'dev',
             author: '',
-            after_date: '2025-01-01',
+            date_from: '2025-01-01',
+            date_to: '',
           },
         },
       },
@@ -200,7 +203,7 @@ export const ruleTemplates: RuleTemplate[] = [
         data: {
           label: 'Extract Keys',
           config: {
-            search_in: ['message', 'branch_name'],
+            search_in: ['message', 'branch'],
             pattern: '\\b[A-Z][A-Z0-9_]+-[0-9]+\\b',
             case_sensitive: false,
             must_be_uppercase: true,

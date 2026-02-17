@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.core.celery_app import celery_app
@@ -226,38 +226,60 @@ def scheduled_rule_execution_task() -> Dict[str, Any]:
     from croniter import croniter
 
     logger.info("Checking scheduled rules")
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     executed = []
 
     with SessionLocal() as db:
-        # Get rules with cron schedules
+        # Get enabled rules with active scheduling policy
         stmt = select(TraceabilityRule).where(
             TraceabilityRule.enabled.is_(True),
-            TraceabilityRule.cron_expression.isnot(None),
+            TraceabilityRule.schedule_enabled.is_(True),
+            TraceabilityRule.schedule_cron.isnot(None),
         )
         rules = db.execute(stmt).scalars().all()
+        changed = False
 
         for rule in rules:
             try:
-                cron = croniter(rule.cron_expression, rule.last_executed_at or now)
-                next_run = cron.get_next(datetime)
+                # First-time setup: schedule exists but next run has not been calculated yet.
+                if rule.next_scheduled_run is None:
+                    cron = croniter(rule.schedule_cron, now)
+                    rule.next_scheduled_run = cron.get_next(datetime)
+                    changed = True
+                    continue
 
-                # If next run is in the past (or now), execute
+                next_run = rule.next_scheduled_run
+                if next_run.tzinfo is None:
+                    next_run = next_run.replace(tzinfo=timezone.utc)
+
+                # If next run is now or in the past, execute and move pointer forward.
                 if next_run <= now:
                     logger.info("Executing scheduled rule %d: %s", rule.id, rule.name)
                     execute_rule_task.delay(rule.id)
+
+                    cron = croniter(rule.schedule_cron, now)
+                    rule.next_scheduled_run = cron.get_next(datetime)
+                    changed = True
+
                     executed.append({
                         "rule_id": rule.id,
                         "rule_name": rule.name,
-                        "cron": rule.cron_expression,
+                        "schedule_cron": rule.schedule_cron,
                     })
 
             except Exception as e:
+                # Invalid cron/config should not create infinite error loops.
                 logger.error(
                     "Error checking schedule for rule %d: %s",
                     rule.id,
                     e,
                 )
+                rule.schedule_enabled = False
+                rule.next_scheduled_run = None
+                changed = True
+
+        if changed:
+            db.commit()
 
     return {
         "checked_at": now.isoformat(),

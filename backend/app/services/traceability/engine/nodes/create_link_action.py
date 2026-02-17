@@ -21,6 +21,18 @@ class CreateLinkActionExecutor(NodeExecutor):
 
         link_type = config.get("link_type", "relates_to")
         bidirectional = config.get("bidirectional", False)
+        configured_reverse_type = config.get("reverse_link_type")
+        reverse_link_type = None
+
+        if bidirectional:
+            reverse_link_type, used_fallback = self._resolve_reverse_link_type(
+                link_type, configured_reverse_type
+            )
+            if used_fallback:
+                context.add_warning(
+                    f"CreateLinkAction: reverse_link_type not provided for '{link_type}', "
+                    f"using fallback '{reverse_link_type}'"
+                )
 
         incoming = context.incoming_edges.get(node["id"], [])
 
@@ -30,7 +42,9 @@ class CreateLinkActionExecutor(NodeExecutor):
 
         if len(incoming) == 1:
             artifacts = context.get_input_artifacts(node["id"])
-            self._create_self_links(artifacts, link_type, bidirectional, context)
+            self._create_self_links(
+                artifacts, link_type, bidirectional, reverse_link_type, context
+            )
         elif len(incoming) == 2:
             source_edge = incoming[0]
             target_edge = incoming[1]
@@ -39,7 +53,12 @@ class CreateLinkActionExecutor(NodeExecutor):
             target_artifacts = self._get_artifacts_by_edge(target_edge, context)
 
             self._create_cross_links(
-                source_artifacts, target_artifacts, link_type, bidirectional, context
+                source_artifacts,
+                target_artifacts,
+                link_type,
+                bidirectional,
+                reverse_link_type,
+                context,
             )
         else:
             source_edge = incoming[0]
@@ -48,7 +67,12 @@ class CreateLinkActionExecutor(NodeExecutor):
             for i in range(1, len(incoming)):
                 target_artifacts = self._get_artifacts_by_edge(incoming[i], context)
                 self._create_cross_links(
-                    source_artifacts, target_artifacts, link_type, bidirectional, context
+                    source_artifacts,
+                    target_artifacts,
+                    link_type,
+                    bidirectional,
+                    reverse_link_type,
+                    context,
                 )
 
         return []
@@ -74,14 +98,14 @@ class CreateLinkActionExecutor(NodeExecutor):
         artifacts: List[Artifact],
         link_type: str,
         bidirectional: bool,
+        reverse_link_type: str | None,
         context: ExecutionContext,
     ) -> None:
         for i, source in enumerate(artifacts):
             for target in artifacts[i + 1 :]:
                 self._create_link(source, target, link_type, context)
                 if bidirectional:
-                    reverse_type = self._get_reverse_link_type(link_type)
-                    self._create_link(target, source, reverse_type, context)
+                    self._create_link(target, source, reverse_link_type or link_type, context)
 
     def _create_cross_links(
         self,
@@ -89,14 +113,14 @@ class CreateLinkActionExecutor(NodeExecutor):
         targets: List[Artifact],
         link_type: str,
         bidirectional: bool,
+        reverse_link_type: str | None,
         context: ExecutionContext,
     ) -> None:
         for source in sources:
             for target in targets:
                 self._create_link(source, target, link_type, context)
                 if bidirectional:
-                    reverse_type = self._get_reverse_link_type(link_type)
-                    self._create_link(target, source, reverse_type, context)
+                    self._create_link(target, source, reverse_link_type or link_type, context)
 
     def _create_link(
         self,
@@ -189,9 +213,17 @@ class CreateLinkActionExecutor(NodeExecutor):
 
         return max(0.0, min(1.0, confidence))
 
+    def _resolve_reverse_link_type(
+        self, link_type: str, configured_reverse_type: str | None
+    ) -> tuple[str, bool]:
+        configured = (configured_reverse_type or "").strip()
+        if configured:
+            return configured, False
+        return REVERSE_LINK_TYPES.get(link_type, f"reverse_{link_type}"), True
+
     def _get_reverse_link_type(self, link_type: str) -> str:
-        """Get reverse link type using unified mapping from LinkService."""
-        return REVERSE_LINK_TYPES.get(link_type, f"reverse_{link_type}")
+        """Backward-compatible helper kept for existing tests/imports."""
+        return self._resolve_reverse_link_type(link_type, None)[0]
 
     def _would_create_cycle(
         self,

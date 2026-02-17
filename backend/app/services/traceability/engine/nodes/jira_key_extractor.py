@@ -12,6 +12,23 @@ from app.services.traceability.engine.validators import InputValidator
 class JiraKeyExtractorExecutor(NodeExecutor):
     """Выполнение Processor Node: Jira Key Extractor."""
 
+    @staticmethod
+    def _normalize_search_fields(raw_fields: Any) -> List[str]:
+        """Normalize search field aliases to canonical names."""
+        if not isinstance(raw_fields, list):
+            raw_fields = [raw_fields]
+
+        normalized: List[str] = []
+        for field in raw_fields:
+            if field == "branch_name":
+                normalized.append("branch")
+            elif field == "body":
+                normalized.append("description")
+            else:
+                normalized.append(field)
+
+        return normalized
+
     def execute(self, node: Dict[str, Any], context: ExecutionContext) -> List[Artifact]:
         data = node.get("data", {})
         config = data.get("config", {})
@@ -19,9 +36,7 @@ class JiraKeyExtractorExecutor(NodeExecutor):
         input_artifacts = context.get_input_artifacts(node["id"])
 
         try:
-            search_in = config.get("search_in", ["message"])
-            if not isinstance(search_in, list):
-                search_in = [search_in]
+            search_in = self._normalize_search_fields(config.get("search_in", ["message"]))
             search_in = InputValidator.validate_list_of_strings(
                 search_in,
                 "search_in",
@@ -65,6 +80,11 @@ class JiraKeyExtractorExecutor(NodeExecutor):
 
     def _get_field_value(self, artifact: Artifact, field: str) -> Optional[str]:
         """Получить значение поля из артефакта."""
+        if field == "branch_name":
+            field = "branch"
+        elif field == "body":
+            field = "description"
+
         meta = artifact.meta or {}
         if field == "message" and artifact.type == "commit":
             return meta.get("message")

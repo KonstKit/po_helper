@@ -105,11 +105,16 @@ class RuleExecutionEngine:
         else:
             links_created_count = len(context.links_created)
 
+        links_updated_count = 0  # Reserved for future link update behavior.
+        artifacts_processed_count = len(context.processed_artifact_ids)
+
         # Create execution record (after potential rollback, in a new mini-transaction)
         execution = TraceabilityRuleExecution(
             rule_id=rule_id,
             status="success" if not has_errors else "failed",
             links_created=links_created_count,
+            links_updated=links_updated_count,
+            artifacts_processed=artifacts_processed_count,
             completed_at=datetime.utcnow(),
             error_message="; ".join(context.errors) if context.errors else None,
             error_details={
@@ -135,6 +140,8 @@ class RuleExecutionEngine:
             "execution_id": execution.id,
             "status": execution.status,
             "links_created": links_created_count,
+            "links_updated": links_updated_count,
+            "artifacts_processed": artifacts_processed_count,
             "errors": context.errors,
             "warnings": context.warnings,
             "rolled_back": atomic and has_errors,
