@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 from app.core.config import settings
@@ -28,7 +28,7 @@ from app.core.mfa import (
     generate_backup_codes,
     hash_backup_codes,
 )
-from app.models import User
+from app.models import User, Role
 from app.schemas.user import Token, UserCreate, User as UserSchema
 from app.utils import execute_with_lock
 from app.api.deps import get_current_user
@@ -36,6 +36,19 @@ from app.api.deps import get_current_user
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+async def _get_default_role(db: AsyncSession, is_first_user: bool) -> Role | None:
+    """Resolve bootstrap role for newly created users."""
+    preferred_role = "admin" if is_first_user else "po"
+    result = await db.execute(select(Role).where(Role.name == preferred_role))
+    role = result.scalar_one_or_none()
+
+    if role is None:
+        fallback = await db.execute(select(Role).where(Role.name == "viewer"))
+        role = fallback.scalar_one_or_none()
+
+    return role
 
 
 @router.post("/login")
@@ -94,10 +107,10 @@ async def login(
 
 @router.post("/register", response_model=UserSchema)
 async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)) -> Any:
-    """Register new user"""
+    """Register a new user with a default role."""
+    user: User | None = None
     try:
         async with db.begin():
-            # Pre-flight unique checks with optional row-level lock
             sel_email = select(User).where(User.email == user_in.email)
             if (await execute_with_lock(db, sel_email)).scalar_one_or_none():
                 raise HTTPException(status_code=400, detail="User with this email already exists")
@@ -108,7 +121,10 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)) -> A
                     status_code=400, detail="User with this username already exists"
                 )
 
-            # Create new user — never allow client to self-assign superuser
+            users_count_result = await db.execute(select(func.count(User.id)))
+            is_first_user = (users_count_result.scalar_one() or 0) == 0
+            default_role = await _get_default_role(db, is_first_user=is_first_user)
+
             user = User(
                 email=user_in.email,
                 username=user_in.username,
@@ -117,16 +133,24 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)) -> A
                 is_active=True,
                 is_superuser=False,
             )
+            if default_role is not None:
+                user.roles = [default_role]
             db.add(user)
-        await db.refresh(user)
+            await db.flush()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
             status_code=400, detail="User with this email or username already exists"
         )
 
-    return user
+    if user is None:
+        raise HTTPException(status_code=500, detail="Failed to create user")
 
+    result = await db.execute(
+        select(User).options(selectinload(User.roles)).where(User.id == user.id)
+    )
+    user_with_roles = result.scalar_one()
+    return user_with_roles
 
 # =============================================================================
 # OAuth2 SSO Endpoints
@@ -362,7 +386,14 @@ async def _process_oauth_login(db: AsyncSession, user_info: OAuth2UserInfo) -> U
         avatar_url=user_info.picture,
     )
 
+    users_count_result = await db.execute(select(func.count(User.id)))
+    is_first_user = (users_count_result.scalar_one() or 0) == 0
+    default_role = await _get_default_role(db, is_first_user=is_first_user)
+
+    if default_role is not None:
+        new_user.roles = [default_role]
     db.add(new_user)
+    await db.flush()
     await db.commit()
     await db.refresh(new_user, attribute_names=["roles"])
     logger.info(f"OAuth login: created new user {new_user.email} via {user_info.provider}")
@@ -672,3 +703,4 @@ async def verify_mfa_login(
     logger.info(f"MFA login completed for user {email}")
 
     return Token(access_token=access_token, token_type="bearer")
+

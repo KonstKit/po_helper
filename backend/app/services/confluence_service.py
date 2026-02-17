@@ -2,7 +2,9 @@ import logging
 import time
 from typing import Optional, Dict, Any, List
 import re
+import html
 from dataclasses import dataclass
+from urllib.parse import quote
 import requests
 from requests.auth import HTTPBasicAuth
 from app.core.config import settings
@@ -418,57 +420,53 @@ class ConfluenceService:
     def list_spaces(self, q: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
         if not self.base_url:
             return []
-        params: Dict[str, str | int | float | bool | None] = {"limit": int(limit)}
-        if q:
-            # Confluence REST supports 'q' search on /space for name/key
-            params["q"] = str(q)
-        for ver in ("latest", "2"):
-            url = f"{self.base_url}/rest/api/{ver}/space"
-            try:
-                logger.info(
-                    "Requesting spaces: url=%s, headers=%s, auth=%s",
-                    url,
-                    redact_headers(self._headers()),
-                    "Basic" if self.auth else "Bearer",
-                )
-                r = self._request_with_retry(
-                    url,
-                    params=params,
-                    headers=self._headers(),
-                    auth=self.auth,
-                    timeout=30,
-                    allow_redirects=False,
-                )
-                logger.info(
-                    "Response status=%s, location=%s",
-                    r.status_code,
-                    r.headers.get("Location", "none"),
-                )
+        query = (q or "").strip()
+        query_lower = query.lower()
 
-                # Handle redirects
-                if r.status_code == 302:
-                    location = r.headers.get("Location", "")
-                    if "/login" in location:
-                        logger.error("Got redirect to login page - authentication failed")
-                        logger.error("Headers sent: %s", redact_headers(self._headers()))
-                        logger.error("Auth mode: %s", "Basic" if self.auth else "Bearer")
-                    else:
-                        logger.error("Got redirect to: %s", location)
-                    continue
+        def _relevance(item: Dict[str, Any]) -> tuple[int, str, str]:
+            key = str(item.get("key") or "")
+            name = str(item.get("name") or "")
+            key_l = key.lower()
+            name_l = name.lower()
+            if not query_lower:
+                return (5, key_l, name_l)
+            if key_l == query_lower:
+                return (0, key_l, name_l)
+            if name_l == query_lower:
+                return (1, key_l, name_l)
+            if key_l.startswith(query_lower):
+                return (2, key_l, name_l)
+            if name_l.startswith(query_lower):
+                return (3, key_l, name_l)
+            if query_lower in key_l:
+                return (4, key_l, name_l)
+            if query_lower in name_l:
+                return (5, key_l, name_l)
+            return (9, key_l, name_l)
 
-                if r.status_code == 401 or r.status_code == 403:
-                    logger.error("Authentication failed: %s", r.text[:200])
-                r.raise_for_status()
-                # Log first 500 chars of response to debug HTML vs JSON
-                logger.info("Response content preview: %s", r.text[:500] if r.text else "empty")
-                data = r.json()
-                items = data.get("results") or data.get("spaces") or []
-                logger.info("Found %d spaces in response", len(items))
-                spaces: List[Dict[str, Any]] = []
-                for s in items:
-                    links = s.get("_links", {})
-                    spaces.append(
-                        {
+        def _matches(item: Dict[str, Any]) -> bool:
+            if not query_lower:
+                return True
+            score = _relevance(item)[0]
+            return score < 9
+
+        if query:
+            # Fast path for exact space key lookups (common case in UI).
+            for ver in ("latest", "2"):
+                exact_url = f"{self.base_url}/rest/api/{ver}/space/{quote(query, safe='')}"
+                try:
+                    r = self._request_with_retry(
+                        exact_url,
+                        headers=self._headers(),
+                        auth=self.auth,
+                        timeout=10,
+                        allow_redirects=False,
+                        max_retries=0,
+                    )
+                    if r.status_code == 200:
+                        s = r.json() or {}
+                        links = s.get("_links", {})
+                        exact_space = {
                             "id": s.get("id") or s.get("spaceId"),
                             "key": s.get("key"),
                             "name": s.get("name"),
@@ -478,8 +476,108 @@ class ConfluenceService:
                             if self.base_url
                             else links.get("webui"),
                         }
+                        if _matches(exact_space):
+                            return [exact_space]
+                except Exception:
+                    continue
+
+        for ver in ("latest", "2"):
+            url = f"{self.base_url}/rest/api/{ver}/space"
+            try:
+                spaces: List[Dict[str, Any]] = []
+                request_limit = max(25, min(100, int(limit) if int(limit) > 0 else 50))
+                max_scan = (
+                    max(200, request_limit * 10)
+                    if query_lower
+                    else max(int(limit), request_limit)
+                )
+                scanned = 0
+                start_at = 0
+
+                while scanned < max_scan:
+                    params: Dict[str, str | int | float | bool | None] = {
+                        "limit": request_limit,
+                        "start": start_at,
+                    }
+                    if query:
+                        # Some Confluence instances ignore q for /space, so we still
+                        # apply local filtering below.
+                        params["q"] = query
+
+                    logger.info(
+                        "Requesting spaces: url=%s start=%s limit=%s headers=%s auth=%s",
+                        url,
+                        start_at,
+                        request_limit,
+                        redact_headers(self._headers()),
+                        "Basic" if self.auth else "Bearer",
                     )
-                return spaces
+                    r = self._request_with_retry(
+                        url,
+                        params=params,
+                        headers=self._headers(),
+                        auth=self.auth,
+                        timeout=30,
+                        allow_redirects=False,
+                    )
+                    logger.info(
+                        "Response status=%s, location=%s",
+                        r.status_code,
+                        r.headers.get("Location", "none"),
+                    )
+
+                    # Handle redirects
+                    if r.status_code == 302:
+                        location = r.headers.get("Location", "")
+                        if "/login" in location:
+                            logger.error("Got redirect to login page - authentication failed")
+                            logger.error("Headers sent: %s", redact_headers(self._headers()))
+                            logger.error("Auth mode: %s", "Basic" if self.auth else "Bearer")
+                        else:
+                            logger.error("Got redirect to: %s", location)
+                        break
+
+                    if r.status_code == 401 or r.status_code == 403:
+                        logger.error("Authentication failed: %s", r.text[:200])
+                    r.raise_for_status()
+                    # Log first 500 chars of response to debug HTML vs JSON
+                    logger.info("Response content preview: %s", r.text[:500] if r.text else "empty")
+                    data = r.json()
+                    items = data.get("results") or data.get("spaces") or []
+                    if not isinstance(items, list):
+                        items = []
+                    logger.info("Found %d spaces in response page", len(items))
+
+                    if not items:
+                        break
+
+                    scanned += len(items)
+                    for s in items:
+                        links = s.get("_links", {})
+                        space = {
+                            "id": s.get("id") or s.get("spaceId"),
+                            "key": s.get("key"),
+                            "name": s.get("name"),
+                            "type": s.get("type"),
+                            "status": s.get("status"),
+                            "url": f"{self.base_url}{links.get('webui', '')}"
+                            if self.base_url
+                            else links.get("webui"),
+                        }
+                        if _matches(space):
+                            spaces.append(space)
+
+                    # Stop early when enough data collected
+                    if len(spaces) >= int(limit) and not query_lower:
+                        break
+                    if len(spaces) >= int(limit) and query_lower:
+                        break
+                    if len(items) < request_limit:
+                        break
+                    start_at += len(items)
+
+                spaces.sort(key=_relevance)
+                return spaces[: int(limit)]
             except Exception as e:
                 logger.warning("list_spaces failed ver=%s: %s", ver, e)
                 if hasattr(e, "response") and e.response is not None:
@@ -532,7 +630,8 @@ class ConfluenceService:
                 combined.append(f"({token_clause})")
             if any_title_clause:
                 combined.append(f"({any_title_clause})")
-            cql_parts.append(" OR ".join(combined))
+            # Keep OR-branches grouped under the same type/space constraints.
+            cql_parts.append(f"({' OR '.join(combined)})")
             cql = " AND ".join(cql_parts) + " ORDER BY lastmodified DESC"
             # For /search we can also support pagination via 'start'
             results = []
@@ -566,17 +665,33 @@ class ConfluenceService:
                 if results:
                     break
             pages: List[Dict[str, Any]] = []
+            def _clean_search_title(value: Optional[str]) -> Optional[str]:
+                if value is None:
+                    return None
+                cleaned = html.unescape(str(value))
+                cleaned = re.sub(r"@+hl@+|@+endhl@+", "", cleaned, flags=re.IGNORECASE)
+                cleaned = re.sub(r"\s+", " ", cleaned).strip()
+                return cleaned
+
             for it in results:
                 # Different schemas: directly with id/title or nested under 'content'
                 content = it.get("content") if isinstance(it, dict) else None
                 cid = (it.get("id") if isinstance(it, dict) else None) or (content or {}).get("id")
-                title = it.get("title") or (content or {}).get("title")
+                title = _clean_search_title(it.get("title") or (content or {}).get("title"))
                 it_type = it.get("type") or (content or {}).get("type")
                 space_key = None
                 s_obj = it.get("space") or (content or {}).get("space")
                 if isinstance(s_obj, dict):
                     space_key = s_obj.get("key")
                 links = it.get("_links", {}) or (content or {}).get("_links", {})
+                webui = links.get("webui")
+                # Search endpoint may omit 'space', derive from URL path when possible.
+                if not space_key and isinstance(webui, str):
+                    m = re.search(r"/spaces/([^/]+)/", webui) or re.search(
+                        r"/display/([^/]+)/", webui
+                    )
+                    if m:
+                        space_key = m.group(1)
                 version_obj = it.get("version") or (content or {}).get("version") or {}
                 history_obj = it.get("history") or (content or {}).get("history") or {}
                 last_updated = version_obj.get("when") or (
@@ -595,8 +710,10 @@ class ConfluenceService:
                         "last_updated": last_updated,
                     }
                 )
-            # Filter out items without IDs to avoid downstream errors
-            return [p for p in pages if p.get("id")]
+            # Keep page-like results only and avoid downstream errors on empty IDs.
+            return [
+                p for p in pages if p.get("id") and str(p.get("type", "")).lower() == "page"
+            ]
         # Otherwise list content by space (or all) via /content
         for ver in ("latest", "2"):
             url = f"{self.base_url}/rest/api/{ver}/content"

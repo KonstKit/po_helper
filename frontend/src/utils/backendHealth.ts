@@ -49,6 +49,8 @@ class BackendHealthMonitor {
    * Manually check backend health
    */
   async checkHealth(): Promise<BackendHealthStatus> {
+    const wasHealthy = this.status.isHealthy;
+
     try {
       // Increased timeout to handle backend during heavy operations (like Jira sync)
       const response = await api.get('/v1/health/', {
@@ -63,7 +65,7 @@ class BackendHealthMonitor {
         };
 
         // Notify recovery if was previously unhealthy
-        if (!this.status.isHealthy) {
+        if (!wasHealthy) {
           this.notifyHealthChange(true);
         }
       } else {

@@ -29,6 +29,59 @@ const api = axios.create({
   timeout: 15000,
 });
 
+const SESSION_ERROR_SNIPPETS = [
+  "not authenticated",
+  "could not validate credentials",
+  "invalid token",
+  "token expired",
+  "session expired",
+  "user not found",
+  "invalid or expired temporary token",
+];
+
+const getStringHeader = (
+  headers: unknown,
+  key: string,
+): string => {
+  if (!headers || typeof headers !== "object") return "";
+  const record = headers as Record<string, unknown>;
+  const value = record[key] ?? record[key.toLowerCase()] ?? record[key.toUpperCase()];
+  return typeof value === "string" ? value : "";
+};
+
+const getErrorDetail = (error: unknown): string => {
+  if (!error || typeof error !== "object") return "";
+  const response = (error as { response?: unknown }).response;
+  if (!response || typeof response !== "object") return "";
+  const data = (response as { data?: unknown }).data;
+  if (!data || typeof data !== "object") return "";
+  const detail = (data as { detail?: unknown }).detail;
+  return typeof detail === "string" ? detail : "";
+};
+
+const shouldInvalidateSession = (error: unknown): boolean => {
+  if (!error || typeof error !== "object") return false;
+  const response = (error as { response?: { headers?: unknown } }).response;
+  const headers = response?.headers;
+  const authHeader = getStringHeader(headers, "www-authenticate").toLowerCase();
+  const detail = getErrorDetail(error).toLowerCase();
+  const matchesSessionDetail = SESSION_ERROR_SNIPPETS.some((snippet) => detail.includes(snippet));
+
+  // Some backends return only a Bearer challenge without a structured error body.
+  // Do not invalidate a session based solely on a Bearer challenge if we have a
+  // non-session error detail (e.g. integration auth failures).
+  if (matchesSessionDetail) return true;
+  return authHeader.includes("bearer") && detail.length === 0;
+};
+
+const isCanceledError = (error: unknown): boolean => {
+  if (axios.isCancel(error)) return true;
+  if (!error || typeof error !== "object") return false;
+  const code = (error as { code?: unknown }).code;
+  const name = (error as { name?: unknown }).name;
+  return code === "ERR_CANCELED" || name === "CanceledError";
+};
+
 // Request interceptor: inject auth token
 api.interceptors.request.use((config) => {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -45,6 +98,12 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Ignore intentionally canceled requests (AbortController/navigation).
+    // They are expected control flow and not backend availability issues.
+    if (isCanceledError(error)) {
+      return Promise.reject(error);
+    }
+
     // Handle timeout errors
     if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
       console.error("Backend timeout - server may be unresponsive");
@@ -75,8 +134,9 @@ api.interceptors.response.use(
       }
     }
 
-    // Handle 401 Unauthorized - clear token and emit auth error
-    if (error.response?.status === 401) {
+    // Handle session-related 401 Unauthorized only.
+    // Integration checks may return 401 from external systems and must not logout the user.
+    if (error.response?.status === 401 && shouldInvalidateSession(error)) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('token');
         window.dispatchEvent(
