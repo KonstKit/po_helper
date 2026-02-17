@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -115,7 +115,7 @@ class RuleExecutionEngine:
             links_created=links_created_count,
             links_updated=links_updated_count,
             artifacts_processed=artifacts_processed_count,
-            completed_at=datetime.utcnow(),
+            completed_at=datetime.now(timezone.utc),
             error_message="; ".join(context.errors) if context.errors else None,
             error_details={
                 "errors": context.errors,
@@ -132,7 +132,7 @@ class RuleExecutionEngine:
             rule.successful_executions += 1
         else:
             rule.failed_executions += 1
-        rule.last_executed_at = datetime.utcnow()
+        rule.last_executed_at = datetime.now(timezone.utc)
 
         self.db.commit()
 
