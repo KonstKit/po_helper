@@ -1,8 +1,8 @@
-﻿---
+---
 level: 3
 file_id: plan_25
 parent: plan_24
-status: pending
+status: completed
 created: 2026-02-16 20:55
 estimated_time: 360 minutes
 ---

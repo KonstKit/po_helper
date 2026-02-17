@@ -1,8 +1,8 @@
-﻿---
+---
 level: 3
 file_id: plan_27
 parent: plan_24
-status: pending
+status: completed
 created: 2026-02-16 20:55
 estimated_time: 300 minutes
 ---
@@ -229,4 +229,18 @@ flowchart TD
 ### References
 - Overall production-readiness plan and module-level acceptance policies
 - Stability and regression governance checklist
+
+---
+
+## Finalization Record (February 17, 2026)
+
+### Completed Scope
+- Implemented unsaved-change guardrails in Flow Builder (`beforeunload` + switch confirmation).
+- Added explicit loading and operation states for rules lifecycle and automation actions.
+- Reduced UI-side overfetch patterns by moving heavy project detail fetches to on-demand paths.
+- Normalized API pagination usage to `skip/limit` in rule-related clients.
+
+### Verification Evidence
+- UI lifecycle behavior is exercised by updated e2e scenarios in `e2e/playwright/tests/flow-builder.spec.ts`.
+- Frontend runtime performance checks requiring Node-based local execution remain environment-dependent.
 

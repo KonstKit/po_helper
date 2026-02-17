@@ -1,8 +1,8 @@
-﻿---
+---
 level: 2
 file_id: plan_24
 parent: plan_15
-status: pending
+status: completed
 created: 2026-02-16 20:55
 children: [plan_25, plan_26, plan_27]
 ---

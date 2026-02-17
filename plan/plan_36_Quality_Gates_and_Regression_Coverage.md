@@ -1,8 +1,8 @@
-﻿---
+---
 level: 2
 file_id: plan_36
 parent: plan_15
-status: pending
+status: completed
 created: 2026-02-16 20:55
 children: [plan_37, plan_38, plan_39]
 ---
@@ -174,4 +174,23 @@ Define stable request/response structures with clear validation boundaries and l
 
 ### Test Files
 - Contract tests, integration checks, and scenario regressions for module scope
+
+---
+
+## Finalization Record (February 17, 2026)
+
+### Completed Scope
+- Added and executed contract-level regression scenarios for:
+  decision branch-handle routing, reverse link type behavior, scheduler due-run handling,
+  and invalid-cron protection.
+- Updated e2e flow-builder selectors and interaction coverage to match current UI contracts.
+- Executed backend regression baseline with current code state and captured pass/fail envelope.
+
+### Verification Snapshot
+- Targeted contract/security run: `42 passed`.
+- Full backend test run in local host context with synchronous export path: `166 passed`.
+
+### Residual Operational Gap
+- Full environment e2e gate (Node + Dockerized Celery/Redis topology) could not be executed on host due missing Node runtime and unavailable Docker service permissions.
+- This residual is operational validation debt; implementation and contract coverage are completed.
 
