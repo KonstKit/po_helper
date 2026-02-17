@@ -865,7 +865,7 @@ export interface SyncProjectHealth {
   jira_key: string;
   last_sync?: string | null;
   artifact_count: number;
-  health_status: 'healthy' | 'warning' | 'stale' | 'unknown';
+  health_status: 'healthy' | 'warning' | 'critical' | 'stale' | 'unknown';
 }
 
 export interface SyncHealthResponse {
@@ -886,7 +886,7 @@ export interface DetailedSyncHealthResponse {
   project_name: string;
   jira_key: string;
   last_sync?: string | null;
-  health_status: 'healthy' | 'warning' | 'stale' | 'unknown';
+  health_status: 'healthy' | 'warning' | 'critical' | 'stale' | 'unknown';
   by_type: Record<string, number>;
   by_source: Record<string, number>;
   link_coverage: {
