@@ -60,6 +60,10 @@ celery_app.conf.update(
             "task": "maintenance.cleanup_baselines",
             "schedule": crontab(minute=30, hour=2),
         },
+        "traceability-rule-scheduler-every-minute": {
+            "task": "traceability.scheduled_rule_execution",
+            "schedule": crontab(minute="*"),
+        },
     },
 )
 

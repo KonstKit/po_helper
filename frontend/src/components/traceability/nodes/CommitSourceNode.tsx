@@ -28,9 +28,16 @@ const CommitSourceNode: React.FC<NodeProps> = ({ data, selected }) => {
           sx={{ mt: 1, mr: 0.5 }}
         />
       )}
-      {data.filters?.after_date && (
+      {(data.filters?.date_from || data.filters?.after_date) && (
         <Chip
-          label={`After: ${data.filters.after_date}`}
+          label={`From: ${data.filters.date_from || data.filters.after_date}`}
+          size="small"
+          sx={{ mt: 1, mr: 0.5 }}
+        />
+      )}
+      {(data.filters?.date_to || data.filters?.before_date) && (
+        <Chip
+          label={`To: ${data.filters.date_to || data.filters.before_date}`}
           size="small"
           sx={{ mt: 1 }}
         />

@@ -62,6 +62,7 @@ class TraceabilityRuleUpdate(BaseModel):
 class TraceabilityRuleInDB(TraceabilityRuleBase):
     id: int
     created_by_id: Optional[int]
+    next_scheduled_run: Optional[datetime] = None
     total_executions: int
     successful_executions: int
     failed_executions: int
@@ -90,6 +91,10 @@ class TraceabilityRuleResponse(TraceabilityRuleInDB):
             "tags": db_rule.tags or [],
             "project_id": db_rule.project_id,
             "created_by_id": db_rule.created_by_id,
+            "schedule_cron": db_rule.schedule_cron,
+            "schedule_enabled": db_rule.schedule_enabled,
+            "trigger_on_webhook": db_rule.trigger_on_webhook,
+            "next_scheduled_run": db_rule.next_scheduled_run,
             "total_executions": db_rule.total_executions,
             "successful_executions": db_rule.successful_executions,
             "failed_executions": db_rule.failed_executions,
@@ -124,8 +129,29 @@ class TraceabilityRuleExecutionResponse(BaseModel):
     artifacts_processed: int
     error_message: Optional[str]
     error_details: Optional[Dict[str, Any]]
+    rolled_back: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_db(cls, execution):
+        error_details = execution.error_details or {}
+        rolled_back = False
+        if isinstance(error_details, dict):
+            rolled_back = bool(error_details.get("atomic_rollback", False))
+        return cls(
+            id=execution.id,
+            rule_id=execution.rule_id,
+            status=execution.status,
+            started_at=execution.started_at,
+            completed_at=execution.completed_at,
+            links_created=execution.links_created or 0,
+            links_updated=execution.links_updated or 0,
+            artifacts_processed=execution.artifacts_processed or 0,
+            error_message=execution.error_message,
+            error_details=execution.error_details,
+            rolled_back=rolled_back,
+        )
 
 
 # List responses

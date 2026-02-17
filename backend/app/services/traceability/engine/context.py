@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,7 @@ class ExecutionContext:
         self.edges = edges
         self.node_outputs: Dict[str, List[Artifact]] = {}
         self.links_created: List[ArtifactLink] = []
+        self.processed_artifact_ids: Set[int] = set()
         self.errors: List[str] = []
         self.warnings: List[str] = []
 
@@ -29,6 +30,7 @@ class ExecutionContext:
     def set_node_output(self, node_id: str, artifacts: List[Artifact]) -> None:
         """Сохранить результат выполнения ноды."""
         self.node_outputs[node_id] = artifacts
+        self._track_artifacts(artifacts)
 
     def get_node_output(self, node_id: str) -> List[Artifact]:
         """Получить результат выполнения ноды."""
@@ -52,6 +54,13 @@ class ExecutionContext:
         """Сохранить результат выполнения ноды для конкретного выходного handle."""
         key = f"{node_id}_{handle}"
         self.node_outputs[key] = artifacts
+        self._track_artifacts(artifacts)
+
+    def _track_artifacts(self, artifacts: List[Artifact]) -> None:
+        for artifact in artifacts:
+            artifact_id = getattr(artifact, "id", None)
+            if isinstance(artifact_id, int):
+                self.processed_artifact_ids.add(artifact_id)
 
     def get_input_artifacts(self, node_id: str) -> List[Artifact]:
         """Получить все входные артефакты для ноды.

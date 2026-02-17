@@ -86,6 +86,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from sqlalchemy.orm import Session
@@ -334,7 +335,88 @@ def _validate_node_configuration(node) -> list[ValidationErrorSchema]:
                 )
             )
 
+    elif node_type == "decisionNode":
+        condition_type = config.get("condition_type", "count_threshold")
+        supported_condition_types = {
+            "confidence_threshold",
+            "count_threshold",
+            "count_equals",
+            "has_artifacts",
+            "is_empty",
+        }
+        if condition_type not in supported_condition_types:
+            errors.append(
+                ValidationErrorSchema(
+                    message=(
+                        f'Decision node "{label}" has unsupported condition_type '
+                        f'"{condition_type}"'
+                    ),
+                    node_id=node.id,
+                )
+            )
+
+        if condition_type == "confidence_threshold":
+            threshold = config.get("threshold")
+            if threshold is None:
+                errors.append(
+                    ValidationErrorSchema(
+                        message=(
+                            f'Decision node "{label}" with confidence_threshold '
+                            "must provide a threshold"
+                        ),
+                        node_id=node.id,
+                    )
+                )
+            else:
+                try:
+                    threshold_value = float(threshold)
+                except (TypeError, ValueError):
+                    errors.append(
+                        ValidationErrorSchema(
+                            message=(
+                                f'Decision node "{label}" confidence threshold '
+                                "must be numeric"
+                            ),
+                            node_id=node.id,
+                        )
+                    )
+                else:
+                    if not 0 <= threshold_value <= 100:
+                        errors.append(
+                            ValidationErrorSchema(
+                                message=(
+                                    f'Decision node "{label}" confidence threshold must '
+                                    "be between 0 and 100"
+                                ),
+                                node_id=node.id,
+                            )
+                        )
+
     return errors
+
+
+def _build_flow_validation_detail(
+    validation_result: ValidationResult,
+    *,
+    code: str = "flow_validation_failed",
+    message: str = "Flow validation failed",
+) -> dict:
+    return {
+        "code": code,
+        "message": message,
+        "errors": [error.model_dump() for error in validation_result.errors],
+        "warnings": [warning.model_dump() for warning in validation_result.warnings],
+    }
+
+
+def _ensure_flow_valid_or_400(flow_json: FlowJSON) -> ValidationResult:
+    validation_result = validate_flow(flow_json)
+    if not validation_result.valid:
+        raise HTTPException(
+            status_code=400,
+            detail=_build_flow_validation_detail(validation_result),
+        )
+    return validation_result
 
 
 # =============================================================================
@@ -395,18 +477,24 @@ async def list_rules(
 async def get_all_rule_executions(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
+    rule_id: Optional[int] = Query(None, description="Filter by rule id"),
     status: Optional[str] = Query(None, description="Filter by status: success, failed"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """Get all traceability rule executions with pagination and filtering."""
     query = select(TraceabilityRuleExecution).order_by(TraceabilityRuleExecution.started_at.desc())
+    filters = []
+
+    if rule_id is not None:
+        query = query.where(TraceabilityRuleExecution.rule_id == rule_id)
+        filters.append(TraceabilityRuleExecution.rule_id == rule_id)
 
     if status:
         query = query.where(TraceabilityRuleExecution.status == status)
+        filters.append(TraceabilityRuleExecution.status == status)
 
-    filters = [TraceabilityRuleExecution.status == status] if status else None
-    total = await count_with_filters(db, TraceabilityRuleExecution, filters)
+    total = await count_with_filters(db, TraceabilityRuleExecution, filters or None)
 
     executions = await paginate_query(db, query, skip, limit)
 
@@ -424,6 +512,15 @@ async def get_all_rule_executions(
             "rule_name": rule.name if rule else f"Rule #{execution.rule_id}",
             "status": execution.status,
             "links_created": execution.links_created or 0,
+            "links_updated": execution.links_updated or 0,
+            "artifacts_processed": execution.artifacts_processed or 0,
+            "started_at": execution.started_at.isoformat() if execution.started_at else None,
+            "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
+            "error_message": execution.error_message,
+            "error_details": execution.error_details,
+            "rolled_back": bool(error_details.get("atomic_rollback", False))
+            if isinstance(error_details, dict)
+            else False,
             "executed_at": execution.started_at.isoformat() if execution.started_at else None,
             "execution_log": {
                 "errors": error_details.get("errors", [])
@@ -433,6 +530,11 @@ async def get_all_rule_executions(
                 if isinstance(error_details, dict)
                 else [],
                 "links_created": execution.links_created or 0,
+                "links_updated": execution.links_updated or 0,
+                "artifacts_processed": execution.artifacts_processed or 0,
+                "rolled_back": bool(error_details.get("atomic_rollback", False))
+                if isinstance(error_details, dict)
+                else False,
             },
         }
         items.append(exec_data)
@@ -464,6 +566,8 @@ async def create_rule(
     current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """Create a new traceability rule."""
+    _ensure_flow_valid_or_400(rule_data.flow_json)
+
     existing_query = select(TraceabilityRule).where(TraceabilityRule.name == rule_data.name)
     existing_result = await db.execute(existing_query)
     if existing_result.scalar_one_or_none():
@@ -474,6 +578,15 @@ async def create_rule(
     if rule_data.project_id is not None:
         await ensure_project_access(rule_data.project_id, db, current_user)
 
+    next_scheduled_run = None
+    if rule_data.schedule_enabled and rule_data.schedule_cron:
+        if not _validate_cron_expression(rule_data.schedule_cron):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid cron expression. Expected format: 'minute hour day month weekday'",
+            )
+        next_scheduled_run = _calculate_next_run(rule_data.schedule_cron)
+
     new_rule = TraceabilityRule(
         name=rule_data.name,
         description=rule_data.description,
@@ -483,6 +596,10 @@ async def create_rule(
         tags=rule_data.tags,
         project_id=rule_data.project_id,
         created_by_id=current_user.id,
+        schedule_cron=rule_data.schedule_cron,
+        schedule_enabled=rule_data.schedule_enabled,
+        trigger_on_webhook=rule_data.trigger_on_webhook,
+        next_scheduled_run=next_scheduled_run,
     )
 
     async with transactional_session(db):
@@ -531,9 +648,48 @@ async def update_rule(
                 status_code=400, detail=f"Rule with name '{rule_data.name}' already exists"
             )
 
+    if rule_data.flow_json is not None:
+        flow_for_validation = rule_data.flow_json
+    else:
+        try:
+            flow_for_validation = FlowJSON.model_validate(rule.flow_json)
+        except PydanticValidationError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "flow_schema_invalid",
+                    "message": "Stored flow_json schema is invalid",
+                    "errors": [{"type": "error", "message": str(exc), "node_id": None, "edge_id": None}],
+                    "warnings": [],
+                },
+            ) from exc
+
+    _ensure_flow_valid_or_400(flow_for_validation)
+
     update_data = rule_data.model_dump(exclude_unset=True)
-    if "flow_json" in update_data and update_data["flow_json"]:
-        update_data["flow_json"] = update_data["flow_json"]
+
+    if "schedule_cron" in update_data and update_data["schedule_cron"]:
+        if not _validate_cron_expression(update_data["schedule_cron"]):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid cron expression. Expected format: 'minute hour day month weekday'",
+            )
+
+    if "schedule_cron" in update_data:
+        schedule_cron = update_data["schedule_cron"]
+        if schedule_cron:
+            update_data["next_scheduled_run"] = _calculate_next_run(schedule_cron)
+        else:
+            update_data["next_scheduled_run"] = None
+
+    if "schedule_enabled" in update_data:
+        schedule_enabled = bool(update_data["schedule_enabled"])
+        if not schedule_enabled:
+            update_data["next_scheduled_run"] = None
+        else:
+            effective_cron = update_data.get("schedule_cron", rule.schedule_cron)
+            if effective_cron:
+                update_data["next_scheduled_run"] = _calculate_next_run(effective_cron)
 
     changed_fields = sorted(update_data.keys())
 
@@ -611,7 +767,7 @@ async def list_rule_executions(
     executions = await paginate_query(db, query, skip, limit)
 
     return TraceabilityRuleExecutionListResponse(
-        total=total, items=[TraceabilityRuleExecutionResponse.from_orm(ex) for ex in executions]
+        total=total, items=[TraceabilityRuleExecutionResponse.from_db(ex) for ex in executions]
     )
 
 
@@ -640,6 +796,21 @@ def execute_rule(
             raise HTTPException(status_code=404, detail="Project not found")
         if not current_user.is_active:
             raise HTTPException(status_code=403, detail="Inactive user")
+
+    try:
+        flow_json = FlowJSON.model_validate(rule.flow_json)
+    except PydanticValidationError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "flow_schema_invalid",
+                "message": "Stored flow_json schema is invalid",
+                "errors": [{"type": "error", "message": str(exc), "node_id": None, "edge_id": None}],
+                "warnings": [],
+            },
+        ) from exc
+
+    _ensure_flow_valid_or_400(flow_json)
 
     engine = RuleExecutionEngine(db)
 
@@ -943,6 +1114,21 @@ def execute_rule_by_webhook(
 
     if not rule.enabled:
         raise HTTPException(status_code=400, detail="Rule is disabled")
+
+    try:
+        flow_json = FlowJSON.model_validate(rule.flow_json)
+    except PydanticValidationError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "flow_schema_invalid",
+                "message": "Stored flow_json schema is invalid",
+                "errors": [{"type": "error", "message": str(exc), "node_id": None, "edge_id": None}],
+                "warnings": [],
+            },
+        ) from exc
+
+    _ensure_flow_valid_or_400(flow_json)
 
     engine = RuleExecutionEngine(db)
 

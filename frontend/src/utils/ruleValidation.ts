@@ -1,4 +1,4 @@
-import { Node, Edge } from 'reactflow';
+import { Edge, Node } from 'reactflow';
 
 export interface ValidationResult {
   valid: boolean;
@@ -20,28 +20,57 @@ export interface ValidationWarning {
   edgeId?: string;
 }
 
+const SOURCE_NODE_TYPES = new Set([
+  'commitSource',
+  'jiraIssueSource',
+  'confluenceSource',
+  'testrailSource',
+  'manualSource',
+]);
+
+const ACTION_NODE_TYPES = new Set([
+  'createLinkAction',
+  'queueReviewAction',
+]);
+
+const PROCESSOR_NODE_TYPES = new Set([
+  'jiraKeyExtractor',
+  'filterNode',
+  'transformNode',
+  'decisionNode',
+]);
+
+const DECISION_CONDITION_TYPES = new Set([
+  'confidence_threshold',
+  'count_threshold',
+  'count_equals',
+  'has_artifacts',
+  'is_empty',
+]);
+
+const getNodeLabel = (node: Node): string =>
+  String((node.data as Record<string, unknown>)?.label || node.id);
+
+const getNodeConfig = (node: Node): Record<string, unknown> =>
+  ((node.data as Record<string, unknown>)?.config as Record<string, unknown>) || {};
+
 /**
- * Validates a traceability rule flow
+ * Validates a traceability rule flow.
  */
 export function validateRule(nodes: Node[], edges: Edge[]): ValidationResult {
   const errors: ValidationError[] = [];
   const warnings: ValidationWarning[] = [];
 
-  // Rule 1: Must have at least one source node
-  const sourceNodes = nodes.filter((n) =>
-    ['commitSource', 'jiraIssueSource', 'confluenceSource'].includes(n.type || '')
-  );
+  const sourceNodes = nodes.filter((n) => SOURCE_NODE_TYPES.has(n.type || ''));
   if (sourceNodes.length === 0) {
     errors.push({
       type: 'error',
-      message: 'Rule must have at least one Source node (Commit, Jira Issue, or Confluence)',
+      message:
+        'Rule must have at least one Source node (Commit, Jira Issue, Confluence, TestRail, or Manual)',
     });
   }
 
-  // Rule 2: Must have at least one action node
-  const actionNodes = nodes.filter((n) =>
-    ['createLinkAction', 'queueReviewAction'].includes(n.type || '')
-  );
+  const actionNodes = nodes.filter((n) => ACTION_NODE_TYPES.has(n.type || ''));
   if (actionNodes.length === 0) {
     errors.push({
       type: 'error',
@@ -49,7 +78,6 @@ export function validateRule(nodes: Node[], edges: Edge[]): ValidationResult {
     });
   }
 
-  // Rule 3: Check for disconnected nodes
   const connectedNodeIds = new Set<string>();
   edges.forEach((edge) => {
     connectedNodeIds.add(edge.source);
@@ -60,73 +88,66 @@ export function validateRule(nodes: Node[], edges: Edge[]): ValidationResult {
     if (!connectedNodeIds.has(node.id) && nodes.length > 1) {
       warnings.push({
         type: 'warning',
-        message: `Node "${node.data.label || node.id}" is not connected to any other nodes`,
+        message: `Node "${getNodeLabel(node)}" is not connected to any other nodes`,
         nodeId: node.id,
       });
     }
   });
 
-  // Rule 4: Check for circular dependencies
   const cycles = detectCycles(nodes, edges);
   if (cycles.length > 0) {
     errors.push({
       type: 'error',
-      message: `Circular dependency detected: ${cycles.join(' → ')}`,
+      message: `Circular dependency detected: ${cycles.join(' -> ')}`,
     });
   }
 
-  // Rule 5: Validate source nodes have outputs
   sourceNodes.forEach((node) => {
-    const hasOutgoingEdge = edges.some((e) => e.source === node.id);
+    const hasOutgoingEdge = edges.some((edge) => edge.source === node.id);
     if (!hasOutgoingEdge) {
       warnings.push({
         type: 'warning',
-        message: `Source node "${node.data.label || node.id}" has no outgoing connections`,
+        message: `Source node "${getNodeLabel(node)}" has no outgoing connections`,
         nodeId: node.id,
       });
     }
   });
 
-  // Rule 6: Validate action nodes have inputs
   actionNodes.forEach((node) => {
-    const hasIncomingEdge = edges.some((e) => e.target === node.id);
+    const hasIncomingEdge = edges.some((edge) => edge.target === node.id);
     if (!hasIncomingEdge) {
       warnings.push({
         type: 'warning',
-        message: `Action node "${node.data.label || node.id}" has no incoming connections`,
+        message: `Action node "${getNodeLabel(node)}" has no incoming connections`,
         nodeId: node.id,
       });
     }
   });
 
-  // Rule 7: Validate processor nodes have both inputs and outputs
-  const processorNodes = nodes.filter((n) =>
-    ['jiraKeyExtractor', 'filterNode', 'transformNode'].includes(n.type || '')
-  );
+  const processorNodes = nodes.filter((n) => PROCESSOR_NODE_TYPES.has(n.type || ''));
   processorNodes.forEach((node) => {
-    const hasIncomingEdge = edges.some((e) => e.target === node.id);
-    const hasOutgoingEdge = edges.some((e) => e.source === node.id);
+    const hasIncomingEdge = edges.some((edge) => edge.target === node.id);
+    const hasOutgoingEdge = edges.some((edge) => edge.source === node.id);
 
     if (!hasIncomingEdge) {
       warnings.push({
         type: 'warning',
-        message: `Processor node "${node.data.label || node.id}" has no input`,
+        message: `Processor node "${getNodeLabel(node)}" has no input`,
         nodeId: node.id,
       });
     }
+
     if (!hasOutgoingEdge) {
       warnings.push({
         type: 'warning',
-        message: `Processor node "${node.data.label || node.id}" has no output`,
+        message: `Processor node "${getNodeLabel(node)}" has no output`,
         nodeId: node.id,
       });
     }
   });
 
-  // Rule 8: Validate node-specific configurations
   nodes.forEach((node) => {
-    const nodeErrors = validateNodeConfiguration(node);
-    errors.push(...nodeErrors);
+    errors.push(...validateNodeConfiguration(node));
   });
 
   return {
@@ -137,51 +158,103 @@ export function validateRule(nodes: Node[], edges: Edge[]): ValidationResult {
 }
 
 /**
- * Validates individual node configuration
+ * Validates individual node configuration.
  */
 function validateNodeConfiguration(node: Node): ValidationError[] {
   const errors: ValidationError[] = [];
+  const config = getNodeConfig(node);
+  const nodeLabel = getNodeLabel(node);
 
   switch (node.type) {
-    case 'jiraKeyExtractor':
-      if (!node.data.config?.search_in || node.data.config.search_in.length === 0) {
+    case 'jiraKeyExtractor': {
+      const searchIn = config.search_in;
+      if (!Array.isArray(searchIn) || searchIn.length === 0) {
         errors.push({
           type: 'error',
-          message: `Jira Key Extractor "${node.data.label || node.id}" must have at least one search field selected`,
+          message: `Jira Key Extractor "${nodeLabel}" must have at least one search field selected`,
           nodeId: node.id,
         });
       }
-      if (!node.data.config?.pattern) {
+      if (!config.pattern) {
         errors.push({
           type: 'error',
-          message: `Jira Key Extractor "${node.data.label || node.id}" must have a regex pattern`,
+          message: `Jira Key Extractor "${nodeLabel}" must have a regex pattern`,
           nodeId: node.id,
         });
       }
       break;
+    }
 
     case 'createLinkAction':
-      if (!node.data.config?.link_type) {
+      if (!config.link_type) {
         errors.push({
           type: 'error',
-          message: `Create Link action "${node.data.label || node.id}" must have a link type`,
+          message: `Create Link action "${nodeLabel}" must have a link type`,
           nodeId: node.id,
         });
       }
-      if (node.data.config?.bidirectional && !node.data.config?.reverse_link_type) {
+      if (config.bidirectional && !config.reverse_link_type) {
         errors.push({
           type: 'error',
-          message: `Create Link action "${node.data.label || node.id}" with bidirectional enabled must specify reverse link type`,
+          message: `Create Link action "${nodeLabel}" with bidirectional enabled must specify reverse link type`,
           nodeId: node.id,
         });
       }
       break;
 
-    case 'commitSource':
-    case 'jiraIssueSource':
-    case 'confluenceSource':
-      // Source nodes are optional to configure (can match all)
+    case 'filterNode':
+      if (!config.field) {
+        errors.push({
+          type: 'error',
+          message: `Filter node "${nodeLabel}" must specify a field to filter on`,
+          nodeId: node.id,
+        });
+      }
+      if (!config.operator) {
+        errors.push({
+          type: 'error',
+          message: `Filter node "${nodeLabel}" must specify an operator`,
+          nodeId: node.id,
+        });
+      }
       break;
+
+    case 'decisionNode': {
+      const conditionType = String(config.condition_type || 'count_threshold');
+      if (!DECISION_CONDITION_TYPES.has(conditionType)) {
+        errors.push({
+          type: 'error',
+          message: `Decision node "${nodeLabel}" has unsupported condition type "${conditionType}"`,
+          nodeId: node.id,
+        });
+        break;
+      }
+
+      if (
+        conditionType === 'confidence_threshold' ||
+        conditionType === 'count_threshold' ||
+        conditionType === 'count_equals'
+      ) {
+        const threshold = Number(config.threshold);
+        if (!Number.isFinite(threshold)) {
+          errors.push({
+            type: 'error',
+            message: `Decision node "${nodeLabel}" must have a numeric threshold`,
+            nodeId: node.id,
+          });
+          break;
+        }
+
+        if (conditionType === 'confidence_threshold' && (threshold < 0 || threshold > 100)) {
+          errors.push({
+            type: 'error',
+            message: `Decision node "${nodeLabel}" confidence threshold must be between 0 and 100`,
+            nodeId: node.id,
+          });
+        }
+      }
+      break;
+    }
 
     default:
       break;
@@ -191,12 +264,11 @@ function validateNodeConfiguration(node: Node): ValidationError[] {
 }
 
 /**
- * Detects circular dependencies in the flow
+ * Detects circular dependencies in the flow.
  */
 function detectCycles(nodes: Node[], edges: Edge[]): string[] {
   const adjacencyList = new Map<string, string[]>();
 
-  // Build adjacency list
   nodes.forEach((node) => adjacencyList.set(node.id, []));
   edges.forEach((edge) => {
     const targets = adjacencyList.get(edge.source) || [];
@@ -220,7 +292,6 @@ function detectCycles(nodes: Node[], edges: Edge[]): string[] {
           return true;
         }
       } else if (recursionStack.has(neighbor)) {
-        // Cycle detected
         const cycleStartIndex = path.indexOf(neighbor);
         cycle = path.slice(cycleStartIndex);
         cycle.push(neighbor);
@@ -234,14 +305,11 @@ function detectCycles(nodes: Node[], edges: Edge[]): string[] {
   }
 
   for (const node of nodes) {
-    if (!visited.has(node.id)) {
-      if (dfs(node.id, [])) {
-        // Get node labels for better error message
-        return cycle.map((nodeId) => {
-          const node = nodes.find((n) => n.id === nodeId);
-          return node?.data.label || nodeId;
-        });
-      }
+    if (!visited.has(node.id) && dfs(node.id, [])) {
+      return cycle.map((nodeId) => {
+        const match = nodes.find((candidate) => candidate.id === nodeId);
+        return getNodeLabel(match || node);
+      });
     }
   }
 
@@ -249,25 +317,21 @@ function detectCycles(nodes: Node[], edges: Edge[]): string[] {
 }
 
 /**
- * Gets all source nodes in the flow
+ * Gets all source nodes in the flow.
  */
 export function getSourceNodes(nodes: Node[]): Node[] {
-  return nodes.filter((n) =>
-    ['commitSource', 'jiraIssueSource', 'confluenceSource'].includes(n.type || '')
-  );
+  return nodes.filter((n) => SOURCE_NODE_TYPES.has(n.type || ''));
 }
 
 /**
- * Gets all action nodes in the flow
+ * Gets all action nodes in the flow.
  */
 export function getActionNodes(nodes: Node[]): Node[] {
-  return nodes.filter((n) =>
-    ['createLinkAction', 'queueReviewAction'].includes(n.type || '')
-  );
+  return nodes.filter((n) => ACTION_NODE_TYPES.has(n.type || ''));
 }
 
 /**
- * Checks if the flow has a complete path from source to action
+ * Checks if the flow has a complete path from source to action.
  */
 export function hasCompletePath(nodes: Node[], edges: Edge[]): boolean {
   const sourceNodes = getSourceNodes(nodes);
@@ -277,7 +341,6 @@ export function hasCompletePath(nodes: Node[], edges: Edge[]): boolean {
     return false;
   }
 
-  // Build adjacency list
   const adjacencyList = new Map<string, string[]>();
   nodes.forEach((node) => adjacencyList.set(node.id, []));
   edges.forEach((edge) => {
@@ -286,7 +349,6 @@ export function hasCompletePath(nodes: Node[], edges: Edge[]): boolean {
     adjacencyList.set(edge.source, targets);
   });
 
-  // Check if any source can reach any action
   for (const source of sourceNodes) {
     const reachable = getReachableNodes(source.id, adjacencyList);
     for (const action of actionNodes) {
@@ -300,15 +362,17 @@ export function hasCompletePath(nodes: Node[], edges: Edge[]): boolean {
 }
 
 /**
- * Gets all nodes reachable from a starting node
+ * Gets all nodes reachable from a starting node.
  */
 function getReachableNodes(startId: string, adjacencyList: Map<string, string[]>): Set<string> {
   const reachable = new Set<string>();
   const queue = [startId];
 
   while (queue.length > 0) {
-    const current = queue.shift()!;
-    if (reachable.has(current)) continue;
+    const current = queue.shift();
+    if (!current || reachable.has(current)) {
+      continue;
+    }
 
     reachable.add(current);
     const neighbors = adjacencyList.get(current) || [];
