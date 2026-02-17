@@ -140,6 +140,9 @@ SyncSessionLocal = sessionmaker(
     autocommit=False,
 )
 
+# Backward-compatible alias expected by existing tasks/tests.
+SessionLocal = SyncSessionLocal
+
 
 def get_sync_db() -> Iterator[Session]:
     """Get synchronous database session for blocking operations."""
