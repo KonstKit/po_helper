@@ -43,6 +43,7 @@ import {
   ConfidenceDistribution,
   FullChainNode,
 } from '../services/api';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -81,6 +82,7 @@ const TraceabilityVisualization: React.FC = () => {
   const [selectedArtifact, setSelectedArtifact] = useState<FullChainNode | null>(null);
   const [confidenceData, setConfidenceData] = useState<ConfidenceDistribution | null>(null);
   const [confidenceLoading, setConfidenceLoading] = useState(false);
+  const [confidenceError, setConfidenceError] = useState<string | null>(null);
   const handleProjectChange = (event: SelectChangeEvent<string>) => {
     setProjectId(parseProjectValue(event.target.value));
   };
@@ -88,7 +90,14 @@ const TraceabilityVisualization: React.FC = () => {
   // Load projects
   useEffect(() => {
     listProjects()
-      .then((res) => setProjects(res.data))
+      .then((res) => {
+        const items = res.data || [];
+        setProjects(items);
+        // Default to the first project for non-admin users who cannot query across all projects.
+        if (projectId === undefined && items.length > 0) {
+          setProjectId(items[0].id);
+        }
+      })
       .catch(console.error);
   }, []);
 
@@ -115,11 +124,14 @@ const TraceabilityVisualization: React.FC = () => {
   useEffect(() => {
     const loadConfidence = async () => {
       setConfidenceLoading(true);
+      setConfidenceError(null);
       try {
         const data = await getConfidenceDistribution({ projectId });
         setConfidenceData(data);
       } catch (err) {
         console.error('Failed to load confidence distribution', err);
+        setConfidenceData(null);
+        setConfidenceError(getErrorMessage(err, 'Failed to load confidence distribution'));
       } finally {
         setConfidenceLoading(false);
       }
@@ -318,6 +330,12 @@ const TraceabilityVisualization: React.FC = () => {
           <Typography variant="h6" gutterBottom>
             Confidence Score Distribution
           </Typography>
+
+          {confidenceError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {confidenceError}
+            </Alert>
+          )}
 
           {confidenceLoading && (
             <Box display="flex" justifyContent="center" py={4}>
