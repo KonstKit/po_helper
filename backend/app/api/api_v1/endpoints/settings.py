@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.models import IntegrationSetting, Permissions, User
 from app.schemas.settings import IntegrationSettings, IntegrationSettingsBase
 from app.services.jira_service import jira_service
+from app.services.jira import JiraAuthError, JiraUnexpectedResponse
 from app.services.confluence_service import confluence_service
 from app.core.crypto import encrypt_str, decrypt_str
 from app.api.deps import require_permission
@@ -49,7 +50,11 @@ async def put_jira_settings(
     current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE)),
 ):
     row = await _get_integration(db, "jira")
-    base_url = payload.base_url if payload.base_url is not None else (row.base_url if row else None)
+    base_url = (
+        payload.base_url if payload.base_url is not None else (row.base_url if row else None)
+    )
+    if base_url:
+        base_url = base_url.strip()
     token_present = bool(payload.api_token) or bool(row.api_token if row else None)
     use_pat = payload.use_pat if payload.use_pat is not None else not bool(
         payload.email or (row.email if row else None)
@@ -125,6 +130,80 @@ async def put_jira_settings(
         "api_token": None,
         "has_token": bool(row.api_token),
     }
+
+
+@router.post("/jira/test")
+async def test_jira_connection(
+    payload: IntegrationSettingsBase,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE)),
+):
+    """Test Jira connectivity using provided or stored credentials."""
+    row = await _get_integration(db, "jira")
+
+    base_url = (
+        payload.base_url if payload.base_url is not None else (row.base_url if row else None)
+    )
+    if base_url:
+        base_url = base_url.strip()
+    use_pat = payload.use_pat if payload.use_pat is not None else not bool(
+        payload.email or (row.email if row else None)
+    )
+    email = None if use_pat else (
+        payload.email if payload.email is not None else (row.email if row else None)
+    )
+    if email:
+        email = email.strip()
+
+    token = payload.api_token
+    if not token and row and row.api_token:
+        try:
+            token = decrypt_str(row.api_token)
+        except Exception:
+            token = None
+    if token:
+        token = token.strip()
+
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Jira base URL is required")
+    if not token:
+        raise HTTPException(status_code=400, detail="Jira API token is required")
+    if not use_pat and not email:
+        raise HTTPException(
+            status_code=400, detail="Jira email is required for Basic authentication"
+        )
+
+    try:
+        import asyncio
+
+        await asyncio.to_thread(jira_service.connect, base_url, email, token, use_pat)
+        await asyncio.to_thread(jira_service.validate)
+    except JiraAuthError as exc:
+        # Jira rejected the provided credentials (this is not an API session error).
+        raise HTTPException(status_code=400, detail=f"Jira authentication failed: {exc}")
+    except JiraUnexpectedResponse as exc:
+        raise HTTPException(status_code=502, detail=f"Jira returned unexpected response: {exc}")
+    except Exception as exc:
+        message = str(exc)
+        if "-> 401" in message:
+            raise HTTPException(status_code=400, detail=f"Failed to connect to Jira: {message}")
+        if "-> 403" in message:
+            raise HTTPException(status_code=403, detail=f"Failed to connect to Jira: {message}")
+        if "-> 404" in message:
+            raise HTTPException(status_code=404, detail=f"Failed to connect to Jira: {message}")
+        raise HTTPException(status_code=400, detail=f"Failed to connect to Jira: {message}")
+
+    resolved_base_url = (jira_service.base_url or base_url or "").rstrip("/")
+    if row and resolved_base_url and (row.base_url or "").rstrip("/") != resolved_base_url:
+        async with transactional_session(db):
+            row.base_url = resolved_base_url
+        logger.info(
+            "Jira base URL auto-normalized during validation: %s -> %s",
+            (base_url or "").rstrip("/"),
+            resolved_base_url,
+        )
+
+    return {"status": "connected", "message": "Successfully connected to Jira"}
 
 
 @router.get("/confluence", response_model=IntegrationSettings)
@@ -212,6 +291,78 @@ async def put_confluence_settings(
         "api_token": None,
         "has_token": bool(row.api_token),
     }
+
+
+@router.post("/confluence/test")
+async def test_confluence_connection(
+    payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
+):
+    """Test Confluence connectivity using provided or stored credentials."""
+    row = await _get_integration(db, "confluence")
+
+    base_url = (
+        payload.base_url if payload.base_url is not None else (row.base_url if row else None)
+    )
+    if base_url:
+        base_url = base_url.strip()
+
+    email = payload.email if payload.email is not None else (row.email if row else None)
+    if email:
+        email = email.strip()
+    if email == "":
+        email = None
+
+    token = payload.api_token
+    if not token and row and row.api_token:
+        try:
+            token = decrypt_str(row.api_token)
+        except Exception:
+            token = None
+    if token:
+        token = token.strip()
+
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Confluence base URL is required")
+    if not token:
+        raise HTTPException(status_code=400, detail="Confluence API token is required")
+
+    try:
+        import asyncio
+
+        await asyncio.to_thread(
+            confluence_service.connect,
+            base_url,
+            email,
+            token,
+        )
+        await asyncio.to_thread(confluence_service.validate)
+    except requests.exceptions.Timeout:
+        raise HTTPException(status_code=504, detail="Confluence request timed out")
+    except requests.exceptions.RequestException as exc:
+        raise HTTPException(status_code=400, detail=f"Confluence request failed: {exc}")
+    except Exception as exc:
+        message = str(exc)
+        if "401" in message:
+            raise HTTPException(status_code=401, detail=f"Failed to connect to Confluence: {message}")
+        if "403" in message:
+            raise HTTPException(status_code=403, detail=f"Failed to connect to Confluence: {message}")
+        if "404" in message:
+            raise HTTPException(status_code=404, detail=f"Failed to connect to Confluence: {message}")
+        if "timeout" in message.lower():
+            raise HTTPException(status_code=504, detail=f"Failed to connect to Confluence: {message}")
+        raise HTTPException(status_code=400, detail=f"Failed to connect to Confluence: {message}")
+
+    resolved_base_url = (confluence_service.base_url or base_url or "").rstrip("/")
+    if row and resolved_base_url and (row.base_url or "").rstrip("/") != resolved_base_url:
+        async with transactional_session(db):
+            row.base_url = resolved_base_url
+        logger.info(
+            "Confluence base URL auto-normalized during validation: %s -> %s",
+            (base_url or "").rstrip("/"),
+            resolved_base_url,
+        )
+
+    return {"status": "connected", "message": "Successfully connected to Confluence"}
 
 
 @router.post("/confluence/reload")

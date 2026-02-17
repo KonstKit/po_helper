@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.core.crypto import decrypt_str
 from app.core.database import AsyncSessionLocal, Base, engine
 from app.core.middleware import register_middlewares
+from app.models import Role, SYSTEM_ROLES
 from app.models.settings import IntegrationSetting
 from app.services.confluence_service import confluence_service
 from app.services.jira_service import jira_service
@@ -118,12 +119,41 @@ async def _ensure_sqlite_columns() -> None:
         logger.warning("SQLite column migration failed: %s", e)
 
 
+async def _ensure_system_roles() -> None:
+    """Create/update system RBAC roles if they are missing."""
+    try:
+        async with AsyncSessionLocal() as db:
+            async with db.begin():
+                for role_name, role_config in SYSTEM_ROLES.items():
+                    result = await db.execute(select(Role).where(Role.name == role_name))
+                    role = result.scalar_one_or_none()
+
+                    if role is None:
+                        role = Role(
+                            name=role_name,
+                            display_name=role_config["display_name"],
+                            description=role_config["description"],
+                            is_system=role_config["is_system"],
+                        )
+                        role.permissions = role_config["permissions"]
+                        db.add(role)
+                    else:
+                        role.display_name = role_config["display_name"]
+                        role.description = role_config["description"]
+                        role.is_system = role_config["is_system"]
+                        role.permissions = role_config["permissions"]
+        logger.info("RBAC system roles ensured successfully")
+    except Exception as exc:
+        logger.error("RBAC role initialization failed during startup: %s", exc)
+
+
 async def _ensure_tables():
     # Dev-friendly: auto-create tables if missing (SQLite / simple schemas)
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         await _ensure_sqlite_columns()
+        await _ensure_system_roles()
         logger.info("Database schema ensured successfully")
     except Exception as exc:
         logger.error("Database initialization failed during startup: %s", exc)

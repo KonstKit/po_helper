@@ -3,6 +3,7 @@
 import logging
 import time
 from typing import Dict, Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -55,6 +56,52 @@ class JiraHttpClient:
         self.timeout = settings.JIRA_HTTP_TIMEOUT or 60
         self.max_retries = getattr(settings, "JIRA_HTTP_MAX_RETRIES", 0) or 0
         self.base_backoff = getattr(settings, "JIRA_HTTP_BACKOFF_SECONDS", 1.0) or 1.0
+        self.enable_sso_bypass_retry = getattr(settings, "JIRA_SSO_BYPASS_RETRY", True)
+
+    @staticmethod
+    def _has_os_auth_type(url: str) -> bool:
+        try:
+            query_pairs = parse_qsl(urlsplit(url).query, keep_blank_values=True)
+            return any(k.lower() == "os_authtype" for k, _ in query_pairs)
+        except Exception:
+            return False
+
+    @staticmethod
+    def _with_os_auth_type_basic(url: str) -> str:
+        """Append os_authType=basic preserving existing query parameters."""
+        parts = urlsplit(url)
+        query_pairs = parse_qsl(parts.query, keep_blank_values=True)
+        if not any(k.lower() == "os_authtype" for k, _ in query_pairs):
+            query_pairs.append(("os_authType", "basic"))
+        new_query = urlencode(query_pairs, doseq=True)
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, new_query, parts.fragment))
+
+    @staticmethod
+    def _looks_like_login_html(response: requests.Response) -> bool:
+        ctype = (response.headers.get("content-type") or "").lower()
+        if "text/html" not in ctype:
+            return False
+
+        # Jira/SSO often marks unauthenticated requests as anonymous while serving login HTML.
+        ausername = (response.headers.get("x-ausername") or "").strip().lower()
+        snippet = ((response.text or "")[:2000]).lower()
+        markers = (
+            "log into atlassian",
+            "atlassian account",
+            "<title>log in",
+            "<form",
+            "name=\"os_username\"",
+            "id=\"login-form\"",
+            "sign in",
+            "authenticate",
+            "sso",
+        )
+
+        return ausername == "anonymous" or any(marker in snippet for marker in markers)
+
+    def _request_once(self, method: str, url: str, timeout: float, **kwargs) -> requests.Response:
+        """Execute a single HTTP request (no retries/fallbacks)."""
+        return requests.request(method, url, timeout=timeout, **kwargs)
 
     def request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
         """
@@ -85,7 +132,8 @@ class JiraHttpClient:
         for attempt in range(max_tries):
             try:
                 # Prepare headers
-                headers = kwargs.setdefault("headers", {}) or {}
+                headers = kwargs.get("headers") or {}
+                kwargs["headers"] = headers
                 if "Accept" not in headers:
                     headers["Accept"] = "application/json"
 
@@ -101,7 +149,40 @@ class JiraHttpClient:
                     # Basic authentication
                     kwargs.setdefault("auth", self.auth)
 
-                return requests.request(method, url, timeout=timeout, **kwargs)
+                response = self._request_once(method, url, timeout, **kwargs)
+
+                # SSO/proxy environments may return 200 HTML login pages for REST calls.
+                # Retry with os_authType=basic to force non-interactive auth path.
+                should_retry_sso_bypass = (
+                    self.enable_sso_bypass_retry
+                    and method.upper() == "GET"
+                    and "/rest/api/" in url
+                    and not self._has_os_auth_type(url)
+                    and self._looks_like_login_html(response)
+                )
+                if not should_retry_sso_bypass:
+                    return response
+
+                bypass_url = self._with_os_auth_type_basic(url)
+                bypass_headers = dict(headers)
+                bypass_headers.setdefault("X-Requested-With", "XMLHttpRequest")
+                bypass_headers.setdefault("X-Atlassian-Token", "no-check")
+                bypass_kwargs = dict(kwargs)
+                bypass_kwargs["headers"] = bypass_headers
+
+                logger.info(
+                    "Jira SSO bypass retry for %s via os_authType=basic",
+                    endpoint,
+                )
+                try:
+                    return self._request_once(method, bypass_url, timeout, **bypass_kwargs)
+                except requests.exceptions.RequestException as bypass_exc:
+                    logger.warning(
+                        "Jira SSO bypass retry failed for %s: %s",
+                        endpoint,
+                        bypass_exc,
+                    )
+                    return response
 
             except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout) as e:
                 last_exc = e

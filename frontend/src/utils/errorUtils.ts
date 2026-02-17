@@ -19,6 +19,19 @@
  * }
  */
 export function getErrorMessage(error: unknown, fallback: string): string {
+  // Check for Axios-style errors with response.data.detail first.
+  // Axios errors also inherit from Error, so this must come before Error check.
+  if (isAxiosError(error) && error.response?.data?.detail) {
+    const detail = error.response.data.detail;
+    if (typeof detail === 'string') {
+      return detail;
+    }
+    if (isRecord(detail) && typeof detail.message === 'string') {
+      return detail.message;
+    }
+    return fallback;
+  }
+
   // Check for standard Error objects
   if (error instanceof Error) {
     return error.message || fallback;
@@ -27,11 +40,6 @@ export function getErrorMessage(error: unknown, fallback: string): string {
   // Check for string errors (thrown directly)
   if (typeof error === 'string') {
     return error;
-  }
-
-  // Check for Axios-style errors with response.data.detail
-  if (isAxiosError(error) && error.response?.data?.detail) {
-    return error.response.data.detail;
   }
 
   // Check for objects with a message property
@@ -59,12 +67,16 @@ function isErrorWithMessage(error: unknown): error is { message: string } {
  */
 function isAxiosError(
   error: unknown
-): error is { response?: { data?: { detail?: string } } } {
+): error is { response?: { data?: { detail?: unknown } } } {
   return (
     typeof error === 'object' &&
     error !== null &&
     'response' in error
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 /**

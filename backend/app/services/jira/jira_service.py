@@ -213,7 +213,36 @@ class JiraService:
             version_resolver=self.version_resolver,
         )
 
-    def validate(self) -> bool:
+    def _base_url_discovery_candidates(self) -> List[str]:
+        """
+        Generate alternate Jira base URL candidates for environments where
+        Jira may be exposed both with and without '/jira' context path.
+        """
+        if not self.base_url:
+            return []
+
+        base = self.base_url.rstrip("/")
+        lower_base = base.lower()
+        candidates: List[str] = []
+
+        if lower_base.endswith("/jira"):
+            candidate = base[: -len("/jira")].rstrip("/")
+            if candidate:
+                candidates.append(candidate)
+        else:
+            candidates.append(f"{base}/jira")
+
+        # Preserve order and uniqueness.
+        seen: set[str] = set()
+        result: List[str] = []
+        for candidate in candidates:
+            normalized = candidate.rstrip("/")
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                result.append(normalized)
+        return result
+
+    def validate(self, allow_base_url_discovery: bool = True) -> bool:
         """
         Validate current Jira credentials.
 
@@ -250,7 +279,31 @@ class JiraService:
                     logger.info("Jira validate: OK via %s", endpoint)
                     return True
 
-                attempts.append((endpoint, status, ctype))
+                # Capture auth-related hints from Jira/SSO/proxies without leaking credentials.
+                seraph_reason = response.headers.get("x-seraph-loginreason", "")
+                ausername = response.headers.get("x-ausername", "")
+                www_auth = response.headers.get("www-authenticate", "")
+                meta_parts = [ctype]
+                extras = []
+                if seraph_reason:
+                    extras.append(f"seraph={seraph_reason}")
+                if ausername:
+                    extras.append(f"user={ausername}")
+                if www_auth:
+                    extras.append("www-auth=present")
+                meta = f"{ctype} ({', '.join(extras)})" if extras else ctype
+                attempts.append((endpoint, status, meta))
+
+                if status >= 400:
+                    snippet = (response.text or "")[:200].replace("\r", " ").replace("\n", " ").strip()
+                    if snippet:
+                        logger.info(
+                            "Jira validate: non-OK response via %s -> %s (%s): %s",
+                            endpoint,
+                            status,
+                            meta_parts[0],
+                            snippet,
+                        )
 
             except Exception as e:
                 logger.warning("Jira validate (%s) failed: %s", endpoint, e)
@@ -268,7 +321,29 @@ class JiraService:
                     logger.info("Jira validate: OK via %s", endpoint)
                     return True
 
-                attempts.append((endpoint, status, ctype))
+                seraph_reason = response.headers.get("x-seraph-loginreason", "")
+                ausername = response.headers.get("x-ausername", "")
+                www_auth = response.headers.get("www-authenticate", "")
+                extras = []
+                if seraph_reason:
+                    extras.append(f"seraph={seraph_reason}")
+                if ausername:
+                    extras.append(f"user={ausername}")
+                if www_auth:
+                    extras.append("www-auth=present")
+                meta = f"{ctype} ({', '.join(extras)})" if extras else ctype
+                attempts.append((endpoint, status, meta))
+
+                if status >= 400:
+                    snippet = (response.text or "")[:200].replace("\r", " ").replace("\n", " ").strip()
+                    if snippet:
+                        logger.info(
+                            "Jira validate: non-OK response via %s -> %s (%s): %s",
+                            endpoint,
+                            status,
+                            ctype,
+                            snippet,
+                        )
 
             except Exception as e:
                 attempts.append((endpoint, 0, str(e)))
@@ -280,6 +355,51 @@ class JiraService:
                 details.append(f"{endpoint} -> {status} {ctype}")
             else:
                 details.append(f"{endpoint} -> {ctype}")
+
+        # Optional fallback: auto-discover alternate base URL shape.
+        if allow_base_url_discovery and not getattr(settings, "JIRA_DISABLE_DISCOVERY", False):
+            original_base_url = self.base_url
+            original_email = self.email
+            original_api_token = self.api_token
+            original_use_pat = self.bearer_token is not None
+            discovery_failures: List[str] = []
+
+            for candidate_base_url in self._base_url_discovery_candidates():
+                try:
+                    logger.info(
+                        "Jira validate: trying base URL discovery candidate %s",
+                        candidate_base_url,
+                    )
+                    self.connect(
+                        base_url=candidate_base_url,
+                        email=original_email,
+                        api_token=original_api_token,
+                        use_pat=original_use_pat,
+                    )
+                    if self.validate(allow_base_url_discovery=False):
+                        logger.info(
+                            "Jira validate: base URL discovery succeeded (%s -> %s)",
+                            original_base_url,
+                            candidate_base_url,
+                        )
+                        return True
+                except Exception as discovery_exc:
+                    discovery_failures.append(f"{candidate_base_url}: {discovery_exc}")
+
+            # Restore original connection state if discovery attempts failed.
+            try:
+                if original_base_url:
+                    self.connect(
+                        base_url=original_base_url,
+                        email=original_email,
+                        api_token=original_api_token,
+                        use_pat=original_use_pat,
+                    )
+            except Exception:
+                pass
+
+            if discovery_failures:
+                details.extend([f"discovery({entry})" for entry in discovery_failures])
 
         hint = (
             "Validation failed. "

@@ -231,7 +231,12 @@ const Settings = () => {
       setMessage({ type: 'success', text: 'Jira connection successful!' });
     } catch (error) {
       const detail = getErrorMessage(error, 'Unknown error');
-      setMessage({ type: 'error', text: `Failed to connect to Jira: ${detail}` });
+      setMessage({
+        type: 'error',
+        text: detail.toLowerCase().startsWith('failed to connect to jira')
+          ? detail
+          : `Failed to connect to Jira: ${detail}`,
+      });
     }
   };
 

@@ -135,25 +135,23 @@ class JiraProjectService:
         page_size = min(settings.JIRA_PAGE_SIZE, max_results)
 
         jql = f"project={project_key} ORDER BY created DESC"
-        fields = ",".join(
-            [
-                "summary",
-                "status",
-                "issuetype",
-                "priority",
-                "assignee",
-                "timetracking",
-                "timeoriginalestimate",
-                "timespent",
-                "timeestimate",
-                "created",
-                "updated",
-                "resolutiondate",
-                "duedate",
-                "labels",
-                "components",
-            ]
-        )
+        fields = [
+            "summary",
+            "status",
+            "issuetype",
+            "priority",
+            "assignee",
+            "timetracking",
+            "timeoriginalestimate",
+            "timespent",
+            "timeestimate",
+            "created",
+            "updated",
+            "resolutiondate",
+            "duedate",
+            "labels",
+            "components",
+        ]
 
         versions = self.version_resolver.get_api_versions("default")
         last_err: Optional[Exception] = None
@@ -347,25 +345,23 @@ class JiraProjectService:
         page_size = min(settings.JIRA_PAGE_SIZE, max_results)
 
         jql = f"project={project_key} ORDER BY created DESC"
-        fields = ",".join(
-            [
-                "summary",
-                "status",
-                "issuetype",
-                "priority",
-                "assignee",
-                "timetracking",
-                "timeoriginalestimate",
-                "timespent",
-                "timeestimate",
-                "created",
-                "updated",
-                "resolutiondate",
-                "duedate",
-                "labels",
-                "components",
-            ]
-        )
+        fields = [
+            "summary",
+            "status",
+            "issuetype",
+            "priority",
+            "assignee",
+            "timetracking",
+            "timeoriginalestimate",
+            "timespent",
+            "timeestimate",
+            "created",
+            "updated",
+            "resolutiondate",
+            "duedate",
+            "labels",
+            "components",
+        ]
 
         versions = self.version_resolver.get_api_versions("default")
 
@@ -420,7 +416,9 @@ class JiraProjectService:
                             )
 
                         for issue in issues:
-                            all_issues.append(self._transform_issue(issue))
+                            transformed = self._transform_issue(issue)
+                            if transformed.get("key"):
+                                all_issues.append(transformed)
 
                         start_at += len(issues)
                         if start_at >= total or len(issues) == 0:
@@ -475,7 +473,24 @@ class JiraProjectService:
         Returns:
             Transformed issue dict
         """
-        f = issue.get("fields", {})
+        issue_dict = issue if isinstance(issue, dict) else {}
+        fields_raw = issue_dict.get("fields")
+        f = fields_raw if isinstance(fields_raw, dict) else {}
+
+        def get_name(value: Any) -> Optional[str]:
+            if isinstance(value, dict):
+                name = value.get("name")
+                return name if isinstance(name, str) else None
+            return None
+
+        components: List[str] = []
+        for c in (f.get("components") or []):
+            if isinstance(c, dict):
+                component_name = c.get("name")
+                if isinstance(component_name, str) and component_name:
+                    components.append(component_name)
+
+        assignee = f.get("assignee") if isinstance(f.get("assignee"), dict) else {}
 
         def hours(val: Optional[int]) -> Optional[float]:
             """Convert seconds to hours."""
@@ -485,15 +500,15 @@ class JiraProjectService:
                 return None
 
         return {
-            "jira_id": issue.get("id"),
-            "key": issue.get("key"),
+            "jira_id": issue_dict.get("id"),
+            "key": issue_dict.get("key"),
             "summary": f.get("summary"),
             "description": None,
-            "task_type": (f.get("issuetype") or {}).get("name"),
-            "status": (f.get("status") or {}).get("name"),
-            "priority": (f.get("priority") or {}).get("name"),
-            "assignee_email": (f.get("assignee") or {}).get("emailAddress"),
-            "assignee_name": (f.get("assignee") or {}).get("displayName"),
+            "task_type": get_name(f.get("issuetype")),
+            "status": get_name(f.get("status")),
+            "priority": get_name(f.get("priority")),
+            "assignee_email": assignee.get("emailAddress"),
+            "assignee_name": assignee.get("displayName"),
             "estimate_hours": hours(f.get("timeoriginalestimate")),
             "spent_hours": hours(f.get("timespent")),
             "remaining_hours": hours(f.get("timeestimate")),
@@ -501,8 +516,8 @@ class JiraProjectService:
             "updated_date": f.get("updated"),
             "resolved_date": f.get("resolutiondate"),
             "due_date": f.get("duedate"),
-            "labels": f.get("labels"),
-            "components": [c.get("name") for c in (f.get("components") or [])],
+            "labels": f.get("labels") if isinstance(f.get("labels"), list) else [],
+            "components": components,
             "is_blocker": False,
             "blocked_by": [],
             "blocks": [],
