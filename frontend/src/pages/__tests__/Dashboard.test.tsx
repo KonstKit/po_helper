@@ -275,9 +275,9 @@ describe('Dashboard smoke scenarios', () => {
     await waitFor(() => expect(listTasks).toHaveBeenCalled());
 
     await waitFor(() => {
-      expect(document.querySelectorAll('[data-testid^="risk-item-"]').length).toBeGreaterThan(0);
+      expect(document.querySelectorAll('[data-testid^="dashboard-risk-item-"]').length).toBeGreaterThan(0);
     });
-    const riskBoxes = Array.from(document.querySelectorAll('[data-testid^="risk-item-"]')).filter(
+    const riskBoxes = Array.from(document.querySelectorAll('[data-testid^="dashboard-risk-item-"]')).filter(
       (node): node is HTMLElement => node instanceof HTMLElement
     );
     expect(riskBoxes.length).toBeGreaterThan(0);
@@ -285,14 +285,27 @@ describe('Dashboard smoke scenarios', () => {
     fireEvent.click(riskBoxes[0]);
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toBeInTheDocument();
-    expect(await screen.findAllByTestId('drilldown-item')).not.toHaveLength(0);
+    expect(await screen.findAllByTestId('dashboard-drilldown-item')).not.toHaveLength(0);
 
     fireEvent.click(screen.getByRole('button', { name: /close/i }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
     await waitFor(() => {
-      expect(document.querySelectorAll('[data-testid="upcoming-item"]').length).toBeGreaterThan(0);
+      expect(document.querySelectorAll('[data-testid="dashboard-upcoming-item"]').length).toBeGreaterThan(0);
     });
+  });
+
+  it('renders only the consolidated dashboard layout', async () => {
+    renderDashboard();
+    await waitFor(() => expect(listTasks).toHaveBeenCalled());
+
+    await screen.findByTestId('dashboard-section-charts');
+    await screen.findByTestId('dashboard-section-insights');
+    await screen.findByTestId('dashboard-section-stats');
+
+    expect(screen.queryByText('Risk Assessment')).not.toBeInTheDocument();
+    expect(screen.queryByText('Upcoming Focus')).not.toBeInTheDocument();
+    expect(screen.queryByText('Team Velocity')).not.toBeInTheDocument();
   });
 
   it('refreshes data when websocket announces sync completion', async () => {

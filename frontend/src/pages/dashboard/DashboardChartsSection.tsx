@@ -1,0 +1,127 @@
+import React from 'react';
+import { Box, Card, CardContent, Grid, LinearProgress, Typography } from '@mui/material';
+import { Line, Doughnut } from 'react-chartjs-2';
+import type { ChartData, ChartOptions } from 'chart.js';
+import VelocityChart, { type VelocityDataPoint } from '../../components/VelocityChart';
+
+interface DashboardChartsSectionProps {
+  isLoading: boolean;
+  hasTasks: boolean;
+  showVelocity: boolean;
+  showBurndown: boolean;
+  velocityData: VelocityDataPoint[];
+  targetVelocity?: number;
+  burndownData: ChartData<'line', number[], string>;
+  taskDistributionData: ChartData<'doughnut', number[], string>;
+  lineChartOptions: ChartOptions<'line'>;
+  doughnutChartOptions: ChartOptions<'doughnut'>;
+}
+
+const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({
+  isLoading,
+  hasTasks,
+  showVelocity,
+  showBurndown,
+  velocityData,
+  targetVelocity,
+  burndownData,
+  taskDistributionData,
+  lineChartOptions,
+  doughnutChartOptions,
+}) => {
+  const hasVelocityData = velocityData.some((item) => item.value > 0);
+  const hasDistributionData = (taskDistributionData.datasets?.[0]?.data ?? []).some(
+    (value) => Number(value) > 0
+  );
+  const distributionWidth = showVelocity || showBurndown ? 4 : 12;
+
+  return (
+    <Grid container spacing={3} data-testid="dashboard-section-charts">
+      {showVelocity && (
+        <Grid item xs={12} md={showBurndown ? 6 : 12}>
+          <Card data-testid="dashboard-chart-velocity">
+            <CardContent>
+              <Typography variant="h6" gutterBottom fontWeight={600}>
+                Weekly Velocity
+                {targetVelocity !== undefined && (
+                  <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                    (Target: {targetVelocity}h)
+                  </Typography>
+                )}
+              </Typography>
+              {isLoading ? (
+                <Box height={250} display="flex" alignItems="center" justifyContent="center">
+                  <LinearProgress sx={{ width: '80%' }} />
+                </Box>
+              ) : !hasTasks || !hasVelocityData ? (
+                <Box height={250} display="flex" alignItems="center" justifyContent="center">
+                  <Typography variant="body2" color="text.secondary">
+                    Not enough sprint completion data to render velocity.
+                  </Typography>
+                </Box>
+              ) : (
+                <VelocityChart data={velocityData} targetVelocity={targetVelocity} showTrend height={250} />
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+      )}
+
+      {showBurndown && (
+        <Grid item xs={12} md={showVelocity ? 6 : 12}>
+          <Card data-testid="dashboard-chart-burndown">
+            <CardContent>
+              <Typography variant="h6" gutterBottom fontWeight={600}>
+                Sprint Burndown
+              </Typography>
+              {isLoading ? (
+                <Box height={250} display="flex" alignItems="center" justifyContent="center">
+                  <LinearProgress sx={{ width: '80%' }} />
+                </Box>
+              ) : !hasTasks ? (
+                <Box height={250} display="flex" alignItems="center" justifyContent="center">
+                  <Typography variant="body2" color="text.secondary">
+                    Burndown is unavailable without scoped tasks.
+                  </Typography>
+                </Box>
+              ) : (
+                <Box height={250}>
+                  <Line data={burndownData} options={lineChartOptions} />
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+      )}
+
+      <Grid item xs={12} md={distributionWidth}>
+        <Card data-testid="dashboard-chart-distribution" sx={{ height: '100%' }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom fontWeight={600}>
+              Task Distribution
+            </Typography>
+            {isLoading ? (
+              <Box height={250} display="flex" alignItems="center" justifyContent="center">
+                <LinearProgress sx={{ width: '80%' }} />
+              </Box>
+            ) : !hasTasks || !hasDistributionData ? (
+              <Box height={250} display="flex" alignItems="center" justifyContent="center">
+                <Typography variant="body2" color="text.secondary">
+                  No tasks available for distribution.
+                </Typography>
+              </Box>
+            ) : (
+              <Box height={250} display="flex" justifyContent="center" alignItems="center">
+                <Doughnut data={taskDistributionData} options={doughnutChartOptions} />
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+      </Grid>
+    </Grid>
+  );
+};
+
+DashboardChartsSection.displayName = 'DashboardChartsSection';
+
+export default React.memo(DashboardChartsSection);
