@@ -103,7 +103,7 @@ flowchart LR
   - Modification Reason: remove dependency on legacy DOM
 
 #### Files to Read
-- `frontend/src/pages/dashboard/dashboardSemanticsContract.md`
+- `frontend/src/pages/dashboard/dashboardContract.ts`
   - Read Purpose: ensure tests match intended behavior
   - Usage: define acceptance assertions
 

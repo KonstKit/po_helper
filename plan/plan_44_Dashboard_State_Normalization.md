@@ -105,9 +105,15 @@ flowchart TD
   - Modification Reason: prevent blank/ambiguous states
 
 #### Files to Read
-- `frontend/src/components/ErrorBoundary.tsx`
-  - Read Purpose: ensure consistency with the rest of the application
-  - Usage: align messaging, actions, and visuals
+- `frontend/src/components/EmptyState.tsx`
+  - Read Purpose: align recovery patterns for missing data states
+  - Usage: reuse stable empty-state behavior in dashboard sections
+- `frontend/src/components/BackendStatusAlert.tsx`
+  - Read Purpose: align partial-error messaging with existing app patterns
+  - Usage: reuse error copy and recovery action treatment
+- `frontend/src/components/DashboardSkeleton.tsx`
+  - Read Purpose: align loading shape and skeleton timing
+  - Usage: keep loading UX consistent across dashboard sections
 
 ## Acceptance Criteria
 

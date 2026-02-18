@@ -105,7 +105,7 @@ flowchart LR
   - Modification Reason: enforce semantics contract
 
 #### Files to Read
-- `frontend/src/pages/dashboard/dashboardSemanticsContract.md`
+- `frontend/src/pages/dashboard/dashboardContract.ts`
   - Read Purpose: ensure implementation matches agreed semantics
   - Usage: map selection -> panel outputs
 

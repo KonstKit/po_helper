@@ -82,7 +82,7 @@ flowchart LR
 | Guardrail | Signal | Trigger | Response |
 | --- | --- | --- | --- |
 | Refresh loop | repeated refresh events | frequency threshold | investigate realtime + refresh rules |
-| Slow filter apply | duration metric | exceeds budget | optimize derived computations |
+| Slow filter apply | duration metric | exceeds 300ms p95 on 1k-task dataset | optimize derived computations |
 | Chart warnings | warning gate | warning detected | fix plugin/registration drift |
 
 ### Risk Monitoring Table
@@ -121,5 +121,5 @@ flowchart LR
 
 ### Technical Acceptance
 - No new high-volume logs are introduced for every render tick.
-- Performance thresholds are documented and reviewed in follow-up release notes.
+- Performance thresholds are measurable and enforced by regression checks: `filter_apply_ms_p95 <= 300`, `dashboard_init_ms_p95 <= 700`.
 

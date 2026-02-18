@@ -24,7 +24,7 @@ Prevent "active sprint is always null" class failures and ensure sprint-dependen
 ### Prerequisites
 - **Prerequisite Tasks**: plan_41
 - **Required Resources**: Sprint payload samples from at least one environment
-- **Environment Requirements**: Ability to validate sprint status transitions or representative snapshots
+- **Environment Requirements**: Ability to validate sprint status transitions for at least two projects and partial payload samples
 
 ### Downstream Impact
 - **Downstream Tasks**: plan_51, plan_52, plan_54
@@ -35,7 +35,7 @@ Prevent "active sprint is always null" class failures and ensure sprint-dependen
 ## Execution Steps
 
 ### Step 1: Collect Contract Samples
-- **Action**: Gather representative sprint payload variants and document field differences.
+- **Action**: Gather payload variants with `state`, with `status`, with missing id, and with date-range-only payloads; document field differences.
 - **Input**: Environment payload samples.
 - **Output**: Field mapping table and risk list.
 - **Notes**: Include both identifier fields and status/state fields.
@@ -94,13 +94,22 @@ flowchart LR
 ### File Operations List
 
 #### Files to Create
- - No new files required (current scope)
+- `frontend/src/utils/sprintNormalization.ts`
+  - Type: shared normalizer utility
+  - Purpose: normalize sprint identity, status/state precedence, and fallback selection
+- `frontend/src/utils/__tests__/sprintNormalization.test.ts`
+  - Type: unit test
+  - Purpose: validate canonicalization and active-sprint tie-breakers
 
 #### Files to Modify
-- `frontend/src/utils/sprintNormalization.ts`
-  - Modification Location: sprint ingestion/selection
-  - Modification Content: canonical identity + status normalization
-  - Modification Reason: unify contract consumption
+- `frontend/src/store/sprintSlice.ts`
+  - Modification Location: contract ingestion and active sprint resolution
+  - Modification Content: consume normalizer and maintain `sprintsByProject` with explicit `projectId`
+  - Modification Reason: deterministic, per-project sprint selection
+- `frontend/src/store/dataThunks.ts`
+  - Modification Location: `loadAllSprints` cache and project payload dispatch
+  - Modification Content: per-project TTL cache keys (`lastLoadedAtByProject`) and dispatch `{ projectId, sprints }`
+  - Modification Reason: prevent stale cross-project sprint selection when switching contexts.
 - `frontend/src/pages/ProjectDetail.tsx`
   - Modification Location: active sprint/state checks
   - Modification Content: consume normalization helper instead of page-local assumptions
@@ -120,10 +129,11 @@ flowchart LR
 ### Functional Acceptance
 - `id` and `sprint_id` both resolve to a deterministic canonical sprint identifier.
 - `state` and `status` are normalized via documented precedence and select the same active sprint as:
-  - `s.state === 'active'`
-  - fallback to `s.status === 'active'`
-  - fallback to date-window match
-  - fallback to latest by date when no explicit active marker exists.
+- `s.state === 'active'`
+- fallback to `s.status === 'active'`
+- fallback to date-window match
+- fallback to latest by date when no explicit active marker exists.
+- Active-sprint resolution is scoped by `projectId`; switching projects recomputes from local cached project payload without reusing another project's sprint selection.
 - `ProjectDetail.tsx` and `SprintCapacity.tsx` derive active sprint and active-state checks through `sprintNormalization.ts`.
 
 ### Technical Acceptance

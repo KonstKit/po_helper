@@ -24,7 +24,7 @@ Charts are highly visible and are a frequent source of user trust issues. Clean 
 ### Prerequisites
 - **Prerequisite Tasks**: plan_49
 - **Prerequisite Data**: Timeseries input availability assessment and fallback policy
-- **Prerequisite Environment**: Ability to validate chart rendering against representative datasets
+- **Prerequisite Environment**: Ability to validate chart rendering against seeded fixtures with at least one full sprint, one partial sprint, and one missing sprint dataset
 
 ### Downstream Impact
 - **Downstream Tasks**: plan_57
@@ -92,8 +92,8 @@ sequenceDiagram
 ### Resource Allocation Table
 | Resource Type | Owner | Time Window | Key Output | Risk/Notes |
 | --- | --- | --- | --- | --- |
-| Frontend engineer | AI-agent | ~plan execution window | correct charts + infra cleanup | avoid hidden plugin drift |
-| Backend reviewer | QA engineer | ~plan execution window | validate semantics/data | align on definitions |
+| Frontend engineer | AI-agent | one execution pass | correct charts + infra cleanup | avoid hidden plugin drift |
+| Backend reviewer | QA engineer | one execution pass | validate semantics/data | align on definitions |
 
 ---
 

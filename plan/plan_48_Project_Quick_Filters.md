@@ -99,14 +99,11 @@ flowchart LR
 #### Files to Modify
 - `frontend/src/components/DashboardFilters.tsx`
   - Modification Location: quick filter handler and persisted context
-  - Modification Content: deterministic selection for all/active/recent
+  - Modification Content: deterministic selection for all/active/recent and explicit non-aggregation mode for `all`
   - Modification Reason: remove placeholder logic
-  - Modification Location: quick filter handling
-  - Modification Content: implement deterministic selection/aggregation behavior
-  - Modification Reason: remove placeholder behavior
 
 #### Files to Read
-- `frontend/src/pages/dashboard/dashboardSemanticsContract.md`
+- `frontend/src/pages/dashboard/dashboardContract.ts`
   - Read Purpose: match behavior to the agreed scope and labels
   - Usage: validate against examples
 

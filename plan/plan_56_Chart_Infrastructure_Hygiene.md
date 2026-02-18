@@ -87,7 +87,7 @@ flowchart LR
 ### Risk Monitoring Table
 | Risk Item | Level | Trigger Signal | Mitigation Strategy | Owner |
 | --- | --- | --- | --- | --- |
-| Central setup change affects other charts | Medium | regressions on other pages | validate representative charts | AI-agent |
+| Central setup change affects other charts | Medium | regressions on other pages | validate `Dashboard`, `VelocityChart`, `CapacityChart` render paths | AI-agent |
 | Removing symbols changes UX copy expectations | Low | feedback about visuals | use consistent copy standards | AI-agent |
 
 ### File Operations List

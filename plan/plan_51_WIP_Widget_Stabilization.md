@@ -99,7 +99,7 @@ flowchart LR
 #### Files to Modify
 - `frontend/src/pages/Dashboard.tsx`
 - `frontend/src/store/sprintSlice.ts`
-  - Modification Location: widget data fetch + state rendering
+  - Modification Location: sprint-derived selection + project-scoped refresh contract
   - Modification Content: availability states + canonical sprint binding
   - Modification Reason: prevent silent failures
 
@@ -111,6 +111,7 @@ flowchart LR
 ## Acceptance Criteria
 
 ### Functional Acceptance
+- WIP state handling remains component-local in `Dashboard.tsx` unless additional screens explicitly adopt the shared contract.
 - WIP card displays "N/A" / "Not available" when sprint analytics are missing, never silent zero.
 - When sprint context changes, WIP widget refreshes once and shows matching values for the selected sprint context.
 - Errors from WIP endpoint do not break unrelated dashboard sections.
