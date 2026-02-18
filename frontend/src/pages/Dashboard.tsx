@@ -26,8 +26,10 @@ import {
   getProjectBudgetHours,
   getProjectValueMetrics,
   getSprintWipStatus,
+  getVelocity,
   type BudgetHoursResponse,
   type SprintWipStatus,
+  type VelocityResponse,
   type ValueMetricsResponse,
 } from '../services/api';
 import DashboardSkeleton from '../components/DashboardSkeleton';
@@ -39,9 +41,23 @@ import DashboardChartsSection from './dashboard/DashboardChartsSection';
 import DashboardInsightsSection from './dashboard/DashboardInsightsSection';
 import DashboardStatsSection from './dashboard/DashboardStatsSection';
 import {
+  DASHBOARD_STORAGE_KEYS,
+  DASHBOARD_TEST_IDS,
+  VELOCITY_SPRINTS_COUNT_MAP,
+  formatTaskScopeLabel,
+  getUpcomingHorizonDays,
+  parseChartViewOption,
+  parseDateRangeOption,
+  parseNumberListFromStorage,
+  parseQuickFilterOption,
+  type ChartViewOption,
+  type DateRangeOption,
+} from './dashboard/dashboardContract';
+import {
   buildActiveBlockers,
   buildBurndownData,
   buildDashboardStats,
+  buildVelocityDataFromApi,
   buildEnhancedVelocityData,
   buildKpiMetrics,
   buildOverdueTasks,
@@ -50,9 +66,9 @@ import {
   buildTargetVelocity,
   buildTaskDistribution,
   buildUpcomingTasks,
-  buildVelocityData,
   buildVelocitySeries,
   buildVelocityTrend,
+  filterTasksByDateRange,
   formatDueDate,
 } from './dashboard/dashboardDerivations';
 
@@ -76,6 +92,69 @@ const doughnutChartOptions: ChartOptions<'doughnut'> = {
   },
 };
 
+interface DashboardProjectCandidate {
+  id: number;
+  name: string;
+  status?: string | null;
+  state?: string | null;
+}
+
+const parseStoredProjectId = (value: string | null): number | null => {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const isActiveProjectCandidate = (project: DashboardProjectCandidate): boolean => {
+  const status = typeof project.status === 'string' ? project.status.toLowerCase() : '';
+  const state = typeof project.state === 'string' ? project.state.toLowerCase() : '';
+  return status === 'active' || state === 'active';
+};
+
+const resolveInitialProjectId = (projects: DashboardProjectCandidate[]): number | null => {
+  if (projects.length === 0) return null;
+
+  const sortedById = [...projects].sort((left, right) => left.id - right.id);
+  const sortedByName = [...projects].sort((left, right) => left.name.localeCompare(right.name));
+  const projectIds = new Set(sortedById.map((project) => project.id));
+  const quickFilter = parseQuickFilterOption(localStorage.getItem(DASHBOARD_STORAGE_KEYS.quickFilter));
+  const recentProjectIds = parseNumberListFromStorage(
+    localStorage.getItem(DASHBOARD_STORAGE_KEYS.recentProjectIds)
+  );
+  const recentMatch = recentProjectIds.find((projectId) => projectIds.has(projectId)) ?? null;
+  const lastProjectId = parseStoredProjectId(localStorage.getItem(DASHBOARD_STORAGE_KEYS.lastProjectId));
+  const lastMatch = lastProjectId !== null && projectIds.has(lastProjectId) ? lastProjectId : null;
+
+  if (quickFilter === 'active') {
+    const activeProjects = sortedByName.filter(isActiveProjectCandidate);
+    if (activeProjects.length > 0) {
+      return activeProjects[0].id;
+    }
+    if (lastMatch !== null) {
+      return lastMatch;
+    }
+    return sortedById[0]?.id ?? null;
+  }
+
+  if (quickFilter === 'all') {
+    if (lastMatch !== null) {
+      return lastMatch;
+    }
+    if (recentMatch !== null) {
+      return recentMatch;
+    }
+    return sortedById[0]?.id ?? null;
+  }
+
+  if (recentMatch !== null) {
+    return recentMatch;
+  }
+  if (lastMatch !== null) {
+    return lastMatch;
+  }
+  return sortedById[0]?.id ?? null;
+};
+
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
@@ -88,6 +167,7 @@ const Dashboard: React.FC = () => {
   } = useSelector((state: RootState) => state.project);
   const {
     tasksByProject,
+    taskScopeByProject,
     loading: tasksLoading,
     error: tasksError,
   } = useSelector((state: RootState) => state.task);
@@ -95,6 +175,8 @@ const Dashboard: React.FC = () => {
 
   const [budgetData, setBudgetData] = useState<BudgetHoursResponse | null>(null);
   const [valueMetrics, setValueMetrics] = useState<ValueMetricsResponse | null>(null);
+  const [velocityData, setVelocityData] = useState<VelocityResponse | null>(null);
+  const [velocityLoading, setVelocityLoading] = useState(false);
   const [wipStatus, setWipStatus] = useState<SprintWipStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [now, setNow] = useState(0);
@@ -105,8 +187,12 @@ const Dashboard: React.FC = () => {
     tasks: [],
   });
 
-  const [dateRange, setDateRange] = useState<string>(() => localStorage.getItem('dashboard_date_range') || '30d');
-  const [chartView, setChartView] = useState<string>(() => localStorage.getItem('dashboard_chart_view') || 'both');
+  const [dateRange, setDateRange] = useState<DateRangeOption>(() =>
+    parseDateRangeOption(localStorage.getItem(DASHBOARD_STORAGE_KEYS.dateRange))
+  );
+  const [chartView, setChartView] = useState<ChartViewOption>(() =>
+    parseChartViewOption(localStorage.getItem(DASHBOARD_STORAGE_KEYS.chartView))
+  );
 
   const projectTasks = useMemo(
     () => (currentProject ? tasksByProject[currentProject.id] || [] : []),
@@ -136,13 +222,30 @@ const Dashboard: React.FC = () => {
   }, []);
 
   const handleDateRangeChange = useCallback((range: string) => {
-    setDateRange(range);
-    localStorage.setItem('dashboard_date_range', range);
+    const nextRange = parseDateRangeOption(range);
+    setDateRange(nextRange);
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.dateRange, nextRange);
   }, []);
 
   const handleChartViewChange = useCallback((view: string) => {
-    setChartView(view);
-    localStorage.setItem('dashboard_chart_view', view);
+    const nextView = parseChartViewOption(view);
+    setChartView(nextView);
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.chartView, nextView);
+  }, []);
+
+  const currentTaskScope = useMemo(
+    () => (currentProject ? taskScopeByProject[currentProject.id] : undefined),
+    [currentProject, taskScopeByProject]
+  );
+
+  const isPartialTaskScope = currentTaskScope?.isPartial === true;
+
+  const resetLocalMetrics = useCallback(() => {
+    setBudgetData(null);
+    setValueMetrics(null);
+    setVelocityData(null);
+    setWipStatus(null);
+    setVelocityLoading(false);
   }, []);
 
   const handleProjectChange = useCallback(
@@ -157,7 +260,14 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     if (!currentProject && projects.length > 0) {
-      dispatch(setCurrentProject(projects[0]));
+      const initialProjectId = resolveInitialProjectId(projects);
+      const initialProject =
+        initialProjectId !== null
+          ? projects.find((project) => project.id === initialProjectId) ?? projects[0]
+          : projects[0];
+      if (initialProject) {
+        dispatch(setCurrentProject(initialProject));
+      }
     }
   }, [currentProject, projects, dispatch]);
 
@@ -168,9 +278,7 @@ const Dashboard: React.FC = () => {
 
   const refreshProjectMetrics = useCallback(async () => {
     if (!currentProject) {
-      setBudgetData(null);
-      setValueMetrics(null);
-      setWipStatus(null);
+      resetLocalMetrics();
       return;
     }
 
@@ -187,6 +295,19 @@ const Dashboard: React.FC = () => {
       setLoadError('Failed to refresh project metrics.');
     }
 
+    try {
+      setVelocityLoading(true);
+      const velocity = await getVelocity(currentProject.id, {
+        sprintsCount: VELOCITY_SPRINTS_COUNT_MAP[dateRange],
+      });
+      setVelocityData(velocity);
+    } catch (error) {
+      console.warn('Failed to load velocity metrics', error);
+      setVelocityData(null);
+    } finally {
+      setVelocityLoading(false);
+    }
+
     if (!activeSprint?.id) {
       setWipStatus(null);
       return;
@@ -199,7 +320,7 @@ const Dashboard: React.FC = () => {
       console.warn('Failed to load WIP status', error);
       setWipStatus(null);
     }
-  }, [currentProject, activeSprint?.id]);
+  }, [activeSprint?.id, currentProject, dateRange, resetLocalMetrics]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -287,32 +408,60 @@ const Dashboard: React.FC = () => {
   }, [currentProject, dispatch, refreshProjectMetrics]);
 
   const stats = useMemo(() => buildDashboardStats(projectTasks, now), [projectTasks, now]);
-  const velocityData = useMemo(() => buildVelocityData(projectTasks, now), [projectTasks, now]);
+  const dateScopedTasks = useMemo(
+    () => filterTasksByDateRange(projectTasks, dateRange, now),
+    [projectTasks, dateRange, now]
+  );
+  const scopedStats = useMemo(() => buildDashboardStats(dateScopedTasks, now), [dateScopedTasks, now]);
+  const velocityChartData = useMemo(
+    () => buildVelocityDataFromApi(velocityData),
+    [velocityData]
+  );
   const burndownData = useMemo(() => buildBurndownData(projectTasks), [projectTasks]);
   const taskDistribution = useMemo(() => buildTaskDistribution(projectTasks), [projectTasks]);
-  const overdueTasks = useMemo(() => buildOverdueTasks(projectTasks, now), [projectTasks, now]);
-  const activeBlockers = useMemo(() => buildActiveBlockers(projectTasks), [projectTasks]);
+  const overdueTasks = useMemo(() => buildOverdueTasks(dateScopedTasks, now), [dateScopedTasks, now]);
+  const activeBlockers = useMemo(() => buildActiveBlockers(dateScopedTasks), [dateScopedTasks]);
   const staleInProgressTasks = useMemo(
-    () => buildStaleInProgressTasks(projectTasks, now),
-    [projectTasks, now]
+    () => buildStaleInProgressTasks(dateScopedTasks, now),
+    [dateScopedTasks, now]
   );
-  const velocitySeries = useMemo(() => buildVelocitySeries(velocityData), [velocityData]);
+  const velocitySeries = useMemo(() => buildVelocitySeries(velocityChartData), [velocityChartData]);
   const velocityTrend = useMemo(() => buildVelocityTrend(velocitySeries), [velocitySeries]);
   const enhancedVelocityData = useMemo(
-    () => buildEnhancedVelocityData(velocityData, velocitySeries),
-    [velocityData, velocitySeries]
+    () => buildEnhancedVelocityData(velocityChartData, velocitySeries),
+    [velocityChartData, velocitySeries]
   );
-  const targetVelocity = useMemo(() => buildTargetVelocity(velocitySeries), [velocitySeries]);
+  const targetVelocity = useMemo(() => {
+    if (typeof velocityData?.average_velocity === 'number') {
+      return Math.round(velocityData.average_velocity);
+    }
+    return buildTargetVelocity(velocitySeries);
+  }, [velocityData, velocitySeries]);
   const riskItems = useMemo(
     () =>
       buildRiskItems(overdueTasks, activeBlockers, staleInProgressTasks, velocityTrend, openDrilldown),
     [overdueTasks, activeBlockers, staleInProgressTasks, velocityTrend, openDrilldown]
   );
-  const upcomingTasks = useMemo(() => buildUpcomingTasks(projectTasks, now), [projectTasks, now]);
+  const upcomingTasks = useMemo(
+    () => buildUpcomingTasks(dateScopedTasks, now, getUpcomingHorizonDays(dateRange)),
+    [dateScopedTasks, now, dateRange]
+  );
   const kpiMetrics = useMemo(
     () =>
-      buildKpiMetrics(stats, velocitySeries, velocityTrend, overdueTasks, activeBlockers, openDrilldown),
-    [stats, velocitySeries, velocityTrend, overdueTasks, activeBlockers, openDrilldown]
+      buildKpiMetrics(scopedStats, velocitySeries, velocityTrend, overdueTasks, activeBlockers, openDrilldown, {
+        isPartialScope: isPartialTaskScope,
+        velocityValue: typeof velocityData?.average_velocity === 'number' ? velocityData.average_velocity : undefined,
+      }),
+    [
+      scopedStats,
+      velocitySeries,
+      velocityTrend,
+      overdueTasks,
+      activeBlockers,
+      openDrilldown,
+      isPartialTaskScope,
+      velocityData,
+    ]
   );
 
   const isLoading = projectsLoading || tasksLoading;
@@ -321,6 +470,7 @@ const Dashboard: React.FC = () => {
   const dashboardError = loadError || projectsError || tasksError;
   const shouldShowVelocity = chartView === 'velocity' || chartView === 'both';
   const shouldShowBurndown = chartView === 'burndown' || chartView === 'both';
+  const shouldShowDistribution = chartView === 'distribution';
 
   if (isLoading && !hasProject) {
     return <DashboardSkeleton />;
@@ -375,6 +525,12 @@ const Dashboard: React.FC = () => {
         />
       ) : (
         <>
+          {isPartialTaskScope && currentTaskScope && (
+            <Alert data-testid={DASHBOARD_TEST_IDS.partialScopeBadge} severity="info" sx={{ mb: 3 }}>
+              {formatTaskScopeLabel(currentTaskScope)}
+            </Alert>
+          )}
+
           <KPIBar metrics={kpiMetrics} />
 
           {dashboardError && (
@@ -392,10 +548,11 @@ const Dashboard: React.FC = () => {
           )}
 
           <DashboardChartsSection
-            isLoading={isLoading}
+            isLoading={isLoading || velocityLoading}
             hasTasks={hasTasks}
             showVelocity={shouldShowVelocity}
             showBurndown={shouldShowBurndown}
+            showDistribution={shouldShowDistribution}
             velocityData={enhancedVelocityData}
             targetVelocity={targetVelocity}
             burndownData={burndownData}

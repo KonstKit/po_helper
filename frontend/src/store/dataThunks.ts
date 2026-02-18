@@ -1,19 +1,81 @@
 import { createAsyncThunk } from '@reduxjs/toolkit';
-import {
-  listProjects,
-  listTasks,
-  listSprints
-} from '../services/api';
+import { listProjects, listSprints, listTasks, listTasksPaginated } from '../services/api';
 import { setProjects, setLoading, setError, setCurrentProject } from './projectSlice';
-import { setTasks, setTasksLoading, setTasksError } from './taskSlice';
+import { setTasks, setTasksLoading, setTasksError, type Task } from './taskSlice';
 import { setSprints, setSprintsLoading, setSprintsError } from './sprintSlice';
 import { AppDispatch, RootState } from './store';
 import { getErrorMessage } from '../utils/errorUtils';
+import {
+  TASK_SCOPE_DEFAULTS,
+  type TaskScope,
+} from '../pages/dashboard/dashboardContract';
 
 const CACHE_TTL = 60000; // 1 minute cache
 
 // Track active project loading to prevent duplicates
 let projectsLoadingPromise: Promise<void> | null = null;
+
+const loadProjectTasksWithScope = async (
+  projectId: number
+): Promise<{ tasks: Task[]; taskScope: TaskScope }> => {
+  const tasks: Task[] = [];
+  let total: number | undefined;
+  let skip = 0;
+  let pagesFetched = 0;
+  let hasNext = false;
+  let capHit = false;
+
+  while (pagesFetched < TASK_SCOPE_DEFAULTS.maxPages && tasks.length < TASK_SCOPE_DEFAULTS.maxTasks) {
+    const response = await listTasksPaginated(
+      { projectId, skip, limit: TASK_SCOPE_DEFAULTS.pageSize },
+      { timeout: 30000 }
+    );
+    const pageTasks = response.data as Task[];
+    total = response.meta.total;
+    hasNext = response.meta.has_next;
+    pagesFetched += 1;
+
+    if (pageTasks.length === 0) {
+      hasNext = false;
+      break;
+    }
+
+    const remaining = TASK_SCOPE_DEFAULTS.maxTasks - tasks.length;
+    if (remaining <= 0) {
+      capHit = true;
+      break;
+    }
+
+    tasks.push(...pageTasks.slice(0, remaining));
+
+    if (!hasNext) {
+      break;
+    }
+
+    if (pagesFetched >= TASK_SCOPE_DEFAULTS.maxPages || tasks.length >= TASK_SCOPE_DEFAULTS.maxTasks) {
+      capHit = true;
+      break;
+    }
+
+    skip += TASK_SCOPE_DEFAULTS.pageSize;
+  }
+
+  const isPartial =
+    capHit ||
+    hasNext ||
+    (typeof total === 'number' ? tasks.length < total : false);
+
+  return {
+    tasks,
+    taskScope: {
+      total,
+      fetched: tasks.length,
+      hasNext: hasNext || capHit,
+      isPartial,
+      capHit,
+    },
+  };
+};
 
 // Load all projects with their details
 export const loadAllProjects = createAsyncThunk<
@@ -65,12 +127,13 @@ export const loadAllTasks = createAsyncThunk<
   { dispatch: AppDispatch; state: RootState }
 >('data/loadAllTasks', async ({ force = false, projectId }, { dispatch, getState }) => {
   const state = getState();
-  const { lastLoadedAllAt, lastLoadedAtByProject } = state.task;
+  const { lastLoadedAllAt, lastLoadedAtByProject, taskScopeByProject } = state.task;
 
   if (!force) {
     if (typeof projectId === 'number') {
       const lastProjectLoad = lastLoadedAtByProject[projectId];
-      if (lastProjectLoad && Date.now() - lastProjectLoad < CACHE_TTL) {
+      const taskScope = taskScopeByProject[projectId];
+      if (lastProjectLoad && Date.now() - lastProjectLoad < CACHE_TTL && taskScope && !taskScope.isPartial) {
         return;
       }
     } else if (lastLoadedAllAt && Date.now() - lastLoadedAllAt < CACHE_TTL) {
@@ -80,9 +143,14 @@ export const loadAllTasks = createAsyncThunk<
 
   dispatch(setTasksLoading(true));
   try {
-    const tasks = await listTasks({ projectId }, { timeout: 30000 });
+    if (typeof projectId === 'number') {
+      const { tasks, taskScope } = await loadProjectTasksWithScope(projectId);
+      dispatch(setTasks({ tasks, projectId, taskScope, updateProjectFreshness: true }));
+    } else {
+      const tasks = (await listTasks(undefined, { timeout: 30000 })) as Task[];
+      dispatch(setTasks({ tasks, updateProjectFreshness: false }));
+    }
 
-    dispatch(setTasks({ tasks, projectId }));
     dispatch(setTasksError(null));
   } catch (err: unknown) {
     console.error('[Redux] Failed to load tasks:', err);

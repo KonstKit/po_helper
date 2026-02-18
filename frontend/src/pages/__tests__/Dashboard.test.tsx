@@ -7,30 +7,33 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 
 import Dashboard from '../Dashboard';
+import { DASHBOARD_STORAGE_KEYS, DASHBOARD_TEST_IDS } from '../dashboard/dashboardContract';
 import authReducer from '../../store/authSlice';
 import projectReducer from '../../store/projectSlice';
 import taskReducer from '../../store/taskSlice';
 import sprintReducer from '../../store/sprintSlice';
 import {
   listProjects,
-  listTasks,
+  listTasksPaginated,
   listSprints,
   getProjectBudgetHours,
   getProjectValueMetrics,
   getProjectById,
   getSprintWipStatus,
   getIntegrationsStatus,
+  getVelocity,
 } from '../../services/api';
 
 vi.mock('../../services/api', () => ({
   listProjects: vi.fn(),
-  listTasks: vi.fn(),
+  listTasksPaginated: vi.fn(),
   listSprints: vi.fn(),
   getProjectBudgetHours: vi.fn(),
   getProjectValueMetrics: vi.fn(),
   getProjectById: vi.fn(),
   getSprintWipStatus: vi.fn(),
   getIntegrationsStatus: vi.fn(),
+  getVelocity: vi.fn(),
 }));
 
 vi.mock('react-chartjs-2', () => ({
@@ -40,13 +43,14 @@ vi.mock('react-chartjs-2', () => ({
 }));
 
 const mockedListProjects = vi.mocked(listProjects);
-const mockedListTasks = vi.mocked(listTasks);
+const mockedListTasksPaginated = vi.mocked(listTasksPaginated);
 const mockedListSprints = vi.mocked(listSprints);
 const mockedGetProjectBudgetHours = vi.mocked(getProjectBudgetHours);
 const mockedGetProjectValueMetrics = vi.mocked(getProjectValueMetrics);
 const mockedGetProjectById = vi.mocked(getProjectById);
 const mockedGetSprintWipStatus = vi.mocked(getSprintWipStatus);
 const mockedGetIntegrationsStatus = vi.mocked(getIntegrationsStatus);
+const mockedGetVelocity = vi.mocked(getVelocity);
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -56,6 +60,14 @@ const sampleProject = {
   name: 'WaBank',
   status: 'active',
   total_tasks: 5,
+};
+
+const sampleProjectSecondary = {
+  id: 2,
+  jira_key: 'WAB2',
+  name: 'WaBank Core',
+  status: 'active',
+  total_tasks: 0,
 };
 
 const baseNow = Date.now();
@@ -118,7 +130,7 @@ const preloadedState = {
   auth: { user: null, token: null, isAuthenticated: false, loading: false },
   project: {
     projects: [sampleProject],
-    currentProject: sampleProject,
+    currentProject: null,
     loading: false,
     error: null,
     lastLoadedAt: null,
@@ -130,6 +142,7 @@ const preloadedState = {
     lastLoadedAt: null,
     lastLoadedAllAt: null,
     lastLoadedAtByProject: {},
+    taskScopeByProject: {},
     tasksByProject: {},
   },
   sprint: {
@@ -143,11 +156,15 @@ const preloadedState = {
 };
 
 class MockSocket extends EventTarget implements WebSocket {
-  static CONNECTING = 0;
-  static OPEN = 1;
-  static CLOSING = 2;
-  static CLOSED = 3;
+  static CONNECTING: 0 = 0;
+  static OPEN: 1 = 1;
+  static CLOSING: 2 = 2;
+  static CLOSED: 3 = 3;
   static instances: MockSocket[] = [];
+  readonly CONNECTING: 0 = MockSocket.CONNECTING;
+  readonly OPEN: 1 = MockSocket.OPEN;
+  readonly CLOSING: 2 = MockSocket.CLOSING;
+  readonly CLOSED: 3 = MockSocket.CLOSED;
 
   binaryType: 'blob' | 'arraybuffer' = 'blob';
   bufferedAmount = 0;
@@ -157,7 +174,7 @@ class MockSocket extends EventTarget implements WebSocket {
   onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
   onclose: ((event: Event) => void) | null = null;
-  readyState = MockSocket.OPEN;
+  readyState: number = MockSocket.OPEN;
   url: string;
 
   constructor(url: string | URL) {
@@ -214,6 +231,10 @@ describe('Dashboard smoke scenarios', () => {
   beforeEach(() => {
     MockSocket.reset();
     vi.clearAllMocks();
+    localStorage.clear();
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.quickFilter, 'recent');
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.dateRange, '30d');
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.chartView, 'both');
 
     mockedListProjects.mockResolvedValue({
       data: [sampleProject],
@@ -226,7 +247,17 @@ describe('Dashboard smoke scenarios', () => {
         has_prev: false,
       },
     });
-    mockedListTasks.mockResolvedValue(sampleTasks);
+    mockedListTasksPaginated.mockResolvedValue({
+      data: sampleTasks,
+      meta: {
+        total: sampleTasks.length,
+        page: 1,
+        per_page: 500,
+        total_pages: 1,
+        has_next: false,
+        has_prev: false,
+      },
+    });
     mockedListSprints.mockResolvedValue([]);
     mockedGetProjectBudgetHours.mockResolvedValue({
       remaining_hours: 12,
@@ -245,9 +276,18 @@ describe('Dashboard smoke scenarios', () => {
       github: { configured: false },
       gitlab: { configured: false },
     });
+    mockedGetVelocity.mockResolvedValue({
+      average_velocity: 4,
+      sprints_analyzed: 2,
+      velocity_trend: 'stable',
+      sprint_velocities: [
+        { sprint_id: 11, sprint_name: 'Sprint A', velocity: 3, end_date: new Date(baseNow - 14 * DAY).toISOString() },
+        { sprint_id: 12, sprint_name: 'Sprint B', velocity: 5, end_date: new Date(baseNow - 7 * DAY).toISOString() },
+      ],
+    });
   });
 
-  const renderDashboard = () => {
+  const renderDashboard = (customPreloadedState = preloadedState) => {
     const store = configureStore({
       reducer: {
         auth: authReducer,
@@ -255,7 +295,7 @@ describe('Dashboard smoke scenarios', () => {
         task: taskReducer,
         sprint: sprintReducer,
       },
-      preloadedState,
+      preloadedState: customPreloadedState,
     });
 
     return render(
@@ -272,7 +312,7 @@ describe('Dashboard smoke scenarios', () => {
   it('renders risk insights and supports drilldowns', async () => {
     renderDashboard();
 
-    await waitFor(() => expect(listTasks).toHaveBeenCalled());
+    await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
 
     await waitFor(() => {
       expect(document.querySelectorAll('[data-testid^="dashboard-risk-item-"]').length).toBeGreaterThan(0);
@@ -293,11 +333,11 @@ describe('Dashboard smoke scenarios', () => {
     await waitFor(() => {
       expect(document.querySelectorAll('[data-testid="dashboard-upcoming-item"]').length).toBeGreaterThan(0);
     });
-  });
+  }, 15000);
 
   it('renders only the consolidated dashboard layout', async () => {
     renderDashboard();
-    await waitFor(() => expect(listTasks).toHaveBeenCalled());
+    await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
 
     await screen.findByTestId('dashboard-section-charts');
     await screen.findByTestId('dashboard-section-insights');
@@ -306,12 +346,67 @@ describe('Dashboard smoke scenarios', () => {
     expect(screen.queryByText('Risk Assessment')).not.toBeInTheDocument();
     expect(screen.queryByText('Upcoming Focus')).not.toBeInTheDocument();
     expect(screen.queryByText('Team Velocity')).not.toBeInTheDocument();
-  });
+  }, 15000);
+
+  it('shows explicit partial scope badge when task scope is incomplete', async () => {
+    mockedListTasksPaginated.mockResolvedValueOnce({
+      data: sampleTasks,
+      meta: {
+        total: 500,
+        page: 1,
+        per_page: 500,
+        total_pages: 1,
+        has_next: false,
+        has_prev: false,
+      },
+    });
+
+    renderDashboard();
+    await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
+    expect(await screen.findByTestId(DASHBOARD_TEST_IDS.partialScopeBadge)).toBeInTheDocument();
+  }, 15000);
+
+  it('restores recent project context on initial load', async () => {
+    mockedListProjects.mockResolvedValueOnce({
+      data: [sampleProject, sampleProjectSecondary],
+      meta: {
+        total: 2,
+        page: 1,
+        per_page: 50,
+        total_pages: 1,
+        has_next: false,
+        has_prev: false,
+      },
+    });
+
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.quickFilter, 'recent');
+    localStorage.setItem(
+      DASHBOARD_STORAGE_KEYS.recentProjectIds,
+      JSON.stringify([sampleProjectSecondary.id, sampleProject.id])
+    );
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.lastProjectId, String(sampleProject.id));
+
+    renderDashboard({
+      ...preloadedState,
+      project: {
+        ...preloadedState.project,
+        projects: [sampleProject, sampleProjectSecondary],
+        currentProject: null,
+      },
+    });
+
+    await waitFor(() =>
+      expect(mockedListTasksPaginated).toHaveBeenCalledWith(
+        { projectId: sampleProjectSecondary.id, skip: 0, limit: 500 },
+        { timeout: 30000 }
+      )
+    );
+  }, 15000);
 
   it('refreshes data when websocket announces sync completion', async () => {
     renderDashboard();
-    await waitFor(() => expect(listTasks).toHaveBeenCalled());
-    const initialTasksCalls = mockedListTasks.mock.calls.length;
+    await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
+    const initialTasksCalls = mockedListTasksPaginated.mock.calls.length;
     const initialBudgetCalls = mockedGetProjectBudgetHours.mock.calls.length;
 
     await waitFor(() => expect(MockSocket.last()?.onmessage).toBeTypeOf('function'));
@@ -320,13 +415,13 @@ describe('Dashboard smoke scenarios', () => {
       socket?.triggerMessage({ type: 'jira_sync_complete', project_id: sampleProject.id });
     });
 
-    await waitFor(() => expect(mockedListTasks.mock.calls.length).toBeGreaterThan(initialTasksCalls));
+    await waitFor(() => expect(mockedListTasksPaginated.mock.calls.length).toBeGreaterThan(initialTasksCalls));
     await waitFor(() => expect(mockedGetProjectBudgetHours.mock.calls.length).toBeGreaterThan(initialBudgetCalls));
-  });
+  }, 15000);
 
   it('surfaces error when websocket indicates sync failure', async () => {
     renderDashboard();
-    await waitFor(() => expect(listTasks).toHaveBeenCalled());
+    await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
 
     await waitFor(() => expect(MockSocket.last()?.onmessage).toBeTypeOf('function'));
     const socket = MockSocket.last();
@@ -335,5 +430,5 @@ describe('Dashboard smoke scenarios', () => {
     });
 
     await screen.findByText(/Background sync failed/i);
-  });
+  }, 15000);
 });

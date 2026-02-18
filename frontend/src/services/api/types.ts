@@ -1331,9 +1331,18 @@ export interface LocalFlakyTest {
 // =============================================================================
 
 /** Velocity API response from getVelocity() */
+export interface VelocitySprintSummary {
+  sprint_id?: number;
+  sprint_name?: string;
+  velocity: number;
+  end_date?: string | null;
+}
+
 export interface VelocityResponse {
   average_velocity: number;
-  velocity_trend?: { week: string; velocity: number }[];
+  sprints_analyzed?: number;
+  velocity_trend?: string | { week: string; velocity: number }[];
+  sprint_velocities?: VelocitySprintSummary[];
 }
 
 /** Single point in burndown chart */

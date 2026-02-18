@@ -42,13 +42,18 @@ const makeCacheKey = (prefix: string, params?: Record<string, unknown>): string 
 // Project Analytics (Velocity, Burndown, Risks, Forecast)
 // =============================================================================
 
-export const getVelocity = async (projectId: number): Promise<VelocityResponse> => {
-  const cacheKey = `velocity_${projectId}`;
+export const getVelocity = async (
+  projectId: number,
+  opts?: { sprintsCount?: number }
+): Promise<VelocityResponse> => {
+  const cacheKey = makeCacheKey(`velocity_${projectId}`, { sprints_count: opts?.sprintsCount });
   const cached = storage.get<VelocityResponse>(cacheKey);
   if (cached !== null) return cached;
 
   return deduplicateRequest(cacheKey, async () => {
-    const { data } = await api.get(`/v1/analytics/projects/${projectId}/velocity`);
+    const { data } = await api.get(`/v1/analytics/projects/${projectId}/velocity`, {
+      params: { sprints_count: opts?.sprintsCount },
+    });
     storage.set(cacheKey, data, { ttl: CACHE_TTL * 2 });
     return data as VelocityResponse;
   });

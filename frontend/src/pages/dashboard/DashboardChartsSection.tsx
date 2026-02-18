@@ -9,6 +9,7 @@ interface DashboardChartsSectionProps {
   hasTasks: boolean;
   showVelocity: boolean;
   showBurndown: boolean;
+  showDistribution: boolean;
   velocityData: VelocityDataPoint[];
   targetVelocity?: number;
   burndownData: ChartData<'line', number[], string>;
@@ -22,6 +23,7 @@ const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({
   hasTasks,
   showVelocity,
   showBurndown,
+  showDistribution,
   velocityData,
   targetVelocity,
   burndownData,
@@ -33,7 +35,6 @@ const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({
   const hasDistributionData = (taskDistributionData.datasets?.[0]?.data ?? []).some(
     (value) => Number(value) > 0
   );
-  const distributionWidth = showVelocity || showBurndown ? 4 : 12;
 
   return (
     <Grid container spacing={3} data-testid="dashboard-section-charts">
@@ -53,7 +54,7 @@ const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({
                 <Box height={250} display="flex" alignItems="center" justifyContent="center">
                   <LinearProgress sx={{ width: '80%' }} />
                 </Box>
-              ) : !hasTasks || !hasVelocityData ? (
+              ) : !hasVelocityData ? (
                 <Box height={250} display="flex" alignItems="center" justifyContent="center">
                   <Typography variant="body2" color="text.secondary">
                     Not enough sprint completion data to render velocity.
@@ -94,30 +95,32 @@ const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({
         </Grid>
       )}
 
-      <Grid item xs={12} md={distributionWidth}>
-        <Card data-testid="dashboard-chart-distribution" sx={{ height: '100%' }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom fontWeight={600}>
-              Task Distribution
-            </Typography>
-            {isLoading ? (
-              <Box height={250} display="flex" alignItems="center" justifyContent="center">
-                <LinearProgress sx={{ width: '80%' }} />
-              </Box>
-            ) : !hasTasks || !hasDistributionData ? (
-              <Box height={250} display="flex" alignItems="center" justifyContent="center">
-                <Typography variant="body2" color="text.secondary">
-                  No tasks available for distribution.
-                </Typography>
-              </Box>
-            ) : (
-              <Box height={250} display="flex" justifyContent="center" alignItems="center">
-                <Doughnut data={taskDistributionData} options={doughnutChartOptions} />
-              </Box>
-            )}
-          </CardContent>
-        </Card>
-      </Grid>
+      {showDistribution && (
+        <Grid item xs={12} md={showVelocity || showBurndown ? 6 : 12}>
+          <Card data-testid="dashboard-chart-distribution" sx={{ height: '100%' }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom fontWeight={600}>
+                Task Distribution
+              </Typography>
+              {isLoading ? (
+                <Box height={250} display="flex" alignItems="center" justifyContent="center">
+                  <LinearProgress sx={{ width: '80%' }} />
+                </Box>
+              ) : !hasTasks || !hasDistributionData ? (
+                <Box height={250} display="flex" alignItems="center" justifyContent="center">
+                  <Typography variant="body2" color="text.secondary">
+                    No tasks available for distribution.
+                  </Typography>
+                </Box>
+              ) : (
+                <Box height={250} display="flex" justifyContent="center" alignItems="center">
+                  <Doughnut data={taskDistributionData} options={doughnutChartOptions} />
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+      )}
     </Grid>
   );
 };

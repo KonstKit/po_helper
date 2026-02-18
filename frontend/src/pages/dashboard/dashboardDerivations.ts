@@ -1,8 +1,11 @@
 import type { ChartData } from 'chart.js';
 import type { KPIMetric } from '../../components/KPIBar';
 import type { VelocityDataPoint } from '../../components/VelocityChart';
+import type { VelocityResponse } from '../../services/api';
 import { categorizeStatus, isDoneStatus } from '../../hooks/useTaskStatuses';
 import type { Task } from '../../store/taskSlice';
+import type { DateRangeOption } from './dashboardContract';
+import { getDateRangeDays } from './dashboardContract';
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const STALE_TASK_DAYS = 5;
@@ -51,6 +54,28 @@ const sameTaskIdentity = (source: Task, candidate: Task): boolean => {
   if (source.id && candidate.id) return source.id === candidate.id;
   if (source.key && candidate.key) return source.key === candidate.key;
   return false;
+};
+
+const getTaskActivityTime = (task: Task): number | null => {
+  const resolved = task.resolved_date ? new Date(task.resolved_date).getTime() : NaN;
+  if (Number.isFinite(resolved)) return resolved;
+  const updated = task.updated_date ? new Date(task.updated_date).getTime() : NaN;
+  return Number.isFinite(updated) ? updated : null;
+};
+
+export const filterTasksByDateRange = (
+  tasks: Task[],
+  dateRange: DateRangeOption,
+  now: number
+): Task[] => {
+  const days = getDateRangeDays(dateRange);
+  if (days === null) return tasks;
+
+  const windowStart = now - days * DAY_IN_MS;
+  return tasks.filter((task) => {
+    const activityTime = getTaskActivityTime(task);
+    return activityTime !== null && activityTime >= windowStart && activityTime <= now;
+  });
 };
 
 export const buildDashboardStats = (tasks: Task[], now: number): DashboardStats => {
@@ -111,6 +136,36 @@ export const buildVelocityData = (tasks: Task[], now: number): ChartData<'line',
       {
         label: 'Velocity (h)',
         data: weeks.map((week) => Math.round(buckets[week] || 0)),
+        borderColor: 'rgb(75,192,192)',
+        backgroundColor: 'rgba(75,192,192,0.2)',
+      },
+    ],
+  };
+};
+
+export const buildVelocityDataFromApi = (
+  velocityResponse: VelocityResponse | null
+): ChartData<'line', number[], string> => {
+  const sprintVelocities = Array.isArray(velocityResponse?.sprint_velocities)
+    ? [...velocityResponse.sprint_velocities].reverse()
+    : [];
+  const labels = sprintVelocities.map((item, index) => {
+    const sprintName = typeof item.sprint_name === 'string' && item.sprint_name.trim() ? item.sprint_name : '';
+    if (sprintName) return sprintName;
+    if (item.end_date) {
+      const parsed = new Date(item.end_date);
+      if (Number.isFinite(parsed.getTime())) return parsed.toLocaleDateString();
+    }
+    return `Sprint ${index + 1}`;
+  });
+  const values = sprintVelocities.map((item) => Number(item.velocity) || 0);
+
+  return {
+    labels,
+    datasets: [
+      {
+        label: 'Velocity (h)',
+        data: values,
         borderColor: 'rgb(75,192,192)',
         backgroundColor: 'rgba(75,192,192,0.2)',
       },
@@ -325,8 +380,12 @@ export const buildRiskItems = (
   return items.slice(0, 4);
 };
 
-export const buildUpcomingTasks = (tasks: Task[], now: number): UpcomingTaskItem[] => {
-  const horizon = now + UPCOMING_DAYS * DAY_IN_MS;
+export const buildUpcomingTasks = (
+  tasks: Task[],
+  now: number,
+  horizonDays = UPCOMING_DAYS
+): UpcomingTaskItem[] => {
+  const horizon = now + Math.max(1, horizonDays) * DAY_IN_MS;
   return tasks
     .filter((task: Task) => {
       if (isDoneStatus(task.status)) return false;
@@ -364,7 +423,8 @@ export const buildKpiMetrics = (
   velocityTrend: VelocityTrend,
   overdueTasks: Task[],
   activeBlockers: Task[],
-  openDrilldown: DrilldownOpener
+  openDrilldown: DrilldownOpener,
+  options?: { isPartialScope?: boolean; velocityValue?: number }
 ): KPIMetric[] => {
   const completionRate = stats.totalTasks > 0 ? Math.round((stats.completedTasks / stats.totalTasks) * 100) : 0;
   const velocityChange =
@@ -373,11 +433,13 @@ export const buildKpiMetrics = (
           Math.max(1, velocitySeries[velocitySeries.length - 2])) *
         100
       : 0;
+  const isPartialScope = options?.isPartialScope === true;
+  const velocityValue = typeof options?.velocityValue === 'number' ? options.velocityValue : stats.velocity;
 
   return [
     {
       label: 'Velocity',
-      value: stats.velocity,
+      value: velocityValue,
       unit: 'hrs',
       change: velocityChange,
       trend: velocityTrend,
@@ -386,10 +448,18 @@ export const buildKpiMetrics = (
     },
     {
       label: 'On Time',
-      value: completionRate,
-      unit: '%',
-      status: completionRate >= 80 ? 'success' : completionRate >= 60 ? 'warning' : 'error',
-      tooltip: 'Task completion rate',
+      value: isPartialScope ? '--' : completionRate,
+      unit: isPartialScope ? undefined : '%',
+      status: isPartialScope
+        ? 'neutral'
+        : completionRate >= 80
+          ? 'success'
+          : completionRate >= 60
+            ? 'warning'
+            : 'error',
+      tooltip: isPartialScope
+        ? 'Task completion rate hidden because only partial task scope is loaded.'
+        : 'Task completion rate',
     },
     {
       label: 'At Risk',
@@ -400,7 +470,9 @@ export const buildKpiMetrics = (
           : overdueTasks.length + activeBlockers.length < 5
             ? 'warning'
             : 'error',
-      tooltip: 'Overdue and blocked tasks',
+      tooltip: isPartialScope
+        ? 'Overdue and blocked tasks (partial scope).'
+        : 'Overdue and blocked tasks',
       onClick: () =>
         openDrilldown('At Risk tasks', (task: Task) =>
           overdueTasks.some((overdueTask) => sameTaskIdentity(overdueTask, task)) ||
