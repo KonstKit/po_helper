@@ -99,6 +99,7 @@ flowchart LR
   - Type: documentation
   - Purpose: guide diagnosis using dashboard signals
   - Content: signal definitions and troubleshooting steps
+  - Provisioning Note: create `docs/` directory first if it does not exist in the target workspace
 - `frontend/src/utils/dashboardPerfGuards.ts`
   - Type: utility module
   - Purpose: deterministic p95 budget tracking with fixed sample window

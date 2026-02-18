@@ -124,6 +124,6 @@ flowchart LR
 
 ### Quality Acceptance
 - `frontend/src/pages/Dashboard.tsx` contains no unreachable duplicate sections for `Velocity`, `Burndown`, `Risk`, or `Upcoming`.
-- `npm run test -- Dashboard.test.tsx` fails when assertions rely on removed legacy selectors.
+- `frontend/src/pages/__tests__/Dashboard.test.tsx` assertions are migrated to the target layout contract and no longer depend on removed legacy selectors.
 
 

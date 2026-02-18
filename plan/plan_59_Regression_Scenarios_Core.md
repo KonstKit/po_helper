@@ -39,6 +39,12 @@ Prevent recurrence of "filters do not work", "active sprint always null", "chart
 - **Input**: Known risk list and previous incidents.
 - **Output**: Scenario matrix.
 - **Notes**: Prioritize scenarios that previously caused blank pages or crashes.
+- **Notes (recommended baseline scenarios)**:
+  - `dateRange` changes KPI + upcoming list
+  - `dateRange` does not change burndown sprint timeline
+  - `chartView` toggles exact chart panels by test id
+  - `quickFilter` active/recent transitions are deterministic
+  - partial task scope shows `dashboard-partial-scope` badge
 
 ### Step 2: Implement Scenario Fixtures
 - **Action**: Create seeded/mocked datasets for each scenario (within the existing test harness).
@@ -116,9 +122,11 @@ flowchart LR
 ### Functional Acceptance
 - Regression matrix includes explicit scenarios for:
   - `dateRange` with no matches
+  - `dateRange` does not alter burndown sprint-scoped series
   - missing active sprint
   - partial analytics availability
   - quick filter context transitions
+- Regression matrix includes one deterministic visibility scenario for each `chartView` mode: `velocity`, `burndown`, `both`, `distribution`.
 - Warnings gate is deterministic and scoped to dashboard chart renders.
 
 ### Quality Acceptance
