@@ -49,12 +49,14 @@ This module turns the filter UI from a placeholder into a reliable interaction c
 ## Execution Steps
 
 ### Step 0: Fix Task Data Scope Before Filter Semantics
-- **Action**: Define and implement a single deterministic task data strategy that avoids default pagination truncation.
+- **Action**: Implement the chosen deterministic task data strategy that avoids default pagination truncation.
 - **Input**: dashboard task-derived panel list and existing `listTasks` usage.
-- **Output**: explicit strategy for scope (full pagination or explicit partial-mode).
+- **Output**: project-scoped bounded pagination with explicit partial-mode metadata.
 - **Notes**: filter claims are blocked until dashboard task scope is deterministic.
 - **Implementation Contract**: add/adjust a bounded fetch loop with `listTasksPaginated` (`skip += limit`) until `meta.has_next === false` or explicit cap (`maxPages` or `maxTotalTasks`) and persist scope metadata (`taskScope.total`, `taskScope.fetched`, `taskScope.isPartial`) by project context.
 - **Implementation Contract (guardrail)**: only project-scoped calls may enable full pagination. Calls without `projectId` must remain bounded to the existing lightweight behavior; startup bootstrap (`initializeAppData`) must not trigger full pagination.
+- **Implementation Contract (recommended path)**: use project-scoped `taskScopeByProject` and allow `loadAllTasks({ projectId })` cache skip only when cached scope exists and `taskScopeByProject[projectId].isPartial === false`.
+- **Implementation Contract (bootstrap safety)**: unscoped bootstrap task loads must not mark project-scoped freshness entries (`lastLoadedAtByProject`) to avoid poisoning dashboard project caches.
 
 ---
 
@@ -94,7 +96,7 @@ Chosen strategy: fetch all dashboard-relevant tasks via `listTasksPaginated` loo
 ### Core Metrics Mapping (Filter Scope)
 | Filter | Scope (Panels) | Primary Effect | Non-Effect (Explicit) | Persistence |
 | --- | --- | --- | --- | --- |
-| Date range | KPIs, velocity, burndown, risks, upcoming | timeseries + list windowing rules | project selector defaults | saved |
+| Date range | KPIs, velocity, risks, upcoming | timeseries + list windowing rules | burndown, WIP, project selector defaults | saved |
 | Chart view | chart and chart labels | visibility + source selection | KPI/action list content | saved |
 | Project quick filter | project context + derived panel source inputs | selected project set and source scope | unrelated panel memory (toasts/notifications) | saved |
 
@@ -126,22 +128,35 @@ Define an explicit filter semantics contract and apply it uniformly to derived c
 
 ### Data Model
 Filter selections are first-class inputs to all derived metrics and chart/list subsets. Each dashboard section consumes scoped inputs rather than re-deriving logic independently.
+Task scope is explicit and typed in the dashboard contract:
+- `TaskScope = { total?: number; fetched: number; hasNext: boolean; isPartial: boolean; capHit?: boolean }`
+- `PARTIAL_SCOPE_LABEL = "Showing partial data (first N tasks)"`
+- `TEST_IDS.partialScopeBadge = "dashboard-partial-scope"`
 
 ### Data Scope Rule
 - Dashboard task-derived panels must not use default `listTasks` limits.
-- Default implementation uses `listTasksPaginated` loop until `meta.has_next === false`.
+- Default implementation uses `listTasksPaginated` loop with fixed bounds: `PAGE_SIZE=500`, `MAX_PAGES=40`, `MAX_TASKS=20000`.
 - If full scope cannot be fetched in bounded mode, the dashboard must render explicit partial-scope state and disable completion claims for affected KPIs.
+- Canonical semantics for date-range and burndown exclusions are defined in `plan_46` and enforced by `plan_47`; this module must not redefine those rules.
 
 ### File Operations List
 
 #### Files to Modify
 - `frontend/src/store/dataThunks.ts`
   - Modification Location: dashboard task fetch path and cache metadata
-  - Modification Content: add deterministic full-task fetch helper with stop condition and scope counters
+  - Modification Content: add deterministic full-task fetch helper with stop condition and scope counters; cache skip allowed only for complete project scope (`isPartial === false`)
   - Modification Reason: ensure one-time filters operate on complete task scope
+- `frontend/src/store/taskSlice.ts`
+  - Modification Location: project cache metadata and task scope state
+  - Modification Content: add `taskScopeByProject` and avoid setting `lastLoadedAtByProject` from unscoped bootstrap loads
+  - Modification Reason: prevent project cache poisoning from first-page/global bootstrap responses
+- `frontend/src/pages/dashboard/dashboardContract.ts`
+  - Modification Location: filter/task-scope contract exports
+  - Modification Content: add `TaskScope`, partial-scope label, and test ids consumed by UI/tests
+  - Modification Reason: keep scope semantics DRY and testable
 - `frontend/src/pages/__tests__/Dashboard.test.tsx`
   - Modification Location: test fixtures and assertions
-  - Modification Content: add assertions that full-task scope or partial-scope state is respected
+  - Modification Content: add assertions that full-task scope or partial-scope badge (`dashboard-partial-scope`) is respected
   - Modification Reason: protect against return to first-page logic
 
 #### Files to Read
@@ -157,14 +172,13 @@ Filter selections are first-class inputs to all derived metrics and chart/list s
 - Each filter has a documented meaning and an explicit scope.
 - Changing a filter consistently changes visible outputs as expected.
 - "Quick filters" do not misrepresent behavior (selection vs aggregation).
-- For task-derived panels, dashboard must state and enforce the source strategy:
-  - either `listTasksPaginated` with deterministic full-project windowing,
-  - or dedicated analytics endpoints.
-  - If task pagination remains constrained, no filter semantics claim is considered complete until full-project aggregation is implemented.
+- For task-derived panels, dashboard uses project-scoped `listTasksPaginated` loops with deterministic bounds and explicit scope metadata.
 - Dashboard task fetching exports deterministic scope metadata (`total`, `hasNext`, `isPartial`) and never silently consumes only the first page.
 - Filter-based behavior claims are incomplete unless task scope is full (`isPartial === false`) or dashboard renders explicit `partial scope` label in affected panels.
 
 - Full pagination is only ever required when dashboard context provides `projectId`; no `initializeAppData` path should request unscoped full-task enumeration.
+- `loadAllTasks({ projectId })` skips reload only when cached scope for that project is complete (`isPartial === false`) and cache TTL is valid.
+- If bounded pagination hits a cap (`capHit === true`), dashboard shows `dashboard-partial-scope` badge and does not silently present partial totals as complete totals.
 
 ### Quality Acceptance
 - Regression checks prevent reintroducing "filter UI that does not affect data."

@@ -41,6 +41,7 @@ Prevent misleading UI controls and remove ambiguity for both users and future ma
 - **Notes**: Use `resolved_date` as primary filter key, fallback to `updated_date`; include "scope not changed" explicitly for metadata and static settings.
 - **Notes (Burndown)**: `BurndownPoint.day` is index-based; burndown does not support arbitrary wall-clock windows.
 - **Notes (Type safety)**: include `resolved_date` in Redux task typing before implementing window filters.
+- **Notes (Velocity - recommended option B)**: date range controls velocity by deterministic `sprints_count` mapping passed to velocity endpoint, not by ad-hoc task windows.
 
 ### Step 2: Define Chart View Semantics
 - **Action**: Define what chart view toggles control (visibility vs data selection) and which charts are included.
@@ -49,7 +50,7 @@ Prevent misleading UI controls and remove ambiguity for both users and future ma
 - **Notes**: Ensure the toggle cannot be bypassed by hidden or legacy renders.
 
 ### Step 3: Define Project Quick Filter Semantics
-- **Action**: Decide if quick filters represent aggregation or selection shortcuts, and define "active" and "recent".
+- **Action**: Lock quick filters to selection-shortcut semantics (no aggregation) and define deterministic "active" and "recent".
 - **Input**: Product expectations and data availability.
 - **Output**:
   - `all`: show all available projects in dropdown and keep explicit project selection mode (no aggregation).
@@ -62,6 +63,19 @@ Prevent misleading UI controls and remove ambiguity for both users and future ma
 - **Input**: Existing persistence patterns in the app.
 - **Output**: Persistence contract and default matrix.
 - **Notes**: Ensure persistence does not override explicitly selected project context unexpectedly.
+
+### Step 5: Lock Velocity Window Mapping (Recommended Option B)
+- **Action**: Define deterministic mapping from `DateRangeOption` to velocity `sprints_count`.
+- **Input**: Supported date-range options and expected chart stability.
+- **Output**: Contract table exported from `dashboardContract.ts`.
+- **Notes**: Recommended mapping:
+  - `7d -> 2`
+  - `14d -> 3`
+  - `30d -> 5`
+  - `90d -> 8`
+  - `180d -> 12`
+  - `365d -> 16`
+  - `all -> 20`
 
 ---
 
@@ -102,7 +116,11 @@ flowchart LR
 - `frontend/src/pages/dashboard/dashboardContract.ts`
   - Type: typed contract module
   - Purpose: serve as single source of truth for filter behavior
-  - Content: enums (`DateRangeOption`, `ChartViewOption`, `QuickFilterOption`), storage keys, scope matrix, and defaults
+  - Content: enums (`DateRangeOption`, `ChartViewOption`, `QuickFilterOption`), storage keys, scope matrix, defaults, and `VELOCITY_SPRINTS_COUNT_MAP`
+- `docs/dashboard-ui-contract.md`
+  - Type: documentation
+  - Purpose: human-readable contract for dashboard filter semantics and stable UI identifiers
+  - Content: panel scope matrix, velocity mapping, partial-scope label, and test-id contract
 
 #### Files to Modify
 - `frontend/src/components/DashboardFilters.tsx`
@@ -116,6 +134,10 @@ flowchart LR
   - Modification Location: `Task` interface
   - Modification Content: add `resolved_date?: string | null` (and optional `sprint_id?: number | null` to support future sprint-scoped filters without casting)
   - Modification Reason: avoid `any` and keep date-range filtering typed end-to-end
+- `frontend/src/services/api/analytics.ts`
+  - Modification Location: velocity endpoint client call
+  - Modification Content: support `sprints_count` input from contract map for velocity requests
+  - Modification Reason: make date-range-to-velocity behavior deterministic and testable
 
 #### Files to Read
 - `frontend/src/utils/storage.ts`
@@ -131,8 +153,11 @@ flowchart LR
 - Date-range semantics are explicit for each panel type and documented in `dashboardContract.ts`.
 - `all/active/recent` quick filters are deterministic and do not fallback to hardcoded first project values.
 - Chart-view semantics exclude all legacy chart duplicates.
+- Velocity semantics are deterministic: date range maps to fixed `sprints_count` and this mapping is documented in `dashboardContract.ts`.
+- Burndown is explicitly outside date-range control and remains sprint-scoped.
 
 ### Quality Acceptance
 - `dashboardContract.ts` is imported by both Dashboard and tests (not loaded via markdown parsing).
 - No behavior-only refactoring path leaves placeholder branch logic in `DashboardFilters.tsx`.
+- `docs/dashboard-ui-contract.md` is created (with `docs/` directory created if absent) and mirrors the exported typed contract.
 

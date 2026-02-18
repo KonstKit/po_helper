@@ -35,23 +35,24 @@ Prevent misleading UX and ensure project context changes are predictable and tra
 ## Execution Steps
 
 ### Step 1: Implement "Recent" Selection Policy
-- **Action**: Define and implement what "recent" means (e.g., last viewed, recently updated, etc.).
+- **Action**: Implement deterministic "recent" behavior using user-selected project history (recommended KISS rule).
 - **Input**: Semantics spec.
 - **Output**: Deterministic project selection behavior for "recent".
-- **Notes**: Persist `dashboard_recent_project_ids` in `localStorage`; on boot or missing values, fallback to current project.
+- **Notes**: `recent` uses LRU list persisted in `dashboard_recent_project_ids` (max 5 ids), updated on each `onProjectChange`.
+- **Notes**: boot fallback order is deterministic: first valid LRU id -> `dashboard_last_project_id` -> first project by `id` ascending.
 - **Notes (Typing)**: `Project` typing used by filters must include `status?: string` to support deterministic active-only selection.
 
 ### Step 2: Implement "Active Only" Policy
 - **Action**: Define and implement "active" criteria and selection behavior.
 - **Input**: Active criteria spec.
 - **Output**: Deterministic selection behavior for "active only".
-- **Notes**: Use `status === 'active'` when available, otherwise use `state === 'active'`, then fallback to last selected.
+- **Notes**: Use `status === 'active'` when available, otherwise use `state === 'active'`; if multiple candidates exist, keep current if still active else choose first by `name` ascending.
 
 ### Step 3: Implement "All Projects" Meaning
-- **Action**: If aggregation is supported, implement aggregation; otherwise adjust labels to avoid implying aggregation.
-- **Input**: "All projects" semantics decision.
-- **Output**: Non-misleading behavior that matches UX labels.
-- **Notes**: First phase scope = all projects in filter list without aggregation; dashboard retains selected project context.
+- **Action**: Implement non-aggregation "all projects" semantics (recommended).
+- **Input**: Contract decision from plan_46.
+- **Output**: "All Projects" shows full selectable project list while dashboard remains single-project scoped.
+- **Notes**: Aggregated cross-project metrics are explicitly out of scope for this module.
 
 ### Step 4: Validate UX and Regression Expectations
 - **Action**: Validate quick filter transitions and ensure they do not unintentionally reset other preferences.
@@ -84,7 +85,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | Single project | project + tasks + sprint | full dashboard | baseline |
 | "Active only" selection | subset of projects | stable selection | ambiguous criteria |
-| Aggregated (if supported) | multi-project aggregates | aggregated KPIs/charts | performance + complexity |
+| "All projects" selection | full project list, single selected project context | explicit selection scope, no aggregation | label mismatch if undocumented |
 
 ### Risk Monitoring Table
 | Risk Item | Level | Trigger Signal | Mitigation Strategy | Owner |
@@ -117,8 +118,10 @@ flowchart LR
 - `recent` restores context from recent list before fallback and does not always pick first project.
 - `all` no longer silently maps to current project; it updates filter scope as documented.
 - `active` uses explicit project activity markers and has deterministic fallback behavior.
+- `recent` list size is capped at 5 and order reflects most recently selected projects first.
 
 ### Quality Acceptance
 - Quick-filter changes only update project-related persistence keys (`dashboard_last_project_id`, `dashboard_recent_project_ids`).
 - No regression in manual project selection UX (`Select` control still authoritative).
+- Selection tie-breakers are deterministic and documented (`id` sort for initial fallback, `name` sort for active candidates).
 

@@ -46,6 +46,7 @@ Eliminate "filter UI that does not change anything" and prevent partial applicat
 - **Output**: Visible dashboard outputs change with date range selection.
 - **Notes**: Use resolved date windows (`resolved_date`) with explicit fallback to `updated_date` for date-driven panels; avoid silent empty windows by showing empty states.
 - **Notes**: `Burndown` is sprint-day indexed and is therefore not controlled by calendar date range.
+- **Notes (Velocity mapping)**: apply `VELOCITY_SPRINTS_COUNT_MAP` from `dashboardContract.ts` and pass mapped `sprints_count` to velocity API client.
 
 ### Step 3: Enforce Chart View Visibility Contract
 - **Action**: Ensure chart view toggles control visibility consistently for all chart surfaces.
@@ -101,10 +102,17 @@ flowchart LR
 
 #### Files to Modify
 - `frontend/src/pages/Dashboard.tsx`
+  - Modification Location: filter wiring and section visibility
+  - Modification Content: apply scoped inputs and chart-view visibility contract
+  - Modification Reason: enforce end-to-end filter behavior in the container page
 - `frontend/src/pages/dashboard/dashboardDerivations.ts`
   - Modification Location: metric derivation and scoped subsets
-  - Modification Content: apply filter inputs consistently
-  - Modification Reason: enforce semantics contract
+  - Modification Content: apply filter inputs consistently; keep burndown sprint-scoped
+  - Modification Reason: enforce semantics contract in one derivation entrypoint
+- `frontend/src/services/api/analytics.ts`
+  - Modification Location: velocity request path
+  - Modification Content: pass mapped date-range `sprints_count` parameter
+  - Modification Reason: make velocity-dateRange contract deterministic and testable
 
 #### Files to Read
 - `frontend/src/pages/dashboard/dashboardContract.ts`
@@ -118,6 +126,7 @@ flowchart LR
 - `chartView` values (`velocity`, `burndown`, `both`, `distribution`) render only matching chart sections and no implicit extras.
 - When date window returns no matches, sections show deterministic empty states instead of blank space.
 - Burndown behavior remains driven by active sprint window and is explicitly excluded from date-range window validation.
+- Velocity series update from date-range changes is deterministic and explained by mapped `sprints_count` values in the shared contract.
 
 ### Technical Acceptance
 - Filtering logic is shared through one derivation entrypoint used by all panels.

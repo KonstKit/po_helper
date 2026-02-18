@@ -41,7 +41,7 @@ Ensure burndown is trustworthy and interpretable rather than a misleading approx
 - **Notes**: Include rules for scope changes and carryover.
 
 ### Step 2: Select Primary Data Source and Fallback
-- **Action**: Choose the primary source for burndown inputs and define fallback modes.
+- **Action**: Use sprint timeline analytics as the primary source for burndown inputs and define explicit fallback modes.
 - **Input**: Input availability assessment.
 - **Output**: Source selection and fallback policy.
 - **Notes**: If fallback is approximate, label it explicitly.
@@ -50,6 +50,7 @@ Ensure burndown is trustworthy and interpretable rather than a misleading approx
 - **Action**: Build the chart dataset from timeline inputs with stable labeling.
 - **Input**: Timeseries inputs and semantics spec.
 - **Output**: Burndown chart model aligned to sprint dates.
+- **Notes**: Keep API layer raw/typed; dataset transformation belongs to dashboard derivations/chart layer.
 - **Notes**: Handle missing points and gaps gracefully.
 
 ### Step 4: Validate Against Known Scenarios
@@ -98,15 +99,18 @@ flowchart LR
 
 #### Files to Modify
 - `frontend/src/pages/Dashboard.tsx`
-- `frontend/src/services/api/sprints.ts`
-  - Modification Location: dataset building for burndown
+- `frontend/src/pages/dashboard/dashboardDerivations.ts`
+  - Modification Location: burndown series transformation
   - Modification Content: timeline-based series + fallback handling
-  - Modification Reason: remove synthetic representation
+  - Modification Reason: remove synthetic representation while keeping service layer UI-agnostic
 
 #### Files to Read
 - `frontend/src/services/api/analytics.ts`
   - Read Purpose: align chart behavior with analytics definitions
   - Usage: validate inputs and outputs
+- `frontend/src/services/api/sprints.ts`
+  - Read Purpose: confirm API layer remains raw and typed
+  - Usage: avoid moving Chart.js-specific transformation into service layer
 
 ## Acceptance Criteria
 
@@ -118,5 +122,6 @@ flowchart LR
 ### Quality Acceptance
 - Synthetic "7-day linear" fallback exists only as clearly labeled fallback, never as default data.
 - Burndown panel does not emit runtime exceptions when series points are missing or sparse.
+- `frontend/src/services/api/sprints.ts` remains free of Chart.js dataset-building concerns.
 
 
