@@ -100,7 +100,7 @@ flowchart LR
 - `frontend/src/pages/Dashboard.tsx`
 - `frontend/src/store/sprintSlice.ts`
   - Modification Location: sprint-derived selection + project-scoped refresh contract
-  - Modification Content: availability states + canonical sprint binding
+  - Modification Content: canonical sprint binding only; avoid moving WIP availability/loading/error lifecycle into slice.
   - Modification Reason: prevent silent failures
 
 #### Files to Read
@@ -115,6 +115,7 @@ flowchart LR
 - WIP card displays "N/A" / "Not available" when sprint analytics are missing, never silent zero.
 - When sprint context changes, WIP widget refreshes once and shows matching values for the selected sprint context.
 - Errors from WIP endpoint do not break unrelated dashboard sections.
+- WIP availability/error/loading states are defined in Dashboard-local section state unless another screen explicitly requires shared Redux-level WIP storage.
 
 ### Technical Acceptance
 - Widget availability states are covered by tests for: missing sprint, no `wipStatus` payload, and endpoint failure.

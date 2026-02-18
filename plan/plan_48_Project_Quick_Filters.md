@@ -39,6 +39,7 @@ Prevent misleading UX and ensure project context changes are predictable and tra
 - **Input**: Semantics spec.
 - **Output**: Deterministic project selection behavior for "recent".
 - **Notes**: Persist `dashboard_recent_project_ids` in `localStorage`; on boot or missing values, fallback to current project.
+- **Notes (Typing)**: `Project` typing used by filters must include `status?: string` to support deterministic active-only selection.
 
 ### Step 2: Implement "Active Only" Policy
 - **Action**: Define and implement "active" criteria and selection behavior.
@@ -101,6 +102,9 @@ flowchart LR
   - Modification Location: quick filter handler and persisted context
   - Modification Content: deterministic selection for all/active/recent and explicit non-aggregation mode for `all`
   - Modification Reason: remove placeholder logic
+  - Modification Location: local/project type imports
+  - Modification Content: include project status/state fields used by filter selection logic
+  - Modification Reason: prevent untyped access to `status`/`state` in quick-filter resolution
 
 #### Files to Read
 - `frontend/src/pages/dashboard/dashboardContract.ts`

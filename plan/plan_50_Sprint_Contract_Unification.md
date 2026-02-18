@@ -58,6 +58,12 @@ Prevent "active sprint is always null" class failures and ensure sprint-dependen
 - **Output**: Verified behavior with explicit fallbacks.
 - **Notes**: Fallback should prefer clarity over hidden assumptions.
 
+### Step 5: Remove Cross-Project Sprint Bootstrap Ambiguity
+- **Action**: Make sprint bootstrap deterministic by disallowing global `loadAllSprints()` calls without `projectId`.
+- **Input**: current startup flow and `loadAllSprints` thunk.
+- **Output**: sprint data is fetched only in project context unless a separate global mode is explicitly introduced.
+- **Notes**: Either add a dedicated `loadAllSprintsGlobal` branch, or update startup to skip global sprint preload and rely on project-entry points for sprint data.
+
 ---
 
 ## Visualization Aids
@@ -109,7 +115,8 @@ flowchart LR
 - `frontend/src/store/dataThunks.ts`
   - Modification Location: `loadAllSprints` cache and project payload dispatch
   - Modification Content: per-project TTL cache keys (`lastLoadedAtByProject`) and dispatch `{ projectId, sprints }`
-  - Modification Reason: prevent stale cross-project sprint selection when switching contexts.
+  - Modification Content (add): update `initializeAppData` bootstrap path to avoid contextless sprint preloads.
+  - Modification Reason: prevent stale cross-project sprint selection and empty sprint contexts after project switches.
 - `frontend/src/pages/ProjectDetail.tsx`
   - Modification Location: active sprint/state checks
   - Modification Content: consume normalization helper instead of page-local assumptions
@@ -134,6 +141,7 @@ flowchart LR
 - fallback to date-window match
 - fallback to latest by date when no explicit active marker exists.
 - Active-sprint resolution is scoped by `projectId`; switching projects recomputes from local cached project payload without reusing another project's sprint selection.
+- `initializeAppData` or equivalent global bootstrap path does not load projectless sprints unless a separate global mode is intentionally added and documented in this plan.
 - `ProjectDetail.tsx` and `SprintCapacity.tsx` derive active sprint and active-state checks through `sprintNormalization.ts`.
 
 ### Technical Acceptance

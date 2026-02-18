@@ -54,6 +54,7 @@ This module turns the filter UI from a placeholder into a reliable interaction c
 - **Output**: explicit strategy for scope (full pagination or explicit partial-mode).
 - **Notes**: filter claims are blocked until dashboard task scope is deterministic.
 - **Implementation Contract**: add/adjust a bounded fetch loop with `listTasksPaginated` (`skip += limit`) until `meta.has_next === false` or explicit cap (`maxPages` or `maxTotalTasks`) and persist scope metadata (`taskScope.total`, `taskScope.fetched`, `taskScope.isPartial`) by project context.
+- **Implementation Contract (guardrail)**: only project-scoped calls may enable full pagination. Calls without `projectId` must remain bounded to the existing lightweight behavior; startup bootstrap (`initializeAppData`) must not trigger full pagination.
 
 ---
 
@@ -162,6 +163,8 @@ Filter selections are first-class inputs to all derived metrics and chart/list s
   - If task pagination remains constrained, no filter semantics claim is considered complete until full-project aggregation is implemented.
 - Dashboard task fetching exports deterministic scope metadata (`total`, `hasNext`, `isPartial`) and never silently consumes only the first page.
 - Filter-based behavior claims are incomplete unless task scope is full (`isPartial === false`) or dashboard renders explicit `partial scope` label in affected panels.
+
+- Full pagination is only ever required when dashboard context provides `projectId`; no `initializeAppData` path should request unscoped full-task enumeration.
 
 ### Quality Acceptance
 - Regression checks prevent reintroducing "filter UI that does not affect data."

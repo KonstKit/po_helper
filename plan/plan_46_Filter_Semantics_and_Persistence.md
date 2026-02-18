@@ -39,6 +39,8 @@ Prevent misleading UI controls and remove ambiguity for both users and future ma
 - **Input**: Dashboard panel inventory and required UX outcomes.
 - **Output**: Date range semantics statement and scope table.
 - **Notes**: Use `resolved_date` as primary filter key, fallback to `updated_date`; include "scope not changed" explicitly for metadata and static settings.
+- **Notes (Burndown)**: `BurndownPoint.day` is index-based; burndown does not support arbitrary wall-clock windows.
+- **Notes (Type safety)**: include `resolved_date` in Redux task typing before implementing window filters.
 
 ### Step 2: Define Chart View Semantics
 - **Action**: Define what chart view toggles control (visibility vs data selection) and which charts are included.
@@ -84,7 +86,7 @@ flowchart LR
 ### Core Metrics Mapping (Filter-to-Panel Scope)
 | Filter | KPI Summary | Velocity | Burndown | Risk | Upcoming | WIP |
 | --- | --- | --- | --- | --- | --- | --- |
-| Date range | YES | YES | YES | YES | YES | NO |
+| Date range | YES | YES | NO | YES | YES | NO |
 | Chart view | NO | YES | YES | NO | NO | NO |
 | Project quick filter | YES | YES | YES | YES | YES | YES |
 
@@ -110,6 +112,10 @@ flowchart LR
   - Modification Location: storage wiring
   - Modification Content: persist and restore contract-defined keys (`dashboard_recent_project_ids`, `dashboard_last_project_id`, `dashboard_chart_view`, `dashboard_quick_filter`, `dashboard_date_range`)
   - Modification Reason: make filter behavior stable across reloads
+- `frontend/src/store/taskSlice.ts`
+  - Modification Location: `Task` interface
+  - Modification Content: add `resolved_date?: string | null` (and optional `sprint_id?: number | null` to support future sprint-scoped filters without casting)
+  - Modification Reason: avoid `any` and keep date-range filtering typed end-to-end
 
 #### Files to Read
 - `frontend/src/utils/storage.ts`
