@@ -25,6 +25,7 @@ Eliminate "filter UI that does not change anything" and prevent partial applicat
 - **Prerequisite Tasks**: plan_46
 - **Required Resources**: Semantics contract and validation checklist
 - **Environment Requirements**: Dataset with enough historical depth to validate time windows
+- **Execution Gate**: Before implementation, execute `plan_45` Step 0 (task scope) so `taskScopeByProject` and partial-scope signaling are available to filter logic.
 
 ### Downstream Impact
 - **Downstream Tasks**: plan_48, plan_58, plan_59
@@ -113,6 +114,18 @@ flowchart LR
   - Modification Location: velocity request path
   - Modification Content: pass mapped date-range `sprints_count` parameter
   - Modification Reason: make velocity-dateRange contract deterministic and testable
+- `frontend/src/store/dataThunks.ts`
+  - Modification Location: dashboard task fetch path and cache conditions
+  - Modification Content: implement bounded project-scoped pagination loop and allow cache skip only for complete scope (`isPartial === false`)
+  - Modification Reason: enforce deterministic data scope before applying filter semantics
+- `frontend/src/store/taskSlice.ts`
+  - Modification Location: task cache metadata
+  - Modification Content: add `taskScopeByProject` and prevent unscoped bootstrap loads from writing project-scoped freshness markers
+  - Modification Reason: avoid cache poisoning that invalidates filter behavior
+- `frontend/src/pages/__tests__/Dashboard.test.tsx`
+  - Modification Location: scenario assertions
+  - Modification Content: verify `dashboard-partial-scope` badge when scope is partial and prevent silent first-page behavior
+  - Modification Reason: regression guard for task scope contract
 
 #### Files to Read
 - `frontend/src/pages/dashboard/dashboardContract.ts`

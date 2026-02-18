@@ -57,6 +57,7 @@ This module turns the filter UI from a placeholder into a reliable interaction c
 - **Implementation Contract (guardrail)**: only project-scoped calls may enable full pagination. Calls without `projectId` must remain bounded to the existing lightweight behavior; startup bootstrap (`initializeAppData`) must not trigger full pagination.
 - **Implementation Contract (recommended path)**: use project-scoped `taskScopeByProject` and allow `loadAllTasks({ projectId })` cache skip only when cached scope exists and `taskScopeByProject[projectId].isPartial === false`.
 - **Implementation Contract (bootstrap safety)**: unscoped bootstrap task loads must not mark project-scoped freshness entries (`lastLoadedAtByProject`) to avoid poisoning dashboard project caches.
+- **Execution Routing**: implement Step 0 through task-level plans (`plan_47` code paths + `plan_46` contract typing) before any filter behavior is considered valid.
 
 ---
 
@@ -139,30 +140,9 @@ Task scope is explicit and typed in the dashboard contract:
 - If full scope cannot be fetched in bounded mode, the dashboard must render explicit partial-scope state and disable completion claims for affected KPIs.
 - Canonical semantics for date-range and burndown exclusions are defined in `plan_46` and enforced by `plan_47`; this module must not redefine those rules.
 
-### File Operations List
-
-#### Files to Modify
-- `frontend/src/store/dataThunks.ts`
-  - Modification Location: dashboard task fetch path and cache metadata
-  - Modification Content: add deterministic full-task fetch helper with stop condition and scope counters; cache skip allowed only for complete project scope (`isPartial === false`)
-  - Modification Reason: ensure one-time filters operate on complete task scope
-- `frontend/src/store/taskSlice.ts`
-  - Modification Location: project cache metadata and task scope state
-  - Modification Content: add `taskScopeByProject` and avoid setting `lastLoadedAtByProject` from unscoped bootstrap loads
-  - Modification Reason: prevent project cache poisoning from first-page/global bootstrap responses
-- `frontend/src/pages/dashboard/dashboardContract.ts`
-  - Modification Location: filter/task-scope contract exports
-  - Modification Content: add `TaskScope`, partial-scope label, and test ids consumed by UI/tests
-  - Modification Reason: keep scope semantics DRY and testable
-- `frontend/src/pages/__tests__/Dashboard.test.tsx`
-  - Modification Location: test fixtures and assertions
-  - Modification Content: add assertions that full-task scope or partial-scope badge (`dashboard-partial-scope`) is respected
-  - Modification Reason: protect against return to first-page logic
-
-#### Files to Read
-- `frontend/src/pages/dashboard/dashboardContract.ts`
-  - Read Purpose: expose and consume task-scope mode labels in UI and tests
-  - Usage: prevent unaligned behavior after refactors
+### Implementation Ownership
+- Task-level implementation for Step 0 lives in `plan_47` (data-thunks/slice wiring and regression checks) and `plan_46` (typed contract additions).
+- This module defines constraints only; it does not own file-level execution steps.
 
 ---
 

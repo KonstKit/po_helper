@@ -84,7 +84,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | KPIs | tasks + project | cached values (labeled) | no silent stale data |
 | Burndown | sprint analytics | "not available" state | explicit availability |
-| Velocity | timeseries inputs | computed from tasks | label the mode |
+| Velocity | sprint velocity analytics | explicit empty-state (`insufficient_data` / `Not enough sprint data`) | no task-window fallback model |
 
 ### Risk Monitoring Table
 | Risk Item | Level | Trigger Signal | Mitigation Strategy | Owner |

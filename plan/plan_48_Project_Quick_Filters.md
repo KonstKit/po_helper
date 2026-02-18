@@ -47,6 +47,7 @@ Prevent misleading UX and ensure project context changes are predictable and tra
 - **Input**: Active criteria spec.
 - **Output**: Deterministic selection behavior for "active only".
 - **Notes**: Use `status === 'active'` when available, otherwise use `state === 'active'`; if multiple candidates exist, keep current if still active else choose first by `name` ascending.
+- **Notes**: If no active projects exist, fallback deterministically: `dashboard_last_project_id` (if valid) -> first project by `id` ascending, with optional non-blocking info message.
 
 ### Step 3: Implement "All Projects" Meaning
 - **Action**: Implement non-aggregation "all projects" semantics (recommended).
@@ -119,6 +120,7 @@ flowchart LR
 - `all` no longer silently maps to current project; it updates filter scope as documented.
 - `active` uses explicit project activity markers and has deterministic fallback behavior.
 - `recent` list size is capped at 5 and order reflects most recently selected projects first.
+- `active` with zero active projects follows deterministic fallback order without random/project-index-dependent selection.
 
 ### Quality Acceptance
 - Quick-filter changes only update project-related persistence keys (`dashboard_last_project_id`, `dashboard_recent_project_ids`).
