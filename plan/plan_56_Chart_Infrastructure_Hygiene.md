@@ -38,13 +38,13 @@ Eliminate runtime warnings, avoid inconsistent chart behavior across pages, and 
 - **Action**: Identify where charts are registered/configured and which plugins are required by each chart.
 - **Input**: Current app chart usage.
 - **Output**: Plugin and registration inventory.
-- **Notes**: Ensure required fill/annotation behavior is accounted for.
+- **Notes**: Include all `ChartJS.register` call sites across dashboard and all chart components.
 
 ### Step 2: Define Single Registration Strategy
 - **Action**: Choose and document the single registration strategy used across the app.
 - **Input**: Inventory and app initialization flow.
 - **Output**: Centralized chart setup contract.
-- **Notes**: Avoid per-page registration drift.
+- **Notes**: Avoid per-component registration drift and duplicate plugin registration.
 
 ### Step 3: Fix Tooltip/Text Encoding Artifacts
 - **Action**: Replace corrupted tooltip characters and standardize annotation strings.
@@ -56,7 +56,7 @@ Eliminate runtime warnings, avoid inconsistent chart behavior across pages, and 
 - **Action**: Verify charts render without warnings and the tooltip text is correct.
 - **Input**: Manual smoke and test runs.
 - **Output**: Verified clean console baseline.
-- **Notes**: Include at least one chart for each required plugin feature.
+- **Notes**: Include at least one chart for each required plugin feature, including capacity, quality, and testing dashboards.
 
 ---
 
@@ -87,7 +87,7 @@ flowchart LR
 ### Risk Monitoring Table
 | Risk Item | Level | Trigger Signal | Mitigation Strategy | Owner |
 | --- | --- | --- | --- | --- |
-| Central setup change affects other charts | Medium | regressions on other pages | validate `Dashboard`, `VelocityChart`, `CapacityChart` render paths | AI-agent |
+| Central setup change affects other charts | Medium | regressions on other pages | validate `Dashboard`, `VelocityChart`, `QualityDashboard`, `TestAnalyticsDashboard`, `CFDVisualization` render paths | AI-agent |
 | Removing symbols changes UX copy expectations | Low | feedback about visuals | use consistent copy standards | AI-agent |
 
 ### File Operations List
@@ -104,22 +104,47 @@ flowchart LR
   - Modification Location: chart tooltip/annotation text
   - Modification Content: replace corrupted artifacts with stable text
   - Modification Reason: encoding correctness
+- `frontend/src/components/quality/QualityDashboard.tsx`
+  - Modification Location: chart registration line and plugin assumptions
+  - Modification Content: remove local `ChartJS.register` and align plugin usage with shared setup
+  - Modification Reason: eliminate cross-page duplicate registrations
+- `frontend/src/components/testing/TestAnalyticsDashboard.tsx`
+  - Modification Location: chart registration line and plugin assumptions
+  - Modification Content: remove local `ChartJS.register` and align plugin usage with shared setup
+  - Modification Reason: eliminate cross-page duplicate registrations
+- `frontend/src/components/capacity/CFDVisualization.tsx`
+  - Modification Location: chart registration line and plugin assumptions
+  - Modification Content: remove local `ChartJS.register` and align plugin usage with shared setup
+  - Modification Reason: eliminate cross-page duplicate registrations
+- `frontend/src/pages/Dashboard.tsx`
+  - Modification Location: chart registration line and plugin usage
+  - Modification Content: remove local duplicate registration and consume shared chart setup
+  - Modification Reason: keep registration central for dashboard rendering
 
 #### Files to Read
 - `frontend/src/pages/Dashboard.tsx`
   - Read Purpose: confirm which plugins/features are required
   - Usage: avoid breaking other pages
+- `frontend/src/components/quality/QualityDashboard.tsx`
+  - Read Purpose: confirm plugin requirements for quality charts
+  - Usage: keep shared setup minimal and complete
+- `frontend/src/components/testing/TestAnalyticsDashboard.tsx`
+  - Read Purpose: confirm plugin requirements for testing charts
+  - Usage: keep shared setup minimal and complete
+- `frontend/src/components/capacity/CFDVisualization.tsx`
+  - Read Purpose: confirm plugin requirements for CFD charts
+  - Usage: keep shared setup minimal and complete
 
 ## Acceptance Criteria
 
 ### Functional Acceptance
-- Warning `filler plugin` no longer appears in dashboard/velocity chart console output.
+- Warning `filler plugin` no longer appears in dashboard and shared chart component console output.
 - Tooltip text contains plain UTF-8 text for all annotation labels.
-- No duplicate `ChartJS.register` calls remain in page-level dashboard or velocity-specific files.
+- No duplicate `ChartJS.register` calls remain in dashboard or shared chart component files (`Dashboard`, `VelocityChart`, `QualityDashboard`, `TestAnalyticsDashboard`, `CFDVisualization`).
 
 ### Technical Acceptance
 - `frontend/src/chart.ts` becomes authoritative registration module.
-- `frontend/src/pages/Dashboard.tsx` imports shared chart setup only.
-- Plugin list in `dashboard` and `VelocityChart` aligns with actually used components.
+- `frontend/src/pages/Dashboard.tsx` and chart components consume shared chart setup only.
+- Plugin list in shared setup aligns with actual feature usage across the updated files.
 
 

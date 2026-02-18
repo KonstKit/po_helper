@@ -44,7 +44,8 @@ Eliminate "filter UI that does not change anything" and prevent partial applicat
 - **Action**: Apply date range scoping to all impacted KPIs, charts, and lists.
 - **Input**: Scope mapping table.
 - **Output**: Visible dashboard outputs change with date range selection.
-- **Notes**: Use resolved date windows (`resolved_date`) with explicit fallback to `updated_date`; avoid silent empty windows by showing empty states.
+- **Notes**: Use resolved date windows (`resolved_date`) with explicit fallback to `updated_date` for date-driven panels; avoid silent empty windows by showing empty states.
+- **Notes**: `Burndown` is sprint-day indexed and is therefore not controlled by calendar date range.
 
 ### Step 3: Enforce Chart View Visibility Contract
 - **Action**: Ensure chart view toggles control visibility consistently for all chart surfaces.
@@ -85,6 +86,7 @@ flowchart LR
 | Risk alerts | subset changes | validate derived set | empty "no risks" |
 | Upcoming list | subset changes | validate due-window subset | empty "no upcoming" |
 | Velocity | timeseries changes | verify bucket window | show "not enough data" |
+| Burndown | should remain sprint-day scope | compare sprint timeline integrity | show "sprint scope only" |
 
 ### Risk Monitoring Table
 | Risk Item | Level | Trigger Signal | Mitigation Strategy | Owner |
@@ -115,6 +117,7 @@ flowchart LR
 - Date-range change updates at least one KPI, one chart data series, and one list-derived panel in the same interaction.
 - `chartView` values (`velocity`, `burndown`, `both`, `distribution`) render only matching chart sections and no implicit extras.
 - When date window returns no matches, sections show deterministic empty states instead of blank space.
+- Burndown behavior remains driven by active sprint window and is explicitly excluded from date-range window validation.
 
 ### Technical Acceptance
 - Filtering logic is shared through one derivation entrypoint used by all panels.

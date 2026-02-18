@@ -50,7 +50,7 @@ Reduce time-to-diagnosis and prevent gradual degradation of dashboard quality ov
 - **Action**: Define and enforce basic performance budgets for key interactions (initial load, filter changes).
 - **Input**: Baseline measurements.
 - **Output**: Budget thresholds and enforcement approach.
-- **Notes**: Prefer trend-based alerts over strict thresholds if variability is high.
+- **Notes**: Use a deterministic, bounded aggregator (rolling window of durations) so tests can deterministically verify threshold behavior independent of wall-clock jitter.
 
 ### Step 4: Verification and Documentation
 - **Action**: Validate signals appear as expected and document how to use them in diagnosis.
@@ -84,6 +84,7 @@ flowchart LR
 | Refresh loop | repeated refresh events | frequency threshold | investigate realtime + refresh rules |
 | Slow filter apply | duration metric | exceeds 300ms p95 on 1k-task dataset | optimize derived computations |
 | Chart warnings | warning gate | warning detected | fix plugin/registration drift |
+| Init regression | dashboard init duration | exceeds 700ms p95 over last 20 samples | investigate startup path and network fan-out |
 
 ### Risk Monitoring Table
 | Risk Item | Level | Trigger Signal | Mitigation Strategy | Owner |
@@ -98,11 +99,19 @@ flowchart LR
   - Type: documentation
   - Purpose: guide diagnosis using dashboard signals
   - Content: signal definitions and troubleshooting steps
+- `frontend/src/utils/dashboardPerfGuards.ts`
+  - Type: utility module
+  - Purpose: deterministic p95 budget tracking with fixed sample window
+  - Content: rolling buffer + helper functions for `recordDuration` and `isAboveBudget`
+- `frontend/src/utils/__tests__/dashboardPerfGuards.test.ts`
+  - Type: unit tests
+  - Purpose: validate p95 math and budget enforcement behavior
+  - Usage: guarantee guardrail checks without flaky timing in CI
 
 #### Files to Modify
 - `frontend/src/pages/Dashboard.tsx`
   - Modification Location: load/refresh/filter pathways
-  - Modification Content: emit minimal signals + duration tracking
+  - Modification Content: emit minimal signals + duration tracking via `dashboardPerfGuards`; wire warning signals to existing toast/log helpers
   - Modification Reason: early regression detection
 
 #### Files to Read
@@ -121,5 +130,8 @@ flowchart LR
 
 ### Technical Acceptance
 - No new high-volume logs are introduced for every render tick.
-- Performance thresholds are measurable and enforced by regression checks: `filter_apply_ms_p95 <= 300`, `dashboard_init_ms_p95 <= 700`.
+- Performance thresholds are measurable, deterministic, and test-enforced: `filter_apply_ms_p95 <= 300`, `dashboard_init_ms_p95 <= 700` via `dashboardPerfGuards`.
+- Regression tests include a synthetic p95-budget test that marks a violation when synthetic durations exceed thresholds.
+
+- `docs/dashboard-observability.md` is added under existing docs structure and includes all new metrics and thresholds.
 
