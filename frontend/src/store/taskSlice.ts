@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { logout } from './authSlice';
+import type { TaskScope } from '../pages/dashboard/dashboardContract';
 
 export interface Task {
   id: number;
@@ -9,11 +10,13 @@ export interface Task {
   priority?: string;
   assignee_name?: string;
   project_id?: number | null;
+  sprint_id?: number | null;
   estimate_hours?: number;
   spent_hours?: number;
   due_date?: string | null;
   created_date?: string | null;
   updated_date?: string | null;
+  resolved_date?: string | null;
   is_blocker?: boolean;
   business_value?: number | null;
 }
@@ -25,6 +28,7 @@ interface TaskState {
   lastLoadedAt: number | null;
   lastLoadedAllAt: number | null;
   lastLoadedAtByProject: Record<number, number>;
+  taskScopeByProject: Record<number, TaskScope>;
   tasksByProject: Record<number, Task[]>;
 }
 
@@ -35,6 +39,7 @@ const createInitialState = (): TaskState => ({
   lastLoadedAt: null,
   lastLoadedAllAt: null,
   lastLoadedAtByProject: {},
+  taskScopeByProject: {},
   tasksByProject: {},
 });
 
@@ -44,14 +49,32 @@ const taskSlice = createSlice({
   name: 'task',
   initialState,
   reducers: {
-    setTasks: (state, action: PayloadAction<{ tasks: Task[]; projectId?: number }>) => {
-      const { tasks, projectId } = action.payload;
+    setTasks: (
+      state,
+      action: PayloadAction<{
+        tasks: Task[];
+        projectId?: number;
+        taskScope?: TaskScope;
+        updateProjectFreshness?: boolean;
+      }>
+    ) => {
+      const {
+        tasks,
+        projectId,
+        taskScope,
+        updateProjectFreshness = true,
+      } = action.payload;
       const now = Date.now();
       state.tasks = tasks;
       state.lastLoadedAt = now;
 
       if (typeof projectId === 'number') {
-        state.lastLoadedAtByProject[projectId] = now;
+        if (updateProjectFreshness) {
+          state.lastLoadedAtByProject[projectId] = now;
+          if (taskScope) {
+            state.taskScopeByProject[projectId] = taskScope;
+          }
+        }
         state.tasksByProject[projectId] = tasks;
       } else {
         state.lastLoadedAllAt = now;
@@ -62,7 +85,9 @@ const taskSlice = createSlice({
             state.tasksByProject[task.project_id] = [];
           }
           state.tasksByProject[task.project_id].push(task);
-          state.lastLoadedAtByProject[task.project_id] = now;
+          if (updateProjectFreshness) {
+            state.lastLoadedAtByProject[task.project_id] = now;
+          }
         });
       }
     },
