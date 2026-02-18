@@ -24,7 +24,7 @@ Reduce confusion, improve performance, and create a stable UI contract that down
 ### Prerequisites
 - **Prerequisite Tasks**: plan_40
 - **Required Resources**: Panel inventory checklist and current baseline screenshots/notes
-- **Environment Requirements**: Representative dataset available for manual verification
+- **Environment Requirements**: Dataset with 2+ projects and visible legacy duplicates for deterministic verification
 
 ### Downstream Impact
 - **Downstream Tasks**: plan_43, plan_44, plan_46, plan_58
@@ -38,7 +38,7 @@ Reduce confusion, improve performance, and create a stable UI contract that down
 - **Action**: Inventory panels present in both surfaces and decide the single target layout contract.
 - **Input**: Current dashboard baseline behavior and panel list.
 - **Output**: Approved target layout decision and parity checklist.
-- **Notes**: Identify which panels are "must keep", "nice to keep", and "remove".
+- **Notes**: Identify which panels are "must keep", "nice to keep", and "remove". Define legacy surface by locator pattern (`DashboardFilters` + non-target `Paper`/`Typography` blocks with old headings like `Velocity`, `Sprint Burndown`, `Task Distribution`, `Risk Assessment`, `Upcoming`) and remove those blocks in the target implementation.
 
 ### Step 2: Consolidate Rendering
 - **Action**: Remove non-target rendering paths and ensure only the target layout is rendered.
@@ -118,12 +118,12 @@ flowchart LR
 ## Acceptance Criteria
 
 ### Functional Acceptance
-- Dashboard renders exactly one chart/section layout path across all states (no legacy duplicate cards, tables, or headings).
+- Dashboard renders exactly one chart/section layout path across all states, with legacy surface locators (`Velocity`, `Sprint Burndown`, `Task Distribution`, `Risk Assessment`, `Upcoming`) absent from runtime output.
 - Layout parity checklist is explicit for all formerly duplicated panels: KPI, Velocity, Burndown, Distribution, Risk, Upcoming, and drilldowns.
-- Manual smoke run in a dataset with multiple projects shows equivalent information density to baseline minus duplicate sections.
+- Manual smoke run in a dataset with multiple projects shows exactly matching section count to the target layout contract (no duplicate legacy panels).
 
 ### Quality Acceptance
 - `frontend/src/pages/Dashboard.tsx` contains no unreachable duplicate sections for `Velocity`, `Burndown`, `Risk`, or `Upcoming`.
-- `npm run test -- Dashboard.test.tsx` (or CI equivalent) fails on stale legacy-structure-only selectors.
+- `npm run test -- Dashboard.test.tsx` fails when assertions rely on removed legacy selectors.
 
 

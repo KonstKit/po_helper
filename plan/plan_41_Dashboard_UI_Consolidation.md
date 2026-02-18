@@ -24,7 +24,7 @@ This module is the foundation for all downstream work: filter semantics, sprint/
 ### Prerequisites
 - **Prerequisite Tasks**: plan_40
 - **Prerequisite Data**: Current dashboard behavior baseline and panel inventory
-- **Prerequisite Environment**: Working development environment with representative sample data
+- **Prerequisite Environment**: Working development environment with at least 2 projects and >=100 tasks (including one legacy-dashboard projection visible for baseline comparisons).
 
 ### Downstream Impact
 - **Downstream Tasks**: plan_45, plan_57
@@ -105,8 +105,8 @@ sequenceDiagram
 ### Resource Allocation Table
 | Resource Type | Owner | Time Window | Key Output | Risk/Notes |
 | --- | --- | --- | --- | --- |
-| Frontend engineer | AI-agent | ~plan execution window | UI consolidation + modular structure | avoid parallel layout drift |
-| QA / reviewer | AI-agent | ~plan execution window | regression expectations review | align test intent early |
+| Frontend engineer | AI-agent | one execution pass | UI consolidation + modular structure | avoid parallel layout drift |
+| QA / reviewer | AI-agent | one execution pass | regression expectations review | align test intent early |
 
 ---
 
@@ -189,7 +189,7 @@ Define stable interaction surfaces for:
 - `frontend/src/pages/dashboard/DashboardInsightsSection.tsx`: extracted insights/actions section
 
 ### Documentation
-- `frontend/src/pages/dashboard/dashboardSemanticsContract.md`: documents stable panel and identifier expectations
+- `docs/dashboard-ui-contract.md`: documents stable panel and identifier expectations
 
 ### Test Files
 - `frontend/src/pages/__tests__/Dashboard.test.tsx`: legacy-independent behavior contract assertions

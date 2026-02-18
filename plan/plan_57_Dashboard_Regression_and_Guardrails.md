@@ -71,8 +71,8 @@ flowchart LR
 ### Resource Allocation Table
 | Resource Type | Owner | Time Window | Key Output | Risk/Notes |
 | --- | --- | --- | --- | --- |
-| Frontend engineer | AI-agent | ~plan execution window | tests + guardrails | avoid brittle assertions |
-| QA / reviewer | QA engineer | ~plan execution window | scenario validation | ensure coverage matches intent |
+| Frontend engineer | AI-agent | one execution pass | tests + guardrails | avoid brittle assertions |
+| QA / reviewer | QA engineer | one execution pass | scenario validation | ensure coverage matches intent |
 
 ---
 

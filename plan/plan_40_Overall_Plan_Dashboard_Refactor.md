@@ -110,7 +110,9 @@ gantt
 - Data-source and pagination behavior is explicit for all task-derived panels.
 
 ### Non-Functional Requirements
-- Performance Requirements: dashboard initial render and filter updates remain responsive under typical datasets.
+- Performance Requirements: dashboard initial render and filter updates remain responsive under a 1k-task benchmark:
+  - `dashboard_init_ms_p95 <= 700`
+  - `filter_apply_ms_p95 <= 300`
 - Security Requirements: realtime interaction does not degrade authorization boundaries (no silent failures).
 - Availability: dashboard degrades gracefully when partial data sources are unavailable.
 - Maintainability: dashboard structure is modular and consistent with broader UI patterns.
@@ -244,7 +246,7 @@ graph LR
 - No runtime chart warnings or text/encoding artifacts appear in standard flows.
 
 ### Performance Acceptance
-- Filter updates complete within an acceptable UX threshold under typical datasets.
+- Filter updates complete within `filter_apply_ms_p95 <= 300` on a 1k-task dataset.
 - Realtime refresh does not create repeated/duplicate refresh loops.
 
 ### Quality Acceptance

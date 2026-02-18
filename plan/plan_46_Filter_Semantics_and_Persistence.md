@@ -24,7 +24,7 @@ Prevent misleading UI controls and remove ambiguity for both users and future ma
 ### Prerequisites
 - **Prerequisite Tasks**: plan_42
 - **Required Resources**: Current filter UI inventory, stakeholder expectations, and test baseline
-- **Environment Requirements**: Representative dataset spanning multiple time windows and projects
+- **Environment Requirements**: Minimum 2 projects and task timeline variation across at least 3 distinct date windows for filter validation
 
 ### Downstream Impact
 - **Downstream Tasks**: plan_47, plan_48, plan_58
@@ -50,8 +50,8 @@ Prevent misleading UI controls and remove ambiguity for both users and future ma
 - **Action**: Decide if quick filters represent aggregation or selection shortcuts, and define "active" and "recent".
 - **Input**: Product expectations and data availability.
 - **Output**:
-  - `all`: show all available projects in dropdown, current project remains user-selected.
-  - `active`: pick first project where `state === 'active'`, fallback to `status === 'active'`, then last used project.
+  - `all`: show all available projects in dropdown and keep explicit project selection mode (no aggregation).
+  - `active`: pick projects where `status === 'active'`, fallback to `state === 'active'`, then last used project.
   - `recent`: pick project from persisted recent list; fallback to current or first.
 - **Notes**: If aggregation is not supported, quick labels must remain selection-oriented.
 
@@ -97,30 +97,36 @@ flowchart LR
 ### File Operations List
 
 #### Files to Create
-- `frontend/src/pages/dashboard/dashboardSemanticsContract.md`
-  - Type: documentation (plan-aligned note)
-  - Purpose: serve as source of truth for filter behavior
-  - Content: scope tables + examples + defaults
+- `frontend/src/pages/dashboard/dashboardContract.ts`
+  - Type: typed contract module
+  - Purpose: serve as single source of truth for filter behavior
+  - Content: enums (`DateRangeOption`, `ChartViewOption`, `QuickFilterOption`), storage keys, scope matrix, and defaults
 
 #### Files to Modify
 - `frontend/src/components/DashboardFilters.tsx`
   - Modification Location: quick filter action map and date-range/Chart view handlers
   - Modification Content: enforce contract-driven behavior
   - Modification Reason: remove placeholder logic
+  - Modification Location: storage wiring
+  - Modification Content: persist and restore contract-defined keys (`dashboard_recent_project_ids`, `dashboard_last_project_id`, `dashboard_chart_view`, `dashboard_quick_filter`, `dashboard_date_range`)
+  - Modification Reason: make filter behavior stable across reloads
 
 #### Files to Read
 - `frontend/src/utils/storage.ts`
   - Read Purpose: align filter persistence with the rest of the app
   - Usage: reuse consistent patterns
+- `frontend/src/pages/dashboard/dashboardContract.ts`
+  - Read Purpose: consume canonical option enums and defaults
+  - Usage: ensure shared constants are not duplicated
 
 ## Acceptance Criteria
 
 ### Functional Acceptance
-- Date-range semantics are explicit for each panel type and documented in `dashboardSemanticsContract.md`.
+- Date-range semantics are explicit for each panel type and documented in `dashboardContract.ts`.
 - `all/active/recent` quick filters are deterministic and do not fallback to hardcoded first project values.
 - Chart-view semantics exclude all legacy chart duplicates.
 
 ### Quality Acceptance
-- Contract and persistence files are consumed by both Dashboard and tests.
+- `dashboardContract.ts` is imported by both Dashboard and tests (not loaded via markdown parsing).
 - No behavior-only refactoring path leaves placeholder branch logic in `DashboardFilters.tsx`.
 

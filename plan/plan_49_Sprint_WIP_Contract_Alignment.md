@@ -23,7 +23,7 @@ Sprint/WIP contract stability is required for correct dashboard widgets and for 
 
 ### Prerequisites
 - **Prerequisite Tasks**: plan_41
-- **Prerequisite Data**: Representative sprint payload samples from the environment
+- **Prerequisite Data**: At least 3 sprint payload variants (state-active, status-only active, and missing/partial fields)
 - **Prerequisite Environment**: Ability to validate sprint "active" behavior with sample data
 
 ### Downstream Impact
@@ -96,8 +96,8 @@ sequenceDiagram
 ### Resource Allocation Table
 | Resource Type | Owner | Time Window | Key Output | Risk/Notes |
 | --- | --- | --- | --- | --- |
-| Frontend engineer | AI-agent | ~plan execution window | canonical contract mapping | avoid environment drift |
-| Backend reviewer | QA engineer | ~plan execution window | validate payload semantics | align with backend truth |
+| Frontend engineer | AI-agent | one execution pass | canonical contract mapping | avoid environment drift |
+| Backend reviewer | QA engineer | one execution pass | validate payload semantics | align with backend truth |
 
 ### Inter-Component Contract Dependency
 - The canonical sprint contract helper (introduced in plan_50) must be shared by `frontend/src/store/sprintSlice.ts`, `frontend/src/pages/ProjectDetail.tsx`, and `frontend/src/pages/SprintCapacity.tsx`.

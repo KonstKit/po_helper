@@ -24,7 +24,7 @@ Improve maintainability, reduce accidental coupling between panels, and make fut
 ### Prerequisites
 - **Prerequisite Tasks**: plan_42
 - **Required Resources**: Target layout contract and panel inventory
-- **Environment Requirements**: Representative dataset for manual verification
+- **Environment Requirements**: Minimum 2 projects, with at least 2 active/closed sprint states and 2k total tasks total for composition verification
 
 ### Downstream Impact
 - **Downstream Tasks**: plan_44, plan_47, plan_58
@@ -114,9 +114,9 @@ flowchart LR
   - Modification Reason: reduce monolith
 
 #### Files to Read
-- `frontend/src/pages/projects/ProjectList.tsx`
+- `frontend/src/pages/Projects.tsx`
   - Read Purpose: align dashboard structure with shared conventions
-  - Usage: ensure consistent user experience
+  - Usage: align dashboard behavior and section loading patterns
 
 ## Acceptance Criteria
 

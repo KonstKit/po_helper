@@ -24,7 +24,7 @@ This module turns the filter UI from a placeholder into a reliable interaction c
 ### Prerequisites
 - **Prerequisite Tasks**: plan_41
 - **Prerequisite Data**: Current filter UI inventory and expected user workflows
-- **Prerequisite Environment**: Sample dataset spanning multiple dates/projects for validation
+- **Prerequisite Environment**: Minimum 2 projects and 2000 tasks with controlled pagination pages
 
 ### Downstream Impact
 - **Downstream Tasks**: plan_53, plan_57
@@ -46,6 +46,15 @@ This module turns the filter UI from a placeholder into a reliable interaction c
 - [ ] plan_48 - Implement Project Quick Filters Behavior (estimated 120 minutes)
   - Brief: Make "all/active/recent" behavior real and non-misleading.
 
+## Execution Steps
+
+### Step 0: Fix Task Data Scope Before Filter Semantics
+- **Action**: Define and implement a single deterministic task data strategy that avoids default pagination truncation.
+- **Input**: dashboard task-derived panel list and existing `listTasks` usage.
+- **Output**: explicit strategy for scope (full pagination or explicit partial-mode).
+- **Notes**: filter claims are blocked until dashboard task scope is deterministic.
+- **Implementation Contract**: add/adjust a bounded fetch loop with `listTasksPaginated` (`skip += limit`) until `meta.has_next === false` or explicit cap (`maxPages` or `maxTotalTasks`) and persist scope metadata (`taskScope.total`, `taskScope.fetched`, `taskScope.isPartial`) by project context.
+
 ---
 
 ## Visualization Output
@@ -65,7 +74,9 @@ flowchart LR
 | KPI/analytics (velocity, risks, burndown for charts) | `/v1/analytics/...` endpoints with project and sprint context | Incomplete or duplicated summaries |
 | Task-derived counts/lists (`upcoming`, `distribution`, risk scoring) | `listTasksPaginated` with deterministic `skip/limit` plan, or backend aggregate endpoint for full-project totals | Filter semantics become non-deterministic when only first 50 tasks are loaded |
 
-Current state: existing dashboard logic reads all tasks from `listTasks` defaults and therefore only receives first page (`skip=0`, `limit=50`). The module must include task-counting source-of-truth rules before enabling any filter behavior claims.
+Current state: existing dashboard logic reads all tasks from `listTasks` defaults and therefore only receives first page (`skip=0`, `limit=50`). Full deterministic scope is required before enabling any filter behavior claims.
+
+Chosen strategy: fetch all dashboard-relevant tasks via `listTasksPaginated` loops for the active project and expose scope metadata (`total`, `fetched`, `hasNext`, `isPartial`) for explicit partial-mode labeling.
 
 ### Dashboard System Flow (Filter-Centric)
 ```
@@ -102,8 +113,8 @@ sequenceDiagram
 ### Resource Allocation Table
 | Resource Type | Owner | Time Window | Key Output | Risk/Notes |
 | --- | --- | --- | --- | --- |
-| Frontend engineer | AI-agent | ~plan execution window | semantics + application | avoid partial application |
-| Product/QA reviewer | QA engineer | ~plan execution window | validate semantics with user flows | prevent misleading UX |
+| Frontend engineer | AI-agent | one execution pass | semantics + application | avoid partial application |
+| Product/QA reviewer | QA engineer | one execution pass | validate semantics with user flows | prevent misleading UX |
 
 ---
 
@@ -114,6 +125,28 @@ Define an explicit filter semantics contract and apply it uniformly to derived c
 
 ### Data Model
 Filter selections are first-class inputs to all derived metrics and chart/list subsets. Each dashboard section consumes scoped inputs rather than re-deriving logic independently.
+
+### Data Scope Rule
+- Dashboard task-derived panels must not use default `listTasks` limits.
+- Default implementation uses `listTasksPaginated` loop until `meta.has_next === false`.
+- If full scope cannot be fetched in bounded mode, the dashboard must render explicit partial-scope state and disable completion claims for affected KPIs.
+
+### File Operations List
+
+#### Files to Modify
+- `frontend/src/store/dataThunks.ts`
+  - Modification Location: dashboard task fetch path and cache metadata
+  - Modification Content: add deterministic full-task fetch helper with stop condition and scope counters
+  - Modification Reason: ensure one-time filters operate on complete task scope
+- `frontend/src/pages/__tests__/Dashboard.test.tsx`
+  - Modification Location: test fixtures and assertions
+  - Modification Content: add assertions that full-task scope or partial-scope state is respected
+  - Modification Reason: protect against return to first-page logic
+
+#### Files to Read
+- `frontend/src/pages/dashboard/dashboardContract.ts`
+  - Read Purpose: expose and consume task-scope mode labels in UI and tests
+  - Usage: prevent unaligned behavior after refactors
 
 ---
 
@@ -127,9 +160,11 @@ Filter selections are first-class inputs to all derived metrics and chart/list s
   - either `listTasksPaginated` with deterministic full-project windowing,
   - or dedicated analytics endpoints.
   - If task pagination remains constrained, no filter semantics claim is considered complete until full-project aggregation is implemented.
+- Dashboard task fetching exports deterministic scope metadata (`total`, `hasNext`, `isPartial`) and never silently consumes only the first page.
+- Filter-based behavior claims are incomplete unless task scope is full (`isPartial === false`) or dashboard renders explicit `partial scope` label in affected panels.
 
 ### Quality Acceptance
 - Regression checks prevent reintroducing "filter UI that does not affect data."
-- Source-of-truth and pagination behavior is referenced in `frontend/src/pages/dashboard/dashboardSemanticsContract.md` before gates pass.
+- Source-of-truth and pagination behavior is implemented through `dashboardContract.ts` + tests before gates pass.
 
 
