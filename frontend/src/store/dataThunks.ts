@@ -2,7 +2,7 @@ import { createAsyncThunk } from '@reduxjs/toolkit';
 import { listProjects, listSprints, listTasks, listTasksPaginated } from '../services/api';
 import { setProjects, setLoading, setError, setCurrentProject } from './projectSlice';
 import { setTasks, setTasksLoading, setTasksError, type Task } from './taskSlice';
-import { setSprints, setSprintsLoading, setSprintsError } from './sprintSlice';
+import { setSprints, setSprintsLoading, setSprintsError, setActiveSprintByProject } from './sprintSlice';
 import { AppDispatch, RootState } from './store';
 import { getErrorMessage } from '../utils/errorUtils';
 import {
@@ -166,11 +166,17 @@ export const loadAllSprints = createAsyncThunk<
   { force?: boolean; projectId?: number },
   { dispatch: AppDispatch; state: RootState }
 >('data/loadAllSprints', async ({ force = false, projectId }, { dispatch, getState }) => {
-  const state = getState();
-  const lastLoadedAt = state.sprint.lastLoadedAt;
+  if (typeof projectId !== 'number') {
+    return;
+  }
 
-  // Check cache validity
-  if (!force && lastLoadedAt && Date.now() - lastLoadedAt < CACHE_TTL) {
+  const state = getState();
+  const lastLoadedAt = state.sprint.lastLoadedAtByProject[projectId];
+  const hasCachedProjectSprints = Array.isArray(state.sprint.sprintsByProject[projectId]);
+
+  if (!force && lastLoadedAt && Date.now() - lastLoadedAt < CACHE_TTL && hasCachedProjectSprints) {
+    dispatch(setActiveSprintByProject(projectId));
+    dispatch(setSprintsError(null));
     return;
   }
 
@@ -178,7 +184,7 @@ export const loadAllSprints = createAsyncThunk<
   try {
     const sprints = await listSprints({ projectId }, { timeout: 30000 });
 
-    dispatch(setSprints(sprints));
+    dispatch(setSprints({ projectId, sprints }));
     dispatch(setSprintsError(null));
   } catch (err: unknown) {
     console.error('[Redux] Failed to load sprints:', err);
@@ -230,10 +236,9 @@ export const initializeAppData = createAsyncThunk<
     // Load projects first
     await dispatch(loadAllProjects({ force: false })); // Changed to false to use cache if available
 
-    // Then load tasks and sprints in parallel
-    // Don't wait for all to complete, let them load in background
+    // Then load tasks in background.
+    // Sprint loading is project-scoped only and starts when project context is known.
     dispatch(loadAllTasks({ force: false }));
-    dispatch(loadAllSprints({ force: false }));
   } catch (error) {
     console.error('[Redux] Error initializing app data:', error);
   } finally {

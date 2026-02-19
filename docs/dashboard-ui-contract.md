@@ -64,6 +64,24 @@ Date range maps to backend `sprints_count`:
   - `capHit`
 - Partial scope must be explicit in UI and never silently treated as full coverage.
 
+## Sprint/WIP Contract
+- Active sprint resolution is normalized through `frontend/src/utils/sprintNormalization.ts`.
+- Canonical sprint identifier precedence:
+  - `sprint_id`
+  - fallback `id`
+- Active sprint precedence:
+  - `state === active`
+  - fallback `status === active`
+  - fallback date-window match (`start_date <= now <= end_date`)
+  - fallback latest sprint by timeline
+- Sprint loading is project-scoped only (`loadAllSprints` requires `projectId`).
+- WIP widget states are explicit:
+  - `no_sprint`: show `--` + `No active sprint`
+  - `loading`: show `N/A` + loading message
+  - `ready`: show numeric active WIP + limit
+  - `not_available`: show `N/A` + unavailable message
+  - `error`: show `N/A` + endpoint failure message
+
 ## Stable Test Identifiers
 - Root:
   - `dashboard-page`

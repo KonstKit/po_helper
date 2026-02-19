@@ -40,6 +40,7 @@ import DashboardHeader from './dashboard/DashboardHeader';
 import DashboardChartsSection from './dashboard/DashboardChartsSection';
 import DashboardInsightsSection from './dashboard/DashboardInsightsSection';
 import DashboardStatsSection from './dashboard/DashboardStatsSection';
+import { getCanonicalSprintId } from '../utils/sprintNormalization';
 import {
   DASHBOARD_STORAGE_KEYS,
   DASHBOARD_TEST_IDS,
@@ -71,6 +72,13 @@ import {
   filterTasksByDateRange,
   formatDueDate,
 } from './dashboard/dashboardDerivations';
+
+type WipWidgetState = 'no_sprint' | 'loading' | 'ready' | 'not_available' | 'error';
+
+const isValidWipPayload = (value: SprintWipStatus | null): value is SprintWipStatus =>
+  value !== null &&
+  typeof value.total_active === 'number' &&
+  Array.isArray(value.assignees);
 
 const lineChartOptions: ChartOptions<'line'> = {
   responsive: true,
@@ -178,6 +186,7 @@ const Dashboard: React.FC = () => {
   const [velocityData, setVelocityData] = useState<VelocityResponse | null>(null);
   const [velocityLoading, setVelocityLoading] = useState(false);
   const [wipStatus, setWipStatus] = useState<SprintWipStatus | null>(null);
+  const [wipWidgetState, setWipWidgetState] = useState<WipWidgetState>('no_sprint');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [now, setNow] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
@@ -237,6 +246,7 @@ const Dashboard: React.FC = () => {
     () => (currentProject ? taskScopeByProject[currentProject.id] : undefined),
     [currentProject, taskScopeByProject]
   );
+  const activeSprintId = useMemo(() => getCanonicalSprintId(activeSprint), [activeSprint]);
 
   const isPartialTaskScope = currentTaskScope?.isPartial === true;
 
@@ -245,6 +255,7 @@ const Dashboard: React.FC = () => {
     setValueMetrics(null);
     setVelocityData(null);
     setWipStatus(null);
+    setWipWidgetState('no_sprint');
     setVelocityLoading(false);
   }, []);
 
@@ -308,19 +319,28 @@ const Dashboard: React.FC = () => {
       setVelocityLoading(false);
     }
 
-    if (!activeSprint?.id) {
+    if (activeSprintId === null) {
       setWipStatus(null);
+      setWipWidgetState('no_sprint');
       return;
     }
 
+    setWipWidgetState('loading');
     try {
-      const wip = await getSprintWipStatus(activeSprint.id);
+      const wip = await getSprintWipStatus(activeSprintId);
+      if (!isValidWipPayload(wip) || typeof wip.error === 'string') {
+        setWipStatus(null);
+        setWipWidgetState('not_available');
+        return;
+      }
       setWipStatus(wip);
+      setWipWidgetState('ready');
     } catch (error) {
       console.warn('Failed to load WIP status', error);
       setWipStatus(null);
+      setWipWidgetState('error');
     }
-  }, [activeSprint?.id, currentProject, dateRange, resetLocalMetrics]);
+  }, [activeSprintId, currentProject, dateRange, resetLocalMetrics]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -576,7 +596,8 @@ const Dashboard: React.FC = () => {
               budgetData={budgetData}
               valueMetrics={valueMetrics}
               wipStatus={wipStatus}
-              hasActiveSprint={Boolean(activeSprint?.id)}
+              hasActiveSprint={activeSprintId !== null}
+              wipState={wipWidgetState}
               onOpenAllTasks={() => openDrilldown('All tasks', () => true)}
               onOpenCompletedTasks={() =>
                 openDrilldown('Completed tasks', (task: Task) => isDoneStatus(task.status))

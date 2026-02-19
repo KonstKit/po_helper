@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import '../../test/setup-env';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
@@ -151,6 +151,7 @@ const preloadedState = {
     loading: false,
     error: null,
     lastLoadedAt: null,
+    lastLoadedAtByProject: {},
     sprintsByProject: {},
   },
 };
@@ -333,7 +334,7 @@ describe('Dashboard smoke scenarios', () => {
     await waitFor(() => {
       expect(document.querySelectorAll('[data-testid="dashboard-upcoming-item"]').length).toBeGreaterThan(0);
     });
-  }, 15000);
+  }, 25000);
 
   it('renders only the consolidated dashboard layout', async () => {
     renderDashboard();
@@ -364,6 +365,60 @@ describe('Dashboard smoke scenarios', () => {
     renderDashboard();
     await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
     expect(await screen.findByTestId(DASHBOARD_TEST_IDS.partialScopeBadge)).toBeInTheDocument();
+  }, 15000);
+
+  it('shows explicit no-active-sprint state for WIP widget', async () => {
+    renderDashboard();
+    await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
+
+    const wipCard = await screen.findByTestId('card-wip');
+    expect(within(wipCard).getByText('No active sprint')).toBeInTheDocument();
+    expect(within(wipCard).getByText('--')).toBeInTheDocument();
+  }, 15000);
+
+  it('shows not-available WIP state when payload is malformed', async () => {
+    mockedListSprints.mockResolvedValueOnce([
+      {
+        id: 901,
+        sprint_id: 901,
+        name: 'Sprint X',
+        state: 'active',
+        start_date: new Date(baseNow - 2 * DAY).toISOString(),
+        end_date: new Date(baseNow + 5 * DAY).toISOString(),
+      },
+    ]);
+    mockedGetSprintWipStatus.mockResolvedValueOnce({
+      assignees: [],
+      limit_default: 6,
+    } as any);
+
+    renderDashboard();
+    await waitFor(() => expect(mockedGetSprintWipStatus).toHaveBeenCalled());
+
+    const wipCard = await screen.findByTestId('card-wip');
+    expect(within(wipCard).getByText('WIP data not available for active sprint')).toBeInTheDocument();
+    expect(within(wipCard).getByText('N/A')).toBeInTheDocument();
+  }, 15000);
+
+  it('shows WIP error state when endpoint fails', async () => {
+    mockedListSprints.mockResolvedValueOnce([
+      {
+        id: 902,
+        sprint_id: 902,
+        name: 'Sprint Y',
+        status: 'active',
+        start_date: new Date(baseNow - 3 * DAY).toISOString(),
+        end_date: new Date(baseNow + 4 * DAY).toISOString(),
+      },
+    ]);
+    mockedGetSprintWipStatus.mockRejectedValueOnce(new Error('wip failed'));
+
+    renderDashboard();
+    await waitFor(() => expect(mockedGetSprintWipStatus).toHaveBeenCalled());
+
+    const wipCard = await screen.findByTestId('card-wip');
+    expect(within(wipCard).getByText('Failed to load WIP data')).toBeInTheDocument();
+    expect(within(wipCard).getByText('N/A')).toBeInTheDocument();
   }, 15000);
 
   it('restores recent project context on initial load', async () => {

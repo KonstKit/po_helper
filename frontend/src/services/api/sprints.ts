@@ -14,8 +14,11 @@ import type { BurndownResponse } from './types';
 export interface Sprint {
   id?: number;
   sprint_id?: number;
+  project_id?: number;
+  jira_id?: string;
   name: string;
   state?: string;
+  status?: string;
   start_date?: string;
   end_date?: string;
   goal?: string;

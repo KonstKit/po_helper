@@ -28,6 +28,7 @@ import { DataGrid, GridColDef, GridPaginationModel } from "@mui/x-data-grid";
 import { Line } from "react-chartjs-2";
 
 import CircularProgressWithLabel from "../../components/CircularProgressWithLabel";
+import { getCanonicalSprintId, getSprintStateLabel } from "../../utils/sprintNormalization";
 import type {
   Board,
   BurndownPoint,
@@ -355,11 +356,11 @@ const ProjectDetailTabs = ({
               </MenuItem>
             )}
             {sprints.map((s) => {
-              const sprintId = s.sprint_id ?? s.id;
+              const sprintId = getCanonicalSprintId(s);
               if (typeof sprintId !== "number") return null;
               return (
                 <MenuItem key={sprintId} value={sprintId}>
-                  {s.name} ({s.state})
+                  {s.name} ({getSprintStateLabel(s)})
                 </MenuItem>
               );
             })}
@@ -370,7 +371,7 @@ const ProjectDetailTabs = ({
       <Grid container spacing={2} mb={2}>
         {(() => {
           const current = sprints.find(
-            (s) => (s.sprint_id ?? s.id) === selectedSprint,
+            (s) => getCanonicalSprintId(s) === selectedSprint,
           );
           if (!current) return null;
 
