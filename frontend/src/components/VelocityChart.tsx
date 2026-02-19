@@ -1,30 +1,9 @@
 import React from 'react';
 import { Line } from 'react-chartjs-2';
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
   ChartOptions,
   type ChartDataset,
 } from 'chart.js';
-import annotationPlugin from 'chartjs-plugin-annotation';
-
-// Register the annotation plugin and required chart elements
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  annotationPlugin
-);
 
 export interface VelocityDataPoint {
   label: string;
@@ -184,7 +163,7 @@ const VelocityChart: React.FC<VelocityChartProps> = ({
           afterLabel: (context) => {
             const dataPoint = data[context.dataIndex];
             if (dataPoint.annotation) {
-              return `📌 ${dataPoint.annotation}`;
+              return `Note: ${dataPoint.annotation}`;
             }
             if (targetVelocity !== undefined) {
               const diff = dataPoint.value - targetVelocity;
@@ -196,7 +175,10 @@ const VelocityChart: React.FC<VelocityChartProps> = ({
         },
       },
       annotation: {
-        annotations,
+        annotations:
+          annotations as NonNullable<
+            NonNullable<ChartOptions<'line'>['plugins']>['annotation']
+          >['annotations'],
       },
     },
     scales: {
@@ -242,3 +224,4 @@ const VelocityChart: React.FC<VelocityChartProps> = ({
 VelocityChart.displayName = 'VelocityChart';
 
 export default React.memo(VelocityChart);
+

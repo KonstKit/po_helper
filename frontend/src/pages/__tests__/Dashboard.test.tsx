@@ -19,6 +19,7 @@ import {
   getProjectBudgetHours,
   getProjectValueMetrics,
   getProjectById,
+  getSprintBurndown,
   getSprintWipStatus,
   getIntegrationsStatus,
   getVelocity,
@@ -31,6 +32,7 @@ vi.mock('../../services/api', () => ({
   getProjectBudgetHours: vi.fn(),
   getProjectValueMetrics: vi.fn(),
   getProjectById: vi.fn(),
+  getSprintBurndown: vi.fn(),
   getSprintWipStatus: vi.fn(),
   getIntegrationsStatus: vi.fn(),
   getVelocity: vi.fn(),
@@ -48,6 +50,7 @@ const mockedListSprints = vi.mocked(listSprints);
 const mockedGetProjectBudgetHours = vi.mocked(getProjectBudgetHours);
 const mockedGetProjectValueMetrics = vi.mocked(getProjectValueMetrics);
 const mockedGetProjectById = vi.mocked(getProjectById);
+const mockedGetSprintBurndown = vi.mocked(getSprintBurndown);
 const mockedGetSprintWipStatus = vi.mocked(getSprintWipStatus);
 const mockedGetIntegrationsStatus = vi.mocked(getIntegrationsStatus);
 const mockedGetVelocity = vi.mocked(getVelocity);
@@ -270,6 +273,19 @@ describe('Dashboard smoke scenarios', () => {
     });
     mockedGetProjectValueMetrics.mockResolvedValue({ value_delivered: 42, total_spent_hours: 18, roi: 1.6 });
     mockedGetProjectById.mockResolvedValue(sampleProject);
+    mockedGetSprintBurndown.mockResolvedValue({
+      sprint_id: 100,
+      ideal_burndown: [
+        { day: 1, ideal_remaining: 12 },
+        { day: 2, ideal_remaining: 8 },
+        { day: 3, ideal_remaining: 4 },
+      ],
+      actual_burndown: [
+        { day: 1, remaining: 11 },
+        { day: 2, remaining: 7 },
+        { day: 3, remaining: 5 },
+      ],
+    });
     mockedGetSprintWipStatus.mockResolvedValue({ total_active: 3, limit: 6, limit_default: 6, assignees: [] });
     mockedGetIntegrationsStatus.mockResolvedValue({
       jira: { configured: true, has_token: true },
@@ -419,6 +435,29 @@ describe('Dashboard smoke scenarios', () => {
     const wipCard = await screen.findByTestId('card-wip');
     expect(within(wipCard).getByText('Failed to load WIP data')).toBeInTheDocument();
     expect(within(wipCard).getByText('N/A')).toBeInTheDocument();
+  }, 15000);
+
+  it('shows explicit burndown not-available message when sprint timeline is missing', async () => {
+    mockedListSprints.mockResolvedValueOnce([
+      {
+        id: 903,
+        sprint_id: 903,
+        name: 'Sprint Z',
+        status: 'active',
+        start_date: new Date(baseNow - 4 * DAY).toISOString(),
+        end_date: new Date(baseNow + 3 * DAY).toISOString(),
+      },
+    ]);
+    mockedGetSprintBurndown.mockResolvedValueOnce({
+      sprint_id: 903,
+      ideal_burndown: [],
+      actual_burndown: [],
+    });
+
+    renderDashboard();
+    await waitFor(() => expect(mockedGetSprintBurndown).toHaveBeenCalled());
+
+    expect(await screen.findByText('Not available for this sprint.')).toBeInTheDocument();
   }, 15000);
 
   it('restores recent project context on initial load', async () => {
