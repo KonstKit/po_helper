@@ -24,6 +24,12 @@ import {
   getIntegrationsStatus,
   getVelocity,
 } from '../../services/api';
+import {
+  activeSprintScenario,
+  dateRangeScenarioTasks,
+  quickFilterProjectsScenario,
+  velocitySparseScenario,
+} from './fixtures/dashboard-scenarios';
 
 vi.mock('../../services/api', () => ({
   listProjects: vi.fn(),
@@ -326,6 +332,18 @@ describe('Dashboard smoke scenarios', () => {
     );
   };
 
+  const openAdvancedFilters = async () => {
+    fireEvent.click(screen.getByRole('button', { name: /more filters/i }));
+    await screen.findByText('Advanced Options');
+  };
+
+  const selectDropdownOption = async (testId: string, optionLabel: string) => {
+    const control = await screen.findByTestId(testId);
+    const combo = within(control).getByRole('combobox');
+    fireEvent.mouseDown(combo);
+    fireEvent.click(await screen.findByRole('option', { name: optionLabel }));
+  };
+
   it('renders risk insights and supports drilldowns', async () => {
     renderDashboard();
 
@@ -458,6 +476,151 @@ describe('Dashboard smoke scenarios', () => {
     await waitFor(() => expect(mockedGetSprintBurndown).toHaveBeenCalled());
 
     expect(await screen.findByText('Not available for this sprint.')).toBeInTheDocument();
+  }, 15000);
+
+  it('toggles chart panels deterministically for each chartView mode', async () => {
+    renderDashboard();
+    await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
+    await openAdvancedFilters();
+
+    await selectDropdownOption('dashboard-filter-chart-view', 'Velocity Only');
+    await waitFor(() => {
+      expect(screen.getByTestId('dashboard-chart-velocity')).toBeInTheDocument();
+      expect(screen.queryByTestId('dashboard-chart-burndown')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('dashboard-chart-distribution')).not.toBeInTheDocument();
+    });
+
+    await selectDropdownOption('dashboard-filter-chart-view', 'Burndown Only');
+    await waitFor(() => {
+      expect(screen.queryByTestId('dashboard-chart-velocity')).not.toBeInTheDocument();
+      expect(screen.getByTestId('dashboard-chart-burndown')).toBeInTheDocument();
+      expect(screen.queryByTestId('dashboard-chart-distribution')).not.toBeInTheDocument();
+    });
+
+    await selectDropdownOption('dashboard-filter-chart-view', 'Distribution Only');
+    await waitFor(() => {
+      expect(screen.queryByTestId('dashboard-chart-velocity')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('dashboard-chart-burndown')).not.toBeInTheDocument();
+      expect(screen.getByTestId('dashboard-chart-distribution')).toBeInTheDocument();
+    });
+
+    await selectDropdownOption('dashboard-filter-chart-view', 'Velocity + Burndown');
+    await waitFor(() => {
+      expect(screen.getByTestId('dashboard-chart-velocity')).toBeInTheDocument();
+      expect(screen.getByTestId('dashboard-chart-burndown')).toBeInTheDocument();
+      expect(screen.queryByTestId('dashboard-chart-distribution')).not.toBeInTheDocument();
+    });
+  }, 20000);
+
+  it('keeps sprint burndown timeline semantics when date range changes', async () => {
+    mockedListSprints.mockResolvedValueOnce([activeSprintScenario]);
+    mockedListTasksPaginated.mockResolvedValueOnce({
+      data: dateRangeScenarioTasks,
+      meta: {
+        total: dateRangeScenarioTasks.length,
+        page: 1,
+        per_page: 500,
+        total_pages: 1,
+        has_next: false,
+        has_prev: false,
+      },
+    });
+
+    renderDashboard();
+    await waitFor(() => expect(mockedGetSprintBurndown).toHaveBeenCalledWith(activeSprintScenario.sprint_id));
+    await waitFor(() => {
+      expect(screen.getByText(/Timeline data/i)).toBeInTheDocument();
+      expect(document.querySelectorAll('[data-testid="dashboard-upcoming-item"]').length).toBe(2);
+    });
+
+    await openAdvancedFilters();
+    await selectDropdownOption('dashboard-filter-date-range', 'Last 7 Days');
+
+    await waitFor(() => {
+      expect(screen.getByText(/Timeline data/i)).toBeInTheDocument();
+      expect(document.querySelectorAll('[data-testid="dashboard-upcoming-item"]').length).toBe(1);
+      expect(mockedGetSprintBurndown.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    expect(
+      mockedGetSprintBurndown.mock.calls.every(
+        ([sprintId]) => Number(sprintId) === Number(activeSprintScenario.sprint_id)
+      )
+    ).toBe(true);
+  }, 20000);
+
+  it('applies quick filter active and recent transitions deterministically', async () => {
+    mockedListProjects.mockResolvedValueOnce({
+      data: quickFilterProjectsScenario,
+      meta: {
+        total: quickFilterProjectsScenario.length,
+        page: 1,
+        per_page: 50,
+        total_pages: 1,
+        has_next: false,
+        has_prev: false,
+      },
+    });
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.quickFilter, 'recent');
+    localStorage.setItem(
+      DASHBOARD_STORAGE_KEYS.recentProjectIds,
+      JSON.stringify([quickFilterProjectsScenario[1].id, quickFilterProjectsScenario[0].id])
+    );
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.lastProjectId, String(quickFilterProjectsScenario[0].id));
+
+    renderDashboard({
+      ...preloadedState,
+      project: {
+        ...preloadedState.project,
+        projects: quickFilterProjectsScenario,
+        currentProject: null,
+      },
+    });
+
+    await waitFor(() => {
+      const lastCall = mockedListTasksPaginated.mock.calls.at(-1);
+      expect(lastCall?.[0]).toMatchObject({ projectId: quickFilterProjectsScenario[1].id });
+    });
+
+    fireEvent.click(screen.getByText('Active Only'));
+    await waitFor(() => {
+      const lastCall = mockedListTasksPaginated.mock.calls.at(-1);
+      expect(lastCall?.[0]).toMatchObject({ projectId: quickFilterProjectsScenario[0].id });
+    });
+
+    fireEvent.click(screen.getByText('Recent'));
+    await waitFor(() => {
+      const lastCall = mockedListTasksPaginated.mock.calls.at(-1);
+      expect(lastCall?.[0]).toMatchObject({ projectId: quickFilterProjectsScenario[0].id });
+    });
+    expect(localStorage.getItem(DASHBOARD_STORAGE_KEYS.recentProjectIds)).toContain(
+      String(quickFilterProjectsScenario[0].id)
+    );
+  }, 20000);
+
+  it('shows explicit velocity empty-state when sprint velocity data is missing', async () => {
+    mockedGetVelocity.mockResolvedValueOnce(velocitySparseScenario);
+    renderDashboard();
+    await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
+
+    expect(
+      await screen.findByText('Not enough sprint completion data to render velocity.')
+    ).toBeInTheDocument();
+  }, 15000);
+
+  it('does not emit known dashboard chart warnings in healthy render path', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    renderDashboard();
+    await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
+    await screen.findByTestId('dashboard-chart-velocity');
+    await screen.findByTestId('dashboard-chart-burndown');
+
+    const chartWarningCalls = warnSpy.mock.calls.filter((args) =>
+      /(filler plugin|annotation plugin|chart\.js.*warning|failed to register scale)/i.test(
+        args.map((entry) => String(entry)).join(' ')
+      )
+    );
+    expect(chartWarningCalls).toHaveLength(0);
+    warnSpy.mockRestore();
   }, 15000);
 
   it('restores recent project context on initial load', async () => {

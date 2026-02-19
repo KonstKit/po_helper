@@ -44,6 +44,12 @@ import DashboardInsightsSection from './dashboard/DashboardInsightsSection';
 import DashboardStatsSection from './dashboard/DashboardStatsSection';
 import { getCanonicalSprintId } from '../utils/sprintNormalization';
 import {
+  DASHBOARD_PERF_BUDGETS,
+  isAboveBudget,
+  recordDuration,
+  shouldReportBudgetBreach,
+} from '../utils/dashboardPerfGuards';
+import {
   DASHBOARD_STORAGE_KEYS,
   DASHBOARD_TEST_IDS,
   VELOCITY_SPRINTS_COUNT_MAP,
@@ -109,6 +115,13 @@ interface DashboardProjectCandidate {
   status?: string | null;
   state?: string | null;
 }
+
+const nowMs = (): number => {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+};
 
 const parseStoredProjectId = (value: string | null): number | null => {
   if (!value) return null;
@@ -195,6 +208,11 @@ const Dashboard: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [now, setNow] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
+  const initStartedAtRef = useRef<number>(nowMs());
+  const initMetricsRecordedRef = useRef(false);
+  const pendingFilterApplyStartRef = useRef<number | null>(null);
+  const refreshEventsRef = useRef<number[]>([]);
+  const refreshLoopWarnedRef = useRef(false);
   const [drilldown, setDrilldown] = useState<{ open: boolean; title: string; tasks: Task[] }>({
     open: false,
     title: '',
@@ -236,16 +254,42 @@ const Dashboard: React.FC = () => {
   }, []);
 
   const handleDateRangeChange = useCallback((range: string) => {
+    pendingFilterApplyStartRef.current = nowMs();
     const nextRange = parseDateRangeOption(range);
     setDateRange(nextRange);
     localStorage.setItem(DASHBOARD_STORAGE_KEYS.dateRange, nextRange);
   }, []);
 
   const handleChartViewChange = useCallback((view: string) => {
+    pendingFilterApplyStartRef.current = nowMs();
     const nextView = parseChartViewOption(view);
     setChartView(nextView);
     localStorage.setItem(DASHBOARD_STORAGE_KEYS.chartView, nextView);
   }, []);
+
+  useEffect(() => {
+    const startedAt = pendingFilterApplyStartRef.current;
+    if (startedAt === null) {
+      return;
+    }
+    pendingFilterApplyStartRef.current = null;
+
+    const timeoutId = setTimeout(() => {
+      const duration = Math.max(0, nowMs() - startedAt);
+      recordDuration('filter_apply_ms', duration);
+      if (
+        isAboveBudget('filter_apply_ms', DASHBOARD_PERF_BUDGETS.filter_apply_ms) &&
+        shouldReportBudgetBreach('filter_apply_ms', DASHBOARD_PERF_BUDGETS.filter_apply_ms)
+      ) {
+        console.warn('[DashboardGuardrails] filter_apply_budget_exceeded', {
+          duration,
+          budget: DASHBOARD_PERF_BUDGETS.filter_apply_ms,
+        });
+      }
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
+  }, [dateRange, chartView]);
 
   const currentTaskScope = useMemo(
     () => (currentProject ? taskScopeByProject[currentProject.id] : undefined),
@@ -254,6 +298,13 @@ const Dashboard: React.FC = () => {
   const activeSprintId = useMemo(() => getCanonicalSprintId(activeSprint), [activeSprint]);
 
   const isPartialTaskScope = currentTaskScope?.isPartial === true;
+
+  useEffect(() => {
+    refreshEventsRef.current = [];
+    refreshLoopWarnedRef.current = false;
+    initStartedAtRef.current = nowMs();
+    initMetricsRecordedRef.current = false;
+  }, [currentProject?.id]);
 
   const resetLocalMetrics = useCallback(() => {
     setBudgetData(null);
@@ -298,6 +349,19 @@ const Dashboard: React.FC = () => {
     if (!currentProject) {
       resetLocalMetrics();
       return;
+    }
+
+    const refreshEventTime = nowMs();
+    refreshEventsRef.current = refreshEventsRef.current.filter(
+      (timestamp) => refreshEventTime - timestamp <= 30_000
+    );
+    refreshEventsRef.current.push(refreshEventTime);
+    if (!refreshLoopWarnedRef.current && refreshEventsRef.current.length >= 6) {
+      refreshLoopWarnedRef.current = true;
+      console.warn('[DashboardGuardrails] refresh_loop_detected', {
+        eventsInWindow: refreshEventsRef.current.length,
+        windowMs: 30000,
+      });
     }
 
     try {
@@ -550,6 +614,25 @@ const Dashboard: React.FC = () => {
     return '';
   }, [burndownWidgetState, burndownModel.hasData]);
   const burndownModeLabel = isBurndownAvailable ? 'Timeline data' : undefined;
+
+  useEffect(() => {
+    if (!hasProject || isLoading || initMetricsRecordedRef.current) {
+      return;
+    }
+
+    const duration = Math.max(0, nowMs() - initStartedAtRef.current);
+    recordDuration('dashboard_init_ms', duration);
+    if (
+      isAboveBudget('dashboard_init_ms', DASHBOARD_PERF_BUDGETS.dashboard_init_ms) &&
+      shouldReportBudgetBreach('dashboard_init_ms', DASHBOARD_PERF_BUDGETS.dashboard_init_ms)
+    ) {
+      console.warn('[DashboardGuardrails] init_budget_exceeded', {
+        duration,
+        budget: DASHBOARD_PERF_BUDGETS.dashboard_init_ms,
+      });
+    }
+    initMetricsRecordedRef.current = true;
+  }, [hasProject, isLoading]);
 
   if (isLoading && !hasProject) {
     return <DashboardSkeleton />;
