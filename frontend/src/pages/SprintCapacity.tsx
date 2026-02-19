@@ -18,6 +18,7 @@ import {
 } from '@mui/icons-material';
 import type { SelectChangeEvent } from '@mui/material/Select';
 import { listProjects, listSprints, type Project, type Sprint } from '../services/api';
+import { getCanonicalSprintId, isSprintActive, selectActiveSprint } from '../utils/sprintNormalization';
 import {
   CapacitySettingsPanel,
   TeamHealthDashboard,
@@ -87,14 +88,12 @@ const SprintCapacity: React.FC = () => {
       try {
         const sp = await listSprints({ projectId });
         setSprints(sp);
-        // Auto-select active sprint if available
-        const activeSprint = sp.find((s) => s.state === 'active');
-        if (activeSprint) {
-          const sprintId = activeSprint.sprint_id ?? activeSprint.id;
-          setSprintId(typeof sprintId === 'number' ? sprintId : '');
+        const activeSprint = selectActiveSprint(sp);
+        const activeSprintId = getCanonicalSprintId(activeSprint);
+        if (activeSprintId !== null) {
+          setSprintId(activeSprintId);
         } else if (sp.length > 0) {
-          const sprintId = sp[0].sprint_id ?? sp[0].id;
-          setSprintId(typeof sprintId === 'number' ? sprintId : '');
+          setSprintId(getCanonicalSprintId(sp[0]) ?? '');
         } else {
           setSprintId('');
         }
@@ -140,16 +139,20 @@ const SprintCapacity: React.FC = () => {
                 value={sprintId}
                 label="Sprint (optional)"
                 onChange={handleSprintChange}
-              >
-                <MenuItem value="">All Sprints</MenuItem>
-                {sprints.map((s) => (
-                  <MenuItem key={s.id} value={s.id}>
-                    {s.name} {s.state === 'active' ? '(Active)' : ''}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
+                >
+                  <MenuItem value="">All Sprints</MenuItem>
+                  {sprints.map((s) => {
+                    const sprintIdentifier = getCanonicalSprintId(s);
+                    if (sprintIdentifier === null) return null;
+                    return (
+                      <MenuItem key={sprintIdentifier} value={sprintIdentifier}>
+                        {s.name} {isSprintActive(s) ? '(Active)' : ''}
+                      </MenuItem>
+                    );
+                  })}
+                </Select>
+              </FormControl>
+            </Grid>
         </Grid>
       </Paper>
 

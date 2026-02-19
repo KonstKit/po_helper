@@ -90,6 +90,7 @@ interface DashboardStatsSectionProps {
   valueMetrics: ValueMetricsResponse | null;
   wipStatus: SprintWipStatus | null;
   hasActiveSprint: boolean;
+  wipState: 'no_sprint' | 'loading' | 'ready' | 'not_available' | 'error';
   onOpenAllTasks: () => void;
   onOpenCompletedTasks: () => void;
   onOpenInProgressTasks: () => void;
@@ -104,18 +105,33 @@ const DashboardStatsSection: React.FC<DashboardStatsSectionProps> = ({
   valueMetrics,
   wipStatus,
   hasActiveSprint,
+  wipState,
   onOpenAllTasks,
   onOpenCompletedTasks,
   onOpenInProgressTasks,
   onOpenBlockingTasks,
   onOpenActiveWipTasks,
 }) => {
-  const wipValue = hasActiveSprint ? (wipStatus ? wipStatus.total_active : '--') : '--';
-  const wipHelperText = hasActiveSprint
-    ? wipStatus
-      ? `Limit: ${wipStatus.limit || '--'}`
-      : 'Loading sprint WIP'
-    : 'No active sprint';
+  const hasReadyWip = hasActiveSprint && wipState === 'ready' && wipStatus !== null;
+  const wipValue = hasReadyWip ? wipStatus.total_active : wipState === 'no_sprint' ? '--' : 'N/A';
+  const wipHelperText =
+    wipState === 'ready'
+      ? `Limit: ${wipStatus?.limit || '--'}`
+      : wipState === 'loading'
+        ? 'Loading sprint WIP'
+        : wipState === 'error'
+          ? 'Failed to load WIP data'
+          : wipState === 'not_available'
+            ? 'WIP data not available for active sprint'
+            : 'No active sprint';
+  const wipColor =
+    wipState === 'ready'
+      ? (wipStatus?.assignees || []).some((assignee) => assignee.wip_exceeded)
+        ? 'error.main'
+        : 'success.main'
+      : wipState === 'error'
+        ? 'warning.main'
+        : 'grey.500';
 
   return (
     <Grid container spacing={3} data-testid="dashboard-section-stats">
@@ -211,15 +227,9 @@ const DashboardStatsSection: React.FC<DashboardStatsSectionProps> = ({
           testId="card-wip"
           value={wipValue}
           icon={<Assignment sx={{ color: 'white' }} />}
-          color={
-            !hasActiveSprint
-              ? 'grey.500'
-              : (wipStatus?.assignees || []).some((assignee) => assignee.wip_exceeded)
-                ? 'error.main'
-                : 'success.main'
-          }
+          color={wipColor}
           helperText={wipHelperText}
-          onClick={hasActiveSprint ? onOpenActiveWipTasks : undefined}
+          onClick={hasReadyWip ? onOpenActiveWipTasks : undefined}
         />
       </Grid>
     </Grid>

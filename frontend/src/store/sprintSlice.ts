@@ -1,21 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { logout } from './authSlice';
-
-interface Sprint {
-  id?: number;
-  sprint_id?: number;
-  project_id?: number;
-  jira_id?: string;
-  name: string;
-  start_date?: string;
-  end_date?: string;
-  status?: string;
-  progress?: number;
-  total_tasks?: number;
-  completed_tasks?: number;
-  total_estimate?: number;
-  total_spent?: number;
-}
+import type { Sprint } from '../services/api';
+import { selectActiveSprint } from '../utils/sprintNormalization';
 
 interface SprintState {
   sprints: Sprint[];
@@ -23,6 +9,7 @@ interface SprintState {
   loading: boolean;
   error: string | null;
   lastLoadedAt: number | null;
+  lastLoadedAtByProject: Record<number, number>;
   sprintsByProject: Record<number, Sprint[]>;
 }
 
@@ -32,6 +19,7 @@ const createInitialState = (): SprintState => ({
   loading: false,
   error: null,
   lastLoadedAt: null,
+  lastLoadedAtByProject: {},
   sprintsByProject: {},
 });
 
@@ -41,22 +29,20 @@ const sprintSlice = createSlice({
   name: 'sprint',
   initialState,
   reducers: {
-    setSprints: (state, action: PayloadAction<Sprint[]>) => {
-      state.sprints = action.payload;
-      state.lastLoadedAt = Date.now();
+    setSprints: (state, action: PayloadAction<{ projectId: number; sprints: Sprint[] }>) => {
+      const { projectId, sprints } = action.payload;
+      const now = Date.now();
 
-      // Group sprints by project
-      state.sprintsByProject = {};
-      action.payload.forEach((sprint) => {
-        if (typeof sprint.project_id !== 'number') return;
-        if (!state.sprintsByProject[sprint.project_id]) {
-          state.sprintsByProject[sprint.project_id] = [];
-        }
-        state.sprintsByProject[sprint.project_id].push(sprint);
-      });
-
-      // Find active sprint
-      state.activeSprint = action.payload.find(s => s.status === 'active') || null;
+      state.sprints = sprints;
+      state.lastLoadedAt = now;
+      state.lastLoadedAtByProject[projectId] = now;
+      state.sprintsByProject[projectId] = sprints;
+      state.activeSprint = selectActiveSprint(sprints);
+    },
+    setActiveSprintByProject: (state, action: PayloadAction<number>) => {
+      const sprints = state.sprintsByProject[action.payload] || [];
+      state.sprints = sprints;
+      state.activeSprint = selectActiveSprint(sprints);
     },
     setActiveSprint: (state, action: PayloadAction<Sprint | null>) => {
       state.activeSprint = action.payload;
@@ -73,5 +59,5 @@ const sprintSlice = createSlice({
   },
 });
 
-export const { setSprints, setActiveSprint, setSprintsLoading, setSprintsError } = sprintSlice.actions;
+export const { setSprints, setActiveSprintByProject, setActiveSprint, setSprintsLoading, setSprintsError } = sprintSlice.actions;
 export default sprintSlice.reducer;

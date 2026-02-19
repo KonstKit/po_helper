@@ -79,6 +79,7 @@ import CircularProgressWithLabel from "../components/CircularProgressWithLabel";
 import { isDevelopment } from "../utils/env";
 import { getErrorMessage, getErrorCode } from "../utils/errorUtils";
 import { normalizeQualityGateProvider } from "../utils/qualityGate";
+import { getCanonicalSprintId, selectActiveSprint } from "../utils/sprintNormalization";
 import ProjectDetailTabs from "./projectDetail/ProjectDetailTabs";
 
 const cacheKeyForTasks = (projectId: number) =>
@@ -511,40 +512,61 @@ const ProjectDetail = () => {
     setValue(newValue);
   };
 
+  const loadSprintInsights = useCallback(async (sprintId: number) => {
+    try {
+      setSprintBurndown(await getSprintBurndown(sprintId));
+    } catch (err) {
+      void err;
+    }
+    try {
+      setSprintQuality(await getSprintQuality(sprintId));
+    } catch (err) {
+      void err;
+    }
+    try {
+      setSprintCapacity(await getSprintCapacity(sprintId));
+    } catch (err) {
+      void err;
+    }
+  }, []);
+
   const handleBoardChange = useCallback(
     async (nextBoardId: number) => {
       if (!id) return;
       setBoardId(nextBoardId);
       try {
         const sp = await getProjectSprints(Number(id), 10, nextBoardId);
-        setSprints(sp.sprints || []);
+        const sprintList = sp.sprints || [];
+        setSprints(sprintList);
+        const currentSprintStillExists =
+          typeof selectedSprint === "number" &&
+          sprintList.some((sprint) => getCanonicalSprintId(sprint) === selectedSprint);
+        const preferredSprint = currentSprintStillExists
+          ? selectedSprint
+          : getCanonicalSprintId(selectActiveSprint(sprintList)) ??
+            getCanonicalSprintId(sprintList[0]) ??
+            "";
+        setSelectedSprint(preferredSprint);
+        if (typeof preferredSprint === "number") {
+          await loadSprintInsights(preferredSprint);
+        } else {
+          setSprintBurndown(null);
+          setSprintQuality(null);
+          setSprintCapacity(null);
+        }
       } catch (err) {
         void err;
       }
     },
-    [id],
+    [id, loadSprintInsights, selectedSprint],
   );
 
   const handleSprintChange = useCallback(
     async (nextSprintId: number) => {
       setSelectedSprint(nextSprintId);
-      try {
-        setSprintBurndown(await getSprintBurndown(nextSprintId));
-      } catch (err) {
-        void err;
-      }
-      try {
-        setSprintQuality(await getSprintQuality(nextSprintId));
-      } catch (err) {
-        void err;
-      }
-      try {
-        setSprintCapacity(await getSprintCapacity(nextSprintId));
-      } catch (err) {
-        void err;
-      }
+      await loadSprintInsights(nextSprintId);
     },
-    [],
+    [loadSprintInsights],
   );
 
   const handleSaveThresholds = useCallback(async () => {
@@ -876,37 +898,24 @@ const ProjectDetail = () => {
               10,
               typeof boardIdRef.current === "number" ? boardIdRef.current : undefined,
             );
-            setSprints(sp.sprints || []);
-            const active =
-              (sp.sprints || []).find((s) => s.state === "active") ||
-              (sp.sprints || [])[0];
-            const activeSprintId = active?.sprint_id ?? active?.id;
+            const sprintList = sp.sprints || [];
+            setSprints(sprintList);
+            const activeSprintId =
+              getCanonicalSprintId(selectActiveSprint(sprintList)) ??
+              getCanonicalSprintId(sprintList[0]);
             if (typeof activeSprintId === "number") {
               setSelectedSprint(activeSprintId);
-              try {
-                setProgress({
-                  loading: true,
-                  percent: 92,
-                  step: "Loading sprint burndown...",
-                });
-                setSprintBurndown(await getSprintBurndown(activeSprintId));
-              } catch (err) { void err; }
-              try {
-                setProgress({
-                  loading: true,
-                  percent: 95,
-                  step: "Computing sprint quality...",
-                });
-                setSprintQuality(await getSprintQuality(activeSprintId));
-              } catch (err) { void err; }
-              try {
-                setProgress({
-                  loading: true,
-                  percent: 98,
-                  step: "Calculating sprint capacity...",
-                });
-                setSprintCapacity(await getSprintCapacity(activeSprintId));
-              } catch (err) { void err; }
+              setProgress({
+                loading: true,
+                percent: 94,
+                step: "Loading sprint analytics...",
+              });
+              await loadSprintInsights(activeSprintId);
+            } else {
+              setSelectedSprint("");
+              setSprintBurndown(null);
+              setSprintQuality(null);
+              setSprintCapacity(null);
             }
           } catch (e) {
             console.error(e);
@@ -1103,7 +1112,7 @@ const ProjectDetail = () => {
       if (purgeReqCtrlRef.current) purgeReqCtrlRef.current.abort();
       purgeReqCtrlRef.current = null;
     };
-  }, [id, loadProjectDetails, loadTasksPage]);
+  }, [id, loadProjectDetails, loadSprintInsights, loadTasksPage]);
 
   // WebSocket: listen for backend sync completion and refresh tasks (only if Jira configured and auto-sync not disabled)
   useEffect(() => {
