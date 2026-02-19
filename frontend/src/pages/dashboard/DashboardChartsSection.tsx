@@ -12,7 +12,13 @@ interface DashboardChartsSectionProps {
   showDistribution: boolean;
   velocityData: VelocityDataPoint[];
   targetVelocity?: number;
+  velocityShowTrend?: boolean;
+  velocityTrendLabel?: string;
   burndownData: ChartData<'line', number[], string>;
+  burndownLoading: boolean;
+  burndownAvailable: boolean;
+  burndownUnavailableMessage: string;
+  burndownModeLabel?: string;
   taskDistributionData: ChartData<'doughnut', number[], string>;
   lineChartOptions: ChartOptions<'line'>;
   doughnutChartOptions: ChartOptions<'doughnut'>;
@@ -26,7 +32,13 @@ const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({
   showDistribution,
   velocityData,
   targetVelocity,
+  velocityShowTrend = true,
+  velocityTrendLabel,
   burndownData,
+  burndownLoading,
+  burndownAvailable,
+  burndownUnavailableMessage,
+  burndownModeLabel,
   taskDistributionData,
   lineChartOptions,
   doughnutChartOptions,
@@ -49,6 +61,11 @@ const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({
                     (Target: {targetVelocity}h)
                   </Typography>
                 )}
+                {velocityTrendLabel && (
+                  <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                    (Trend: {velocityTrendLabel})
+                  </Typography>
+                )}
               </Typography>
               {isLoading ? (
                 <Box height={250} display="flex" alignItems="center" justifyContent="center">
@@ -61,7 +78,12 @@ const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({
                   </Typography>
                 </Box>
               ) : (
-                <VelocityChart data={velocityData} targetVelocity={targetVelocity} showTrend height={250} />
+                <VelocityChart
+                  data={velocityData}
+                  targetVelocity={targetVelocity}
+                  showTrend={velocityShowTrend}
+                  height={250}
+                />
               )}
             </CardContent>
           </Card>
@@ -74,15 +96,20 @@ const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({
             <CardContent>
               <Typography variant="h6" gutterBottom fontWeight={600}>
                 Sprint Burndown
+                {burndownModeLabel && (
+                  <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                    ({burndownModeLabel})
+                  </Typography>
+                )}
               </Typography>
-              {isLoading ? (
+              {burndownLoading ? (
                 <Box height={250} display="flex" alignItems="center" justifyContent="center">
                   <LinearProgress sx={{ width: '80%' }} />
                 </Box>
-              ) : !hasTasks ? (
+              ) : !burndownAvailable ? (
                 <Box height={250} display="flex" alignItems="center" justifyContent="center">
                   <Typography variant="body2" color="text.secondary">
-                    Burndown is unavailable without scoped tasks.
+                    {burndownUnavailableMessage}
                   </Typography>
                 </Box>
               ) : (

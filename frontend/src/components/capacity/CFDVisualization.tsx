@@ -28,18 +28,7 @@ import {
   DataUsage as DataUsageIcon,
 } from '@mui/icons-material';
 import { Line } from 'react-chartjs-2';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip as ChartTooltip,
-  Legend,
-  Filler,
-  ChartOptions,
-} from 'chart.js';
+import { ChartOptions } from 'chart.js';
 import {
   CFDData,
   CFDSnapshot,
@@ -47,18 +36,6 @@ import {
   getCFDData,
   getFlowMetrics,
 } from '../../services/api';
-
-// Register Chart.js components including Filler for area charts
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  ChartTooltip,
-  Legend,
-  Filler
-);
 
 interface CFDVisualizationProps {
   projectId: number;

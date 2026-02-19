@@ -35,19 +35,6 @@ import {
 } from '@mui/icons-material';
 import { Line, Doughnut, Bar } from 'react-chartjs-2';
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip as ChartTooltip,
-  Legend,
-  Filler,
-} from 'chart.js';
-import {
   QualityDashboard as QualityDashboardData,
   QualitySummary,
   EscapedDefect,
@@ -87,20 +74,6 @@ const isDefectStatus = (value: string): value is DefectStatus =>
 
 const isRootCause = (value: string): value is RootCause =>
   ROOT_CAUSE_SET.has(value);
-
-// Register Chart.js components
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Title,
-  ChartTooltip,
-  Legend,
-  Filler
-);
 
 interface QualityDashboardProps {
   projectId: number;

@@ -1,7 +1,7 @@
 import type { ChartData } from 'chart.js';
 import type { KPIMetric } from '../../components/KPIBar';
 import type { VelocityDataPoint } from '../../components/VelocityChart';
-import type { VelocityResponse } from '../../services/api';
+import type { BurndownResponse, VelocityResponse } from '../../services/api';
 import { categorizeStatus, isDoneStatus } from '../../hooks/useTaskStatuses';
 import type { Task } from '../../store/taskSlice';
 import type { DateRangeOption } from './dashboardContract';
@@ -13,6 +13,11 @@ const UPCOMING_DAYS = 14;
 const WEEKS_TO_RENDER = 5;
 
 export type VelocityTrend = 'up' | 'down' | 'flat';
+
+export interface BurndownChartModel {
+  data: ChartData<'line', number[], string>;
+  hasData: boolean;
+}
 
 export interface DashboardStats {
   totalTasks: number;
@@ -36,6 +41,79 @@ export interface UpcomingTaskItem {
 }
 
 type DrilldownOpener = (title: string, filter: (row: Task) => boolean) => void;
+
+const EMPTY_LINE_CHART_DATA: ChartData<'line', number[], string> = {
+  labels: [],
+  datasets: [],
+};
+
+const toFiniteNumber = (value: unknown): number | null => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getBurndownSortedDays = (burndown: BurndownResponse): number[] => {
+  const days = new Set<number>();
+  (burndown.ideal_burndown ?? []).forEach((point) => {
+    const day = toFiniteNumber(point.day);
+    if (day !== null) {
+      days.add(day);
+    }
+  });
+  (burndown.actual_burndown ?? []).forEach((point) => {
+    const day = toFiniteNumber(point.day);
+    if (day !== null) {
+      days.add(day);
+    }
+  });
+
+  return Array.from(days).sort((left, right) => left - right);
+};
+
+const buildBurndownSeries = (
+  days: number[],
+  points: Array<{ day: number; ideal_remaining?: number; remaining?: number }>,
+  mode: 'ideal' | 'actual'
+): number[] => {
+  const byDay = new Map<number, number>();
+
+  points.forEach((point) => {
+    const rawValue = mode === 'ideal' ? point.ideal_remaining : point.remaining;
+    const value = toFiniteNumber(rawValue);
+    const day = toFiniteNumber(point.day);
+    if (value === null || day === null) {
+      return;
+    }
+    byDay.set(day, Math.max(0, value));
+  });
+
+  let carryForward: number | null = null;
+  return days.map((day) => {
+    const direct = byDay.get(day);
+    if (direct !== undefined) {
+      carryForward = direct;
+      return Math.round(direct);
+    }
+    if (carryForward !== null) {
+      return Math.round(carryForward);
+    }
+    return 0;
+  });
+};
+
+const VELOCITY_TREND_MAP: Record<string, VelocityTrend> = {
+  increasing: 'up',
+  decreasing: 'down',
+  stable: 'flat',
+  insufficient_data: 'flat',
+};
+
+const toVelocityTrend = (value: unknown): VelocityTrend | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  return VELOCITY_TREND_MAP[value.toLowerCase()] ?? null;
+};
 
 const getWeekLabel = (date: Date): string => {
   const startOfYear = new Date(date.getFullYear(), 0, 1);
@@ -147,14 +225,29 @@ export const buildVelocityDataFromApi = (
   velocityResponse: VelocityResponse | null
 ): ChartData<'line', number[], string> => {
   const sprintVelocities = Array.isArray(velocityResponse?.sprint_velocities)
-    ? [...velocityResponse.sprint_velocities].reverse()
+    ? [...velocityResponse.sprint_velocities].sort((left, right) => {
+        const leftDate = left.end_date ? new Date(left.end_date).getTime() : Number.NaN;
+        const rightDate = right.end_date ? new Date(right.end_date).getTime() : Number.NaN;
+        const bothDatesPresent = Number.isFinite(leftDate) && Number.isFinite(rightDate);
+        if (bothDatesPresent && leftDate !== rightDate) {
+          return leftDate - rightDate;
+        }
+
+        const leftSprintId = toFiniteNumber(left.sprint_id);
+        const rightSprintId = toFiniteNumber(right.sprint_id);
+        const bothIdsPresent = leftSprintId !== null && rightSprintId !== null;
+        if (bothIdsPresent && leftSprintId !== rightSprintId) {
+          return leftSprintId - rightSprintId;
+        }
+
+        return 0;
+      })
     : [];
   const labels = sprintVelocities.map((item, index) => {
     const sprintName = typeof item.sprint_name === 'string' && item.sprint_name.trim() ? item.sprint_name : '';
     if (sprintName) return sprintName;
-    if (item.end_date) {
-      const parsed = new Date(item.end_date);
-      if (Number.isFinite(parsed.getTime())) return parsed.toLocaleDateString();
+    if (typeof item.sprint_id === 'number' && Number.isFinite(item.sprint_id)) {
+      return `Sprint #${item.sprint_id}`;
     }
     return `Sprint ${index + 1}`;
   });
@@ -173,33 +266,48 @@ export const buildVelocityDataFromApi = (
   };
 };
 
-export const buildBurndownData = (tasks: Task[]): ChartData<'line', number[], string> => {
-  const total = tasks.reduce((acc, task) => acc + toEstimateHours(task), 0);
-  const labels = Array.from({ length: 7 }, (_, index) => `Day ${index + 1}`);
-  const steps = Math.max(1, labels.length - 1);
-  const ideal = labels.map((_, index) => Math.round(total * (1 - index / steps)));
-  const completedHours = tasks
-    .filter((task) => isDoneStatus(task.status))
-    .reduce((acc, task) => acc + toEstimateHours(task), 0);
-  const actual = labels.map((_, index) => Math.max(0, Math.round(total - completedHours * (index / steps))));
+export const buildBurndownData = (burndown: BurndownResponse | null): BurndownChartModel => {
+  if (!burndown) {
+    return { data: EMPTY_LINE_CHART_DATA, hasData: false };
+  }
+
+  const idealPoints = Array.isArray(burndown.ideal_burndown) ? burndown.ideal_burndown : [];
+  const actualPoints = Array.isArray(burndown.actual_burndown) ? burndown.actual_burndown : [];
+
+  if (idealPoints.length === 0 && actualPoints.length === 0) {
+    return { data: EMPTY_LINE_CHART_DATA, hasData: false };
+  }
+
+  const days = getBurndownSortedDays(burndown);
+  if (days.length === 0) {
+    return { data: EMPTY_LINE_CHART_DATA, hasData: false };
+  }
+
+  const labels = days.map((day) => `Day ${day}`);
+  const datasets: ChartData<'line', number[], string>['datasets'] = [];
+
+  if (idealPoints.length > 0) {
+    datasets.push({
+      label: 'Ideal',
+      data: buildBurndownSeries(days, idealPoints, 'ideal'),
+      borderColor: 'rgb(255,99,132)',
+      borderDash: [5, 5],
+      backgroundColor: 'rgba(255,99,132,0.1)',
+    });
+  }
+
+  if (actualPoints.length > 0) {
+    datasets.push({
+      label: 'Actual',
+      data: buildBurndownSeries(days, actualPoints, 'actual'),
+      borderColor: 'rgb(54,162,235)',
+      backgroundColor: 'rgba(54,162,235,0.1)',
+    });
+  }
 
   return {
-    labels,
-    datasets: [
-      {
-        label: 'Ideal',
-        data: ideal,
-        borderColor: 'rgb(255,99,132)',
-        borderDash: [5, 5],
-        backgroundColor: 'rgba(255,99,132,0.1)',
-      },
-      {
-        label: 'Actual',
-        data: actual,
-        borderColor: 'rgb(54,162,235)',
-        backgroundColor: 'rgba(54,162,235,0.1)',
-      },
-    ],
+    data: { labels, datasets },
+    hasData: datasets.length > 0,
   };
 };
 
@@ -264,7 +372,7 @@ export const buildVelocitySeries = (velocityData: ChartData<'line', number[], st
   return dataset.map((value) => Number(value) || 0);
 };
 
-export const buildVelocityTrend = (velocitySeries: number[]): VelocityTrend => {
+const inferVelocityTrendFromSeries = (velocitySeries: number[]): VelocityTrend => {
   if (velocitySeries.length < 3) return 'flat';
   const last = velocitySeries[velocitySeries.length - 1];
   const average =
@@ -274,6 +382,17 @@ export const buildVelocityTrend = (velocitySeries: number[]): VelocityTrend => {
   if (last < average * 0.7) return 'down';
   if (last > average * 1.3) return 'up';
   return 'flat';
+};
+
+export const buildVelocityTrend = (
+  velocityResponse: VelocityResponse | null,
+  velocitySeries: number[]
+): VelocityTrend => {
+  const trendFromApi = toVelocityTrend(velocityResponse?.velocity_trend);
+  if (trendFromApi !== null) {
+    return trendFromApi;
+  }
+  return inferVelocityTrendFromSeries(velocitySeries);
 };
 
 export const buildEnhancedVelocityData = (

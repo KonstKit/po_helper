@@ -1338,10 +1338,12 @@ export interface VelocitySprintSummary {
   end_date?: string | null;
 }
 
+export type VelocityTrendDirection = 'increasing' | 'decreasing' | 'stable' | 'insufficient_data';
+
 export interface VelocityResponse {
   average_velocity: number;
   sprints_analyzed?: number;
-  velocity_trend?: string | { week: string; velocity: number }[];
+  velocity_trend?: VelocityTrendDirection;
   sprint_velocities?: VelocitySprintSummary[];
 }
 

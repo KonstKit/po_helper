@@ -25,8 +25,10 @@ import {
   getIntegrationsStatus,
   getProjectBudgetHours,
   getProjectValueMetrics,
+  getSprintBurndown,
   getSprintWipStatus,
   getVelocity,
+  type BurndownResponse,
   type BudgetHoursResponse,
   type SprintWipStatus,
   type VelocityResponse,
@@ -74,6 +76,7 @@ import {
 } from './dashboard/dashboardDerivations';
 
 type WipWidgetState = 'no_sprint' | 'loading' | 'ready' | 'not_available' | 'error';
+type BurndownWidgetState = 'no_sprint' | 'loading' | 'ready' | 'not_available' | 'error';
 
 const isValidWipPayload = (value: SprintWipStatus | null): value is SprintWipStatus =>
   value !== null &&
@@ -184,9 +187,11 @@ const Dashboard: React.FC = () => {
   const [budgetData, setBudgetData] = useState<BudgetHoursResponse | null>(null);
   const [valueMetrics, setValueMetrics] = useState<ValueMetricsResponse | null>(null);
   const [velocityData, setVelocityData] = useState<VelocityResponse | null>(null);
+  const [burndownTimeline, setBurndownTimeline] = useState<BurndownResponse | null>(null);
   const [velocityLoading, setVelocityLoading] = useState(false);
   const [wipStatus, setWipStatus] = useState<SprintWipStatus | null>(null);
   const [wipWidgetState, setWipWidgetState] = useState<WipWidgetState>('no_sprint');
+  const [burndownWidgetState, setBurndownWidgetState] = useState<BurndownWidgetState>('no_sprint');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [now, setNow] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
@@ -254,8 +259,10 @@ const Dashboard: React.FC = () => {
     setBudgetData(null);
     setValueMetrics(null);
     setVelocityData(null);
+    setBurndownTimeline(null);
     setWipStatus(null);
     setWipWidgetState('no_sprint');
+    setBurndownWidgetState('no_sprint');
     setVelocityLoading(false);
   }, []);
 
@@ -320,25 +327,52 @@ const Dashboard: React.FC = () => {
     }
 
     if (activeSprintId === null) {
+      setBurndownTimeline(null);
+      setBurndownWidgetState('no_sprint');
       setWipStatus(null);
       setWipWidgetState('no_sprint');
       return;
     }
 
     setWipWidgetState('loading');
-    try {
-      const wip = await getSprintWipStatus(activeSprintId);
+    setBurndownWidgetState('loading');
+
+    const [wipResult, burndownResult] = await Promise.allSettled([
+      getSprintWipStatus(activeSprintId),
+      getSprintBurndown(activeSprintId),
+    ]);
+
+    if (wipResult.status === 'fulfilled') {
+      const wip = wipResult.value;
       if (!isValidWipPayload(wip) || typeof wip.error === 'string') {
         setWipStatus(null);
         setWipWidgetState('not_available');
-        return;
+      } else {
+        setWipStatus(wip);
+        setWipWidgetState('ready');
       }
-      setWipStatus(wip);
-      setWipWidgetState('ready');
-    } catch (error) {
-      console.warn('Failed to load WIP status', error);
+    } else {
+      console.warn('Failed to load WIP status', wipResult.reason);
       setWipStatus(null);
       setWipWidgetState('error');
+    }
+
+    if (burndownResult.status === 'fulfilled') {
+      const payload = burndownResult.value;
+      const hasIdeal = Array.isArray(payload.ideal_burndown) && payload.ideal_burndown.length > 0;
+      const hasActual = Array.isArray(payload.actual_burndown) && payload.actual_burndown.length > 0;
+
+      if (!hasIdeal && !hasActual) {
+        setBurndownTimeline(null);
+        setBurndownWidgetState('not_available');
+      } else {
+        setBurndownTimeline(payload);
+        setBurndownWidgetState('ready');
+      }
+    } else {
+      console.warn('Failed to load burndown timeline', burndownResult.reason);
+      setBurndownTimeline(null);
+      setBurndownWidgetState('error');
     }
   }, [activeSprintId, currentProject, dateRange, resetLocalMetrics]);
 
@@ -437,7 +471,7 @@ const Dashboard: React.FC = () => {
     () => buildVelocityDataFromApi(velocityData),
     [velocityData]
   );
-  const burndownData = useMemo(() => buildBurndownData(projectTasks), [projectTasks]);
+  const burndownModel = useMemo(() => buildBurndownData(burndownTimeline), [burndownTimeline]);
   const taskDistribution = useMemo(() => buildTaskDistribution(projectTasks), [projectTasks]);
   const overdueTasks = useMemo(() => buildOverdueTasks(dateScopedTasks, now), [dateScopedTasks, now]);
   const activeBlockers = useMemo(() => buildActiveBlockers(dateScopedTasks), [dateScopedTasks]);
@@ -446,7 +480,10 @@ const Dashboard: React.FC = () => {
     [dateScopedTasks, now]
   );
   const velocitySeries = useMemo(() => buildVelocitySeries(velocityChartData), [velocityChartData]);
-  const velocityTrend = useMemo(() => buildVelocityTrend(velocitySeries), [velocitySeries]);
+  const velocityTrend = useMemo(
+    () => buildVelocityTrend(velocityData, velocitySeries),
+    [velocityData, velocitySeries]
+  );
   const enhancedVelocityData = useMemo(
     () => buildEnhancedVelocityData(velocityChartData, velocitySeries),
     [velocityChartData, velocitySeries]
@@ -491,6 +528,28 @@ const Dashboard: React.FC = () => {
   const shouldShowVelocity = chartView === 'velocity' || chartView === 'both';
   const shouldShowBurndown = chartView === 'burndown' || chartView === 'both';
   const shouldShowDistribution = chartView === 'distribution';
+  const velocityTrendLabel = useMemo(() => {
+    if (typeof velocityData?.velocity_trend !== 'string') {
+      return undefined;
+    }
+    const normalized = velocityData.velocity_trend.toLowerCase();
+    if (!['increasing', 'decreasing', 'stable', 'insufficient_data'].includes(normalized)) {
+      return undefined;
+    }
+    return normalized.replace('_', ' ');
+  }, [velocityData]);
+  const shouldShowVelocityTrendLine =
+    velocitySeries.length >= 3 && velocityTrendLabel !== 'insufficient data';
+  const isBurndownAvailable = burndownWidgetState === 'ready' && burndownModel.hasData;
+  const burndownUnavailableMessage = useMemo(() => {
+    if (burndownWidgetState === 'loading') return '';
+    if (burndownWidgetState === 'no_sprint') return 'Not available for this sprint (no active sprint).';
+    if (burndownWidgetState === 'not_available') return 'Not available for this sprint.';
+    if (burndownWidgetState === 'error') return 'Unable to load burndown timeline.';
+    if (!burndownModel.hasData) return 'Not available for this sprint.';
+    return '';
+  }, [burndownWidgetState, burndownModel.hasData]);
+  const burndownModeLabel = isBurndownAvailable ? 'Timeline data' : undefined;
 
   if (isLoading && !hasProject) {
     return <DashboardSkeleton />;
@@ -575,7 +634,13 @@ const Dashboard: React.FC = () => {
             showDistribution={shouldShowDistribution}
             velocityData={enhancedVelocityData}
             targetVelocity={targetVelocity}
-            burndownData={burndownData}
+            velocityShowTrend={shouldShowVelocityTrendLine}
+            velocityTrendLabel={velocityTrendLabel}
+            burndownData={burndownModel.data}
+            burndownLoading={burndownWidgetState === 'loading'}
+            burndownAvailable={isBurndownAvailable}
+            burndownUnavailableMessage={burndownUnavailableMessage}
+            burndownModeLabel={burndownModeLabel}
             taskDistributionData={taskDistribution}
             lineChartOptions={lineChartOptions}
             doughnutChartOptions={doughnutChartOptions}
