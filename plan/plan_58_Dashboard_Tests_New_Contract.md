@@ -2,7 +2,7 @@
 level: 3
 file_id: plan_58
 parent: plan_57
-status: pending
+status: in_progress
 created: 2026-02-18 10:41
 estimated_time: 180 minutes
 ---
@@ -57,6 +57,31 @@ Ensure the dashboard refactor does not require keeping legacy rendering solely t
 - **Input**: Updated tests.
 - **Output**: Stable baseline test suite.
 - **Notes**: Identify any remaining brittle areas for plan_60 guardrails.
+
+## Execution Notes (Current Pass)
+
+### Step 1 Output: Legacy Selector -> Behavior Map
+
+| Legacy Selector/Pattern | Intended Behavior | Replacement Contract |
+| --- | --- | --- |
+| `[data-testid^="dashboard-risk-item-"]` | risk alerts are rendered and clickable | `DASHBOARD_TEST_IDS.riskItem` + drilldown dialog assertions |
+| `[data-testid="dashboard-upcoming-item"]` via `querySelectorAll` | upcoming list reacts to filters | `findAllByTestId(DASHBOARD_TEST_IDS.upcomingItem)` |
+| raw ids (`dashboard-chart-*`, `dashboard-filter-*`, `card-wip`) inline in tests | chart/filter/WIP behavior checks | centralized `DASHBOARD_TEST_IDS.*` constants |
+
+### Step 2 Output: Stable Test Identifier Rules
+
+- Rule 1: all dashboard test IDs are defined in one place: `frontend/src/pages/dashboard/dashboardContract.ts`.
+- Rule 2: tests import IDs from `DASHBOARD_TEST_IDS`; inline literals are not used for dashboard contract surfaces.
+- Rule 3: item collections use stable repeated IDs (e.g. `riskItem`, `upcomingItem`) instead of index-suffixed IDs.
+- Rule 4: assertions are behavior-first (state transitions, visibility, messaging), not structure-first (`querySelectorAll` over DOM shape).
+- Rule 5: rules and migration map are documented in `docs/dashboard-test-contract.md`.
+
+### Step 3/4 Output: Baseline Stabilization
+
+- `Dashboard.test.tsx` migrated to behavior-driven queries and centralized IDs.
+- deterministic runtime baseline added by pinning `Date.now()` to scenario time (`SCENARIO_NOW`) per test lifecycle.
+- direct DOM scanning selectors removed from dashboard regression tests.
+- CI runtime validation remains pending in target environment.
 
 ---
 

@@ -13,6 +13,7 @@ import type {
   ValueMetricsResponse,
 } from '../../services/api';
 import type { DashboardStats } from './dashboardDerivations';
+import { DASHBOARD_TEST_IDS } from './dashboardContract';
 
 interface StatCardProps {
   title: string;
@@ -134,11 +135,11 @@ const DashboardStatsSection: React.FC<DashboardStatsSectionProps> = ({
         : 'grey.500';
 
   return (
-    <Grid container spacing={3} data-testid="dashboard-section-stats">
+    <Grid container spacing={3} data-testid={DASHBOARD_TEST_IDS.sectionStats}>
       <Grid item xs={12} sm={6} md={3}>
         <StatCard
           title="Total Tasks"
-          testId="card-total"
+          testId={DASHBOARD_TEST_IDS.cardTotal}
           value={totalTasksValue}
           icon={<Assignment sx={{ color: 'white' }} />}
           color="primary.main"
@@ -149,7 +150,7 @@ const DashboardStatsSection: React.FC<DashboardStatsSectionProps> = ({
       <Grid item xs={12} sm={6} md={3}>
         <StatCard
           title="Completed"
-          testId="card-completed"
+          testId={DASHBOARD_TEST_IDS.cardCompleted}
           value={stats.completedTasks}
           icon={<CheckCircle sx={{ color: 'white' }} />}
           color="success.main"
@@ -161,7 +162,7 @@ const DashboardStatsSection: React.FC<DashboardStatsSectionProps> = ({
       <Grid item xs={12} sm={6} md={3}>
         <StatCard
           title="In Progress"
-          testId="card-in-progress"
+          testId={DASHBOARD_TEST_IDS.cardInProgress}
           value={stats.inProgress}
           icon={<TrendingUp sx={{ color: 'white' }} />}
           color="info.main"
@@ -172,7 +173,7 @@ const DashboardStatsSection: React.FC<DashboardStatsSectionProps> = ({
       <Grid item xs={12} sm={6} md={3}>
         <StatCard
           title="Blockers"
-          testId="card-blockers"
+          testId={DASHBOARD_TEST_IDS.cardBlockers}
           value={stats.blockers}
           icon={<Warning sx={{ color: 'white' }} />}
           color="error.main"
@@ -184,7 +185,7 @@ const DashboardStatsSection: React.FC<DashboardStatsSectionProps> = ({
       <Grid item xs={12} sm={6} md={4}>
         <StatCard
           title="Budget Health"
-          testId="card-budget"
+          testId={DASHBOARD_TEST_IDS.cardBudget}
           value={budgetData ? `${budgetData.remaining_hours}h` : '--'}
           icon={<Speed sx={{ color: 'white' }} />}
           color={budgetData?.overrun ? 'error.main' : 'success.main'}
@@ -210,7 +211,7 @@ const DashboardStatsSection: React.FC<DashboardStatsSectionProps> = ({
       <Grid item xs={12} sm={6} md={4}>
         <StatCard
           title="ROI"
-          testId="card-roi"
+          testId={DASHBOARD_TEST_IDS.cardRoi}
           value={valueMetrics ? Math.round((valueMetrics.roi || 0) * 1000) / 1000 : '--'}
           icon={<TrendingUp sx={{ color: 'white' }} />}
           color="info.main"
@@ -224,7 +225,7 @@ const DashboardStatsSection: React.FC<DashboardStatsSectionProps> = ({
       <Grid item xs={12} sm={6} md={4}>
         <StatCard
           title="WIP Active"
-          testId="card-wip"
+          testId={DASHBOARD_TEST_IDS.cardWip}
           value={wipValue}
           icon={<Assignment sx={{ color: 'white' }} />}
           color={wipColor}

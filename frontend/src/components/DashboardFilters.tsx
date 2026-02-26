@@ -21,6 +21,7 @@ import {
   CHART_VIEW_OPTIONS,
   DASHBOARD_DEFAULTS,
   DASHBOARD_STORAGE_KEYS,
+  DASHBOARD_TEST_IDS,
   DATE_RANGE_OPTIONS,
   QUICK_FILTER_OPTIONS,
   parseChartViewOption,
@@ -286,7 +287,7 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
               Advanced Options
             </Typography>
             <Stack spacing={2} mt={2}>
-              <FormControl fullWidth size="small" data-testid="dashboard-filter-project">
+              <FormControl fullWidth size="small" data-testid={DASHBOARD_TEST_IDS.filterProject}>
                 <InputLabel>Project</InputLabel>
                 <Select<number | ''>
                   label="Project"
@@ -302,7 +303,7 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
               </FormControl>
 
               {onDateRangeChange && (
-                <FormControl fullWidth size="small" data-testid="dashboard-filter-date-range">
+                <FormControl fullWidth size="small" data-testid={DASHBOARD_TEST_IDS.filterDateRange}>
                   <InputLabel>Date Range</InputLabel>
                   <Select<DateRangeOption>
                     label="Date Range"
@@ -331,7 +332,7 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
               )}
 
               {onChartViewChange && (
-                <FormControl fullWidth size="small" data-testid="dashboard-filter-chart-view">
+                <FormControl fullWidth size="small" data-testid={DASHBOARD_TEST_IDS.filterChartView}>
                   <InputLabel>Chart View</InputLabel>
                   <Select<ChartViewOption>
                     label="Chart View"

@@ -13,6 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 import type { RiskItem, UpcomingTaskItem } from './dashboardDerivations';
+import { DASHBOARD_TEST_IDS } from './dashboardContract';
 
 interface DashboardInsightsSectionProps {
   isLoading: boolean;
@@ -33,9 +34,9 @@ const DashboardInsightsSection: React.FC<DashboardInsightsSectionProps> = ({
   };
 
   return (
-    <Grid container spacing={3} data-testid="dashboard-section-insights">
+    <Grid container spacing={3} data-testid={DASHBOARD_TEST_IDS.sectionInsights}>
       <Grid item xs={12} md={6}>
-        <Card data-testid="dashboard-risk-panel" sx={{ height: '100%' }}>
+        <Card data-testid={DASHBOARD_TEST_IDS.riskPanel} sx={{ height: '100%' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom fontWeight={600}>
               Risk Alerts
@@ -73,7 +74,7 @@ const DashboardInsightsSection: React.FC<DashboardInsightsSectionProps> = ({
                     return (
                       <ListItem key={index} disablePadding>
                         <ListItemButton
-                          data-testid={`dashboard-risk-item-${index}`}
+                          data-testid={DASHBOARD_TEST_IDS.riskItem}
                           onClick={item.onClick}
                           sx={{ ...rowSx, borderColor: item.color }}
                         >
@@ -86,7 +87,7 @@ const DashboardInsightsSection: React.FC<DashboardInsightsSectionProps> = ({
                   return (
                     <ListItem
                       key={index}
-                      data-testid={`dashboard-risk-item-${index}`}
+                      data-testid={DASHBOARD_TEST_IDS.riskItem}
                       sx={{ ...rowSx, borderColor: item.color }}
                     >
                       {content}
@@ -100,7 +101,7 @@ const DashboardInsightsSection: React.FC<DashboardInsightsSectionProps> = ({
       </Grid>
 
       <Grid item xs={12} md={6}>
-        <Card data-testid="dashboard-upcoming-panel" sx={{ height: '100%' }}>
+        <Card data-testid={DASHBOARD_TEST_IDS.upcomingPanel} sx={{ height: '100%' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom fontWeight={600}>
               Upcoming Tasks
@@ -116,7 +117,7 @@ const DashboardInsightsSection: React.FC<DashboardInsightsSectionProps> = ({
             ) : (
               <List dense>
                 {upcomingTasks.map(({ row, daysRemaining }, index) => (
-                  <ListItem data-testid="dashboard-upcoming-item" key={row.id || index} sx={{ py: 0.5 }}>
+                  <ListItem data-testid={DASHBOARD_TEST_IDS.upcomingItem} key={row.id || index} sx={{ py: 0.5 }}>
                     <ListItemText
                       primaryTypographyProps={{ component: 'div' }}
                       secondaryTypographyProps={{ component: 'div' }}

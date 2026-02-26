@@ -2,7 +2,7 @@
 level: 3
 file_id: plan_59
 parent: plan_57
-status: pending
+status: in_progress
 created: 2026-02-18 10:41
 estimated_time: 180 minutes
 ---
@@ -63,6 +63,34 @@ Prevent recurrence of "filters do not work", "active sprint always null", "chart
 - **Input**: Warning baseline.
 - **Output**: Warning regression gate.
 - **Notes**: Avoid false positives by scoping to dashboard-related warnings.
+
+## Execution Notes (Current Pass)
+
+### Step 1: Scenario Matrix Implemented
+
+- scenario matrix added as `DASHBOARD_SCENARIO_MATRIX` in:
+  - `frontend/src/pages/__tests__/fixtures/dashboard-scenarios.ts`
+- matrix covers:
+  - empty date window
+  - date range preserves sprint-burndown context
+  - no active sprint WIP fallback
+  - sparse analytics velocity empty-state
+  - multi-project quick-filter determinism
+  - chartView visibility for `velocity`, `burndown`, `both`, `distribution`
+
+### Step 2: Deterministic Fixtures Implemented
+
+- shared deterministic time anchor: `SCENARIO_NOW`
+- added fixture set for empty-window behavior:
+  - `emptyWindowScenarioTasks`
+- existing fixtures retained and reused:
+  - `activeSprintScenario`, `dateRangeScenarioTasks`, `quickFilterProjectsScenario`, `velocitySparseScenario`
+
+### Step 3/4: Assertions + Warning Gate Implemented
+
+- regression assertions added/updated in `Dashboard.test.tsx` for matrix outcomes.
+- warning gate is now scoped via `isDashboardChartWarning(...)` helper from:
+  - `frontend/src/pages/dashboard/dashboardGuardrails.ts`
 
 ---
 

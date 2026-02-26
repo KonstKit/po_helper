@@ -173,6 +173,18 @@ npm install
 npm run dev
 ```
 
+### Frontend Typecheck/Tests in Docker (no local Node/npm)
+If you don't have `node`/`npm` available on the host, you can run frontend checks inside Docker.
+
+```bash
+# Start the tooling container once (installs deps into a named volume)
+docker compose -f docker-compose.pohelper.deploy.yml --profile tools up -d frontend-tooling
+
+# Run checks
+docker compose -f docker-compose.pohelper.deploy.yml --profile tools exec frontend-tooling npm run typecheck
+docker compose -f docker-compose.pohelper.deploy.yml --profile tools exec frontend-tooling npm test -- --run
+```
+
 ### Database Migrations
 ```bash
 # Create migration
