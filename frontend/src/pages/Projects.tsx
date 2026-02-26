@@ -265,7 +265,18 @@ const Projects = () => {
     (async () => {
       try {
         const data = await listJiraProjects(undefined, { signal: ctrl.signal });
-        setJiraProjects(data.projects || []);
+        setJiraProjects(
+          (data.projects || [])
+            .filter(
+              (project): project is typeof project & { id: string | number } =>
+                typeof project.id === 'string' || typeof project.id === 'number'
+            )
+            .map((project) => ({
+              key: project.key,
+              name: project.name,
+              id: project.id,
+            }))
+        );
       } catch (e: unknown) {
         if (isRequestCanceled(e)) return;
       }

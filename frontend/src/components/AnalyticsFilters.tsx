@@ -91,14 +91,14 @@ export const AnalyticsFilters: React.FC<AnalyticsFiltersProps> = ({
         <Grid item xs={12} sm={6} md={4}>
           <FormControl fullWidth size="small">
             <InputLabel>Project</InputLabel>
-            <Select
-              value={projectId}
+            <Select<string>
+              value={String(projectId)}
               onChange={(e: SelectChangeEvent) => onProjectChange(parseProjectValue(e.target.value))}
               label="Project"
             >
               <MenuItem value="all">All Projects</MenuItem>
               {projects.map((p) => (
-                <MenuItem key={p.id} value={p.id}>
+                <MenuItem key={p.id} value={String(p.id)}>
                   {p.name}
                 </MenuItem>
               ))}

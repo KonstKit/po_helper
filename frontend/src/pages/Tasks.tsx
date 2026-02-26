@@ -171,7 +171,7 @@ const Tasks = () => {
     }
   };
 
-  const columns: GridColDef<TaskItem>[] = useMemo(() => [
+  const columns: GridColDef<TaskRow>[] = useMemo(() => [
     { field: 'key', headerName: 'Key', width: 120 },
     { field: 'summary', headerName: 'Summary', flex: 1, minWidth: 240 },
     {

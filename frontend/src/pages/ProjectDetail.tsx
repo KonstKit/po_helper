@@ -1503,7 +1503,7 @@ const ProjectDetail = () => {
                 onChange={(e: SelectChangeEvent<RepositoryProvider>) =>
                   setRepoForm((form) => ({
                     ...form,
-                    provider: e.target.value,
+                    provider: e.target.value === 'gitlab' ? 'gitlab' : 'github',
                   }))
                 }
               >

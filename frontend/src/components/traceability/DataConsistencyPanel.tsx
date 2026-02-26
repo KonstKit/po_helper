@@ -302,9 +302,13 @@ const DataConsistencyPanel: React.FC<DataConsistencyPanelProps> = ({
         <Tooltip title="Click to view artifact">
           <Button
             size="small"
-            onClick={() => onArtifactClick?.(item.artifact_id)}
+            onClick={() => {
+              if (typeof item.artifact_id === 'number') {
+                onArtifactClick?.(item.artifact_id);
+              }
+            }}
           >
-            #{item.artifact_id}
+            #{item.artifact_id ?? '-'}
           </Button>
         </Tooltip>
       </TableCell>
@@ -317,7 +321,14 @@ const DataConsistencyPanel: React.FC<DataConsistencyPanelProps> = ({
         </Typography>
       </TableCell>
       <TableCell>
-        <IconButton size="small" onClick={() => onArtifactClick?.(item.artifact_id)}>
+        <IconButton
+          size="small"
+          onClick={() => {
+            if (typeof item.artifact_id === 'number') {
+              onArtifactClick?.(item.artifact_id);
+            }
+          }}
+        >
           <OpenInNew fontSize="small" />
         </IconButton>
       </TableCell>
@@ -340,7 +351,7 @@ const DataConsistencyPanel: React.FC<DataConsistencyPanelProps> = ({
                 onClick={() => onArtifactClick?.(id)}
                 sx={{ cursor: 'pointer' }}
               />
-              {i < item.cycle_path.length - 1 && <Typography variant="body2">→</Typography>}
+              {i < (item.cycle_path ?? []).length - 1 && <Typography variant="body2">→</Typography>}
             </React.Fragment>
           ))}
           <Typography variant="body2">→ #{item.cycle_path?.[0]}</Typography>
@@ -386,11 +397,25 @@ const DataConsistencyPanel: React.FC<DataConsistencyPanelProps> = ({
     </TableRow>
   );
 
-  const renderStaleRow = (item: ConsistencyIssue, idx: number) => (
-    <TableRow key={idx}>
+  const renderStaleRow = (item: ConsistencyIssue, idx: number) => {
+    const staleDays = item.days_since_update;
+    const staleLabel =
+      typeof staleDays === 'number' ? `${staleDays}d ago` : 'Unknown';
+    const staleColor =
+      typeof staleDays === 'number' && staleDays > 180 ? 'error' : 'warning';
+
+    return (
+      <TableRow key={idx}>
       <TableCell>
-        <Button size="small" onClick={() => onArtifactClick?.(item.artifact_id)}>
-          #{item.artifact_id}
+        <Button
+          size="small"
+          onClick={() => {
+            if (typeof item.artifact_id === 'number') {
+              onArtifactClick?.(item.artifact_id);
+            }
+          }}
+        >
+          #{item.artifact_id ?? '-'}
         </Button>
       </TableCell>
       <TableCell>
@@ -405,12 +430,13 @@ const DataConsistencyPanel: React.FC<DataConsistencyPanelProps> = ({
         <Chip
           size="small"
           icon={<AccessTime />}
-          label={`${item.days_since_update}d ago`}
-          color={item.days_since_update > 180 ? 'error' : 'warning'}
+          label={staleLabel}
+          color={staleColor}
         />
       </TableCell>
-    </TableRow>
-  );
+      </TableRow>
+    );
+  };
 
   const renderRecommendations = (recommendations: ConsistencyCheckRecommendation[]) => {
     if (!recommendations?.length) return null;

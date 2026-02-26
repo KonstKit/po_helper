@@ -198,12 +198,18 @@ export const setPrimaryRepository = async (projectId: number, repositoryId: numb
 // JIRA Sync
 // =============================================================================
 
+export interface JiraProjectSyncResponse {
+  message: string;
+  tasks_synced?: number;
+  sprints_synced?: number;
+}
+
 export const syncJiraProject = async (
   projectKey: string,
   config?: AxiosRequestConfig
-): Promise<{ message: string }> => {
+): Promise<JiraProjectSyncResponse> => {
   // Clear cache when syncing
   storage.clearAll();
   const { data } = await api.post(`/v1/jira/projects/${projectKey}/sync`, undefined, config);
-  return data;
+  return data as JiraProjectSyncResponse;
 };

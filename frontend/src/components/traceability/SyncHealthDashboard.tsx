@@ -414,14 +414,14 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
         <Stack direction="row" spacing={2}>
           <FormControl size="small" sx={{ minWidth: 200 }}>
             <InputLabel>Filter by Project</InputLabel>
-            <Select
-              value={selectedProjectId ?? ''}
+            <Select<string>
+              value={selectedProjectId !== undefined ? String(selectedProjectId) : ''}
               label="Filter by Project"
               onChange={(e: SelectChangeEvent) => handleProjectChange(parseProjectValue(e.target.value))}
             >
               <MenuItem value="">All Projects</MenuItem>
               {projects.map((p) => (
-                <MenuItem key={p.id} value={p.id}>
+                <MenuItem key={p.id} value={String(p.id)}>
                   {p.name || p.jira_key}
                 </MenuItem>
               ))}
