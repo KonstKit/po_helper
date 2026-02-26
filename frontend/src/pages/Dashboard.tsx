@@ -44,14 +44,12 @@ import DashboardInsightsSection from './dashboard/DashboardInsightsSection';
 import DashboardStatsSection from './dashboard/DashboardStatsSection';
 import { getCanonicalSprintId } from '../utils/sprintNormalization';
 import {
-  DASHBOARD_PERF_BUDGETS,
   isAboveBudget,
   recordDuration,
   shouldReportBudgetBreach,
 } from '../utils/dashboardPerfGuards';
 import {
-  DASHBOARD_REFRESH_LOOP_EVENT_THRESHOLD,
-  DASHBOARD_REFRESH_LOOP_WINDOW_MS,
+  DASHBOARD_GUARDRAIL_TARGETS,
 } from './dashboard/dashboardGuardrails';
 import {
   DASHBOARD_STORAGE_KEYS,
@@ -280,14 +278,16 @@ const Dashboard: React.FC = () => {
 
     const timeoutId = setTimeout(() => {
       const duration = Math.max(0, nowMs() - startedAt);
+      const filterApplyTarget = DASHBOARD_GUARDRAIL_TARGETS.filterApplyBudget;
       recordDuration('filter_apply_ms', duration);
       if (
-        isAboveBudget('filter_apply_ms', DASHBOARD_PERF_BUDGETS.filter_apply_ms) &&
-        shouldReportBudgetBreach('filter_apply_ms', DASHBOARD_PERF_BUDGETS.filter_apply_ms)
+        isAboveBudget('filter_apply_ms', filterApplyTarget.p95BudgetMs) &&
+        shouldReportBudgetBreach('filter_apply_ms', filterApplyTarget.p95BudgetMs)
       ) {
-        console.warn('[DashboardGuardrails] filter_apply_budget_exceeded', {
+        console.warn(filterApplyTarget.signal, {
           duration,
-          budget: DASHBOARD_PERF_BUDGETS.filter_apply_ms,
+          budget: filterApplyTarget.p95BudgetMs,
+          sampleWindow: filterApplyTarget.sampleWindow,
         });
       }
     }, 0);
@@ -356,16 +356,17 @@ const Dashboard: React.FC = () => {
     }
 
     const refreshEventTime = nowMs();
+    const refreshLoopTarget = DASHBOARD_GUARDRAIL_TARGETS.refreshLoop;
     refreshEventsRef.current = refreshEventsRef.current.filter(
-      (timestamp) => refreshEventTime - timestamp <= DASHBOARD_REFRESH_LOOP_WINDOW_MS
+      (timestamp) => refreshEventTime - timestamp <= refreshLoopTarget.windowMs
     );
     refreshEventsRef.current.push(refreshEventTime);
-    if (!refreshLoopWarnedRef.current && refreshEventsRef.current.length >= DASHBOARD_REFRESH_LOOP_EVENT_THRESHOLD) {
+    if (!refreshLoopWarnedRef.current && refreshEventsRef.current.length >= refreshLoopTarget.threshold) {
       refreshLoopWarnedRef.current = true;
-      console.warn('[DashboardGuardrails] refresh_loop_detected', {
+      console.warn(refreshLoopTarget.signal, {
         eventsInWindow: refreshEventsRef.current.length,
-        threshold: DASHBOARD_REFRESH_LOOP_EVENT_THRESHOLD,
-        windowMs: DASHBOARD_REFRESH_LOOP_WINDOW_MS,
+        threshold: refreshLoopTarget.threshold,
+        windowMs: refreshLoopTarget.windowMs,
       });
     }
 
@@ -626,14 +627,16 @@ const Dashboard: React.FC = () => {
     }
 
     const duration = Math.max(0, nowMs() - initStartedAtRef.current);
+    const initBudgetTarget = DASHBOARD_GUARDRAIL_TARGETS.initBudget;
     recordDuration('dashboard_init_ms', duration);
     if (
-      isAboveBudget('dashboard_init_ms', DASHBOARD_PERF_BUDGETS.dashboard_init_ms) &&
-      shouldReportBudgetBreach('dashboard_init_ms', DASHBOARD_PERF_BUDGETS.dashboard_init_ms)
+      isAboveBudget('dashboard_init_ms', initBudgetTarget.p95BudgetMs) &&
+      shouldReportBudgetBreach('dashboard_init_ms', initBudgetTarget.p95BudgetMs)
     ) {
-      console.warn('[DashboardGuardrails] init_budget_exceeded', {
+      console.warn(initBudgetTarget.signal, {
         duration,
-        budget: DASHBOARD_PERF_BUDGETS.dashboard_init_ms,
+        budget: initBudgetTarget.p95BudgetMs,
+        sampleWindow: initBudgetTarget.sampleWindow,
       });
     }
     initMetricsRecordedRef.current = true;
