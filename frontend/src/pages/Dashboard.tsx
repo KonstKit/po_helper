@@ -50,6 +50,10 @@ import {
   shouldReportBudgetBreach,
 } from '../utils/dashboardPerfGuards';
 import {
+  DASHBOARD_REFRESH_LOOP_EVENT_THRESHOLD,
+  DASHBOARD_REFRESH_LOOP_WINDOW_MS,
+} from './dashboard/dashboardGuardrails';
+import {
   DASHBOARD_STORAGE_KEYS,
   DASHBOARD_TEST_IDS,
   VELOCITY_SPRINTS_COUNT_MAP,
@@ -206,7 +210,7 @@ const Dashboard: React.FC = () => {
   const [wipWidgetState, setWipWidgetState] = useState<WipWidgetState>('no_sprint');
   const [burndownWidgetState, setBurndownWidgetState] = useState<BurndownWidgetState>('no_sprint');
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [now, setNow] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
   const wsRef = useRef<WebSocket | null>(null);
   const initStartedAtRef = useRef<number>(nowMs());
   const initMetricsRecordedRef = useRef(false);
@@ -353,14 +357,15 @@ const Dashboard: React.FC = () => {
 
     const refreshEventTime = nowMs();
     refreshEventsRef.current = refreshEventsRef.current.filter(
-      (timestamp) => refreshEventTime - timestamp <= 30_000
+      (timestamp) => refreshEventTime - timestamp <= DASHBOARD_REFRESH_LOOP_WINDOW_MS
     );
     refreshEventsRef.current.push(refreshEventTime);
-    if (!refreshLoopWarnedRef.current && refreshEventsRef.current.length >= 6) {
+    if (!refreshLoopWarnedRef.current && refreshEventsRef.current.length >= DASHBOARD_REFRESH_LOOP_EVENT_THRESHOLD) {
       refreshLoopWarnedRef.current = true;
       console.warn('[DashboardGuardrails] refresh_loop_detected', {
         eventsInWindow: refreshEventsRef.current.length,
-        windowMs: 30000,
+        threshold: DASHBOARD_REFRESH_LOOP_EVENT_THRESHOLD,
+        windowMs: DASHBOARD_REFRESH_LOOP_WINDOW_MS,
       });
     }
 
@@ -639,7 +644,7 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <Box data-testid="dashboard-page">
+    <Box data-testid={DASHBOARD_TEST_IDS.page}>
       <DashboardHeader
         hasProject={hasProject}
         onOpenProjectDetails={
@@ -648,7 +653,7 @@ const Dashboard: React.FC = () => {
       />
 
       {projects.length > 0 && (
-        <Box data-testid="dashboard-filters">
+        <Box data-testid={DASHBOARD_TEST_IDS.filtersRoot}>
           <DashboardFilters
             projectId={currentProject?.id || null}
             onProjectChange={handleProjectChange}
@@ -780,7 +785,7 @@ const Dashboard: React.FC = () => {
             <List dense>
               {drilldown.tasks.map((task, index) => (
                 <ListItem
-                  data-testid="dashboard-drilldown-item"
+                  data-testid={DASHBOARD_TEST_IDS.drilldownItem}
                   key={task.id || index}
                   alignItems="flex-start"
                   divider

@@ -3,6 +3,7 @@ import { Box, Card, CardContent, Grid, LinearProgress, Typography } from '@mui/m
 import { Line, Doughnut } from 'react-chartjs-2';
 import type { ChartData, ChartOptions } from 'chart.js';
 import VelocityChart, { type VelocityDataPoint } from '../../components/VelocityChart';
+import { DASHBOARD_TEST_IDS } from './dashboardContract';
 
 interface DashboardChartsSectionProps {
   isLoading: boolean;
@@ -49,10 +50,10 @@ const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({
   );
 
   return (
-    <Grid container spacing={3} data-testid="dashboard-section-charts">
+    <Grid container spacing={3} data-testid={DASHBOARD_TEST_IDS.sectionCharts}>
       {showVelocity && (
         <Grid item xs={12} md={showBurndown ? 6 : 12}>
-          <Card data-testid="dashboard-chart-velocity">
+          <Card data-testid={DASHBOARD_TEST_IDS.chartVelocity}>
             <CardContent>
               <Typography variant="h6" gutterBottom fontWeight={600}>
                 Weekly Velocity
@@ -92,7 +93,7 @@ const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({
 
       {showBurndown && (
         <Grid item xs={12} md={showVelocity ? 6 : 12}>
-          <Card data-testid="dashboard-chart-burndown">
+          <Card data-testid={DASHBOARD_TEST_IDS.chartBurndown}>
             <CardContent>
               <Typography variant="h6" gutterBottom fontWeight={600}>
                 Sprint Burndown
@@ -124,7 +125,7 @@ const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({
 
       {showDistribution && (
         <Grid item xs={12} md={showVelocity || showBurndown ? 6 : 12}>
-          <Card data-testid="dashboard-chart-distribution" sx={{ height: '100%' }}>
+          <Card data-testid={DASHBOARD_TEST_IDS.chartDistribution} sx={{ height: '100%' }}>
             <CardContent>
               <Typography variant="h6" gutterBottom fontWeight={600}>
                 Task Distribution

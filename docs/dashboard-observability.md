@@ -3,11 +3,15 @@
 ## Scope
 This document describes lightweight runtime guardrails for the dashboard stability module (`plan_57`, `plan_60`).
 
+## Source of Truth
+- Guardrail target definitions: `frontend/src/pages/dashboard/dashboardGuardrails.ts`
+- Performance budget tracking: `frontend/src/utils/dashboardPerfGuards.ts`
+
 ## Guardrail Signals
 
 ### Refresh Loop Detection
 - Signal: `[DashboardGuardrails] refresh_loop_detected`
-- Trigger: `>= 6` dashboard refresh events within `30s`.
+- Trigger: `>= 6` dashboard refresh events within `30s` (`windowMs=30000`).
 - Purpose: detect accidental refresh loops caused by websocket/event/re-render cascades.
 - Response:
   - inspect websocket message frequency
@@ -34,6 +38,16 @@ This document describes lightweight runtime guardrails for the dashboard stabili
   - inspect initial render dependencies
   - inspect redundant initializations
 
+### Chart Warning Reappearance Gate
+- Signal: `dashboard_chart_warning_gate` (test gate)
+- Trigger: warning signatures detected during healthy dashboard chart render path.
+- Signature scope:
+  - `filler plugin`
+  - `annotation plugin`
+  - `chart.js.*warning`
+  - `failed to register scale`
+- Purpose: prevent silent reintroduction of chart plugin/registration regressions.
+
 ## Budget Enforcement Rules
 - Budget checks run against deterministic rolling p95 from `frontend/src/utils/dashboardPerfGuards.ts`.
 - Each budget breach is latched: one warning per metric/budget tuple per page lifecycle.
@@ -58,4 +72,3 @@ This document describes lightweight runtime guardrails for the dashboard stabili
 - Any new dashboard feature should preserve:
   - `filter_apply_ms_p95 <= 300`
   - `dashboard_init_ms_p95 <= 700`
-

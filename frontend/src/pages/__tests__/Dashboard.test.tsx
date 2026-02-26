@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import '../../test/setup-env';
 import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
@@ -8,6 +8,7 @@ import { MemoryRouter } from 'react-router-dom';
 
 import Dashboard from '../Dashboard';
 import { DASHBOARD_STORAGE_KEYS, DASHBOARD_TEST_IDS } from '../dashboard/dashboardContract';
+import { isDashboardChartWarning } from '../dashboard/dashboardGuardrails';
 import authReducer from '../../store/authSlice';
 import projectReducer from '../../store/projectSlice';
 import taskReducer from '../../store/taskSlice';
@@ -25,8 +26,11 @@ import {
   getVelocity,
 } from '../../services/api';
 import {
+  DASHBOARD_SCENARIO_MATRIX,
+  SCENARIO_NOW,
   activeSprintScenario,
   dateRangeScenarioTasks,
+  emptyWindowScenarioTasks,
   quickFilterProjectsScenario,
   velocitySparseScenario,
 } from './fixtures/dashboard-scenarios';
@@ -79,7 +83,7 @@ const sampleProjectSecondary = {
   total_tasks: 0,
 };
 
-const baseNow = Date.now();
+const baseNow = SCENARIO_NOW;
 
 const sampleTasks = [
   {
@@ -227,6 +231,7 @@ class MockSocket extends EventTarget implements WebSocket {
 }
 
 let originalWebSocket: typeof WebSocket;
+let dateNowSpy: { mockRestore: () => void } | null = null;
 
 describe('Dashboard smoke scenarios', () => {
   beforeAll(() => {
@@ -241,6 +246,7 @@ describe('Dashboard smoke scenarios', () => {
   beforeEach(() => {
     MockSocket.reset();
     vi.clearAllMocks();
+    dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(SCENARIO_NOW);
     localStorage.clear();
     localStorage.setItem(DASHBOARD_STORAGE_KEYS.quickFilter, 'recent');
     localStorage.setItem(DASHBOARD_STORAGE_KEYS.dateRange, '30d');
@@ -310,6 +316,11 @@ describe('Dashboard smoke scenarios', () => {
     });
   });
 
+  afterEach(() => {
+    dateNowSpy?.mockRestore();
+    dateNowSpy = null;
+  });
+
   const renderDashboard = (customPreloadedState = preloadedState) => {
     const store = configureStore({
       reducer: {
@@ -344,43 +355,51 @@ describe('Dashboard smoke scenarios', () => {
     fireEvent.click(await screen.findByRole('option', { name: optionLabel }));
   };
 
+  it('maintains scenario matrix coverage for high-risk dashboard regressions', () => {
+    expect(DASHBOARD_SCENARIO_MATRIX.map((scenario) => scenario.id)).toEqual(
+      expect.arrayContaining([
+        'date_range_empty_window',
+        'date_range_preserves_burndown_sprint_context',
+        'no_active_sprint_wip',
+        'partial_analytics_velocity_empty',
+        'multi_project_quick_filter',
+        'chart_view_velocity',
+        'chart_view_burndown',
+        'chart_view_both',
+        'chart_view_distribution',
+      ])
+    );
+  });
+
   it('renders risk insights and supports drilldowns', async () => {
     renderDashboard();
 
     await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
+    const riskItems = await screen.findAllByTestId(DASHBOARD_TEST_IDS.riskItem);
+    expect(riskItems.length).toBeGreaterThan(0);
 
-    await waitFor(() => {
-      expect(document.querySelectorAll('[data-testid^="dashboard-risk-item-"]').length).toBeGreaterThan(0);
-    });
-    const riskBoxes = Array.from(document.querySelectorAll('[data-testid^="dashboard-risk-item-"]')).filter(
-      (node): node is HTMLElement => node instanceof HTMLElement
-    );
-    expect(riskBoxes.length).toBeGreaterThan(0);
-
-    fireEvent.click(riskBoxes[0]);
+    fireEvent.click(riskItems[0]);
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toBeInTheDocument();
-    expect(await screen.findAllByTestId('dashboard-drilldown-item')).not.toHaveLength(0);
+    expect(await screen.findAllByTestId(DASHBOARD_TEST_IDS.drilldownItem)).not.toHaveLength(0);
 
     fireEvent.click(screen.getByRole('button', { name: /close/i }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-
-    await waitFor(() => {
-      expect(document.querySelectorAll('[data-testid="dashboard-upcoming-item"]').length).toBeGreaterThan(0);
-    });
+    const upcomingItems = await screen.findAllByTestId(DASHBOARD_TEST_IDS.upcomingItem);
+    expect(upcomingItems.length).toBeGreaterThan(0);
   }, 25000);
 
   it('renders only the consolidated dashboard layout', async () => {
     renderDashboard();
     await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
 
-    await screen.findByTestId('dashboard-section-charts');
-    await screen.findByTestId('dashboard-section-insights');
-    await screen.findByTestId('dashboard-section-stats');
+    await screen.findByTestId(DASHBOARD_TEST_IDS.sectionCharts);
+    await screen.findByTestId(DASHBOARD_TEST_IDS.sectionInsights);
+    await screen.findByTestId(DASHBOARD_TEST_IDS.sectionStats);
 
-    expect(screen.queryByText('Risk Assessment')).not.toBeInTheDocument();
-    expect(screen.queryByText('Upcoming Focus')).not.toBeInTheDocument();
-    expect(screen.queryByText('Team Velocity')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId(DASHBOARD_TEST_IDS.sectionCharts)).toHaveLength(1);
+    expect(screen.getAllByTestId(DASHBOARD_TEST_IDS.sectionInsights)).toHaveLength(1);
+    expect(screen.getAllByTestId(DASHBOARD_TEST_IDS.sectionStats)).toHaveLength(1);
   }, 15000);
 
   it('shows explicit partial scope badge when task scope is incomplete', async () => {
@@ -405,7 +424,7 @@ describe('Dashboard smoke scenarios', () => {
     renderDashboard();
     await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
 
-    const wipCard = await screen.findByTestId('card-wip');
+    const wipCard = await screen.findByTestId(DASHBOARD_TEST_IDS.cardWip);
     expect(within(wipCard).getByText('No active sprint')).toBeInTheDocument();
     expect(within(wipCard).getByText('--')).toBeInTheDocument();
   }, 15000);
@@ -424,12 +443,12 @@ describe('Dashboard smoke scenarios', () => {
     mockedGetSprintWipStatus.mockResolvedValueOnce({
       assignees: [],
       limit_default: 6,
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof getSprintWipStatus>>);
 
     renderDashboard();
     await waitFor(() => expect(mockedGetSprintWipStatus).toHaveBeenCalled());
 
-    const wipCard = await screen.findByTestId('card-wip');
+    const wipCard = await screen.findByTestId(DASHBOARD_TEST_IDS.cardWip);
     expect(within(wipCard).getByText('WIP data not available for active sprint')).toBeInTheDocument();
     expect(within(wipCard).getByText('N/A')).toBeInTheDocument();
   }, 15000);
@@ -450,7 +469,7 @@ describe('Dashboard smoke scenarios', () => {
     renderDashboard();
     await waitFor(() => expect(mockedGetSprintWipStatus).toHaveBeenCalled());
 
-    const wipCard = await screen.findByTestId('card-wip');
+    const wipCard = await screen.findByTestId(DASHBOARD_TEST_IDS.cardWip);
     expect(within(wipCard).getByText('Failed to load WIP data')).toBeInTheDocument();
     expect(within(wipCard).getByText('N/A')).toBeInTheDocument();
   }, 15000);
@@ -483,32 +502,32 @@ describe('Dashboard smoke scenarios', () => {
     await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
     await openAdvancedFilters();
 
-    await selectDropdownOption('dashboard-filter-chart-view', 'Velocity Only');
+    await selectDropdownOption(DASHBOARD_TEST_IDS.filterChartView, 'Velocity Only');
     await waitFor(() => {
-      expect(screen.getByTestId('dashboard-chart-velocity')).toBeInTheDocument();
-      expect(screen.queryByTestId('dashboard-chart-burndown')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('dashboard-chart-distribution')).not.toBeInTheDocument();
+      expect(screen.getByTestId(DASHBOARD_TEST_IDS.chartVelocity)).toBeInTheDocument();
+      expect(screen.queryByTestId(DASHBOARD_TEST_IDS.chartBurndown)).not.toBeInTheDocument();
+      expect(screen.queryByTestId(DASHBOARD_TEST_IDS.chartDistribution)).not.toBeInTheDocument();
     });
 
-    await selectDropdownOption('dashboard-filter-chart-view', 'Burndown Only');
+    await selectDropdownOption(DASHBOARD_TEST_IDS.filterChartView, 'Burndown Only');
     await waitFor(() => {
-      expect(screen.queryByTestId('dashboard-chart-velocity')).not.toBeInTheDocument();
-      expect(screen.getByTestId('dashboard-chart-burndown')).toBeInTheDocument();
-      expect(screen.queryByTestId('dashboard-chart-distribution')).not.toBeInTheDocument();
+      expect(screen.queryByTestId(DASHBOARD_TEST_IDS.chartVelocity)).not.toBeInTheDocument();
+      expect(screen.getByTestId(DASHBOARD_TEST_IDS.chartBurndown)).toBeInTheDocument();
+      expect(screen.queryByTestId(DASHBOARD_TEST_IDS.chartDistribution)).not.toBeInTheDocument();
     });
 
-    await selectDropdownOption('dashboard-filter-chart-view', 'Distribution Only');
+    await selectDropdownOption(DASHBOARD_TEST_IDS.filterChartView, 'Distribution Only');
     await waitFor(() => {
-      expect(screen.queryByTestId('dashboard-chart-velocity')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('dashboard-chart-burndown')).not.toBeInTheDocument();
-      expect(screen.getByTestId('dashboard-chart-distribution')).toBeInTheDocument();
+      expect(screen.queryByTestId(DASHBOARD_TEST_IDS.chartVelocity)).not.toBeInTheDocument();
+      expect(screen.queryByTestId(DASHBOARD_TEST_IDS.chartBurndown)).not.toBeInTheDocument();
+      expect(screen.getByTestId(DASHBOARD_TEST_IDS.chartDistribution)).toBeInTheDocument();
     });
 
-    await selectDropdownOption('dashboard-filter-chart-view', 'Velocity + Burndown');
+    await selectDropdownOption(DASHBOARD_TEST_IDS.filterChartView, 'Velocity + Burndown');
     await waitFor(() => {
-      expect(screen.getByTestId('dashboard-chart-velocity')).toBeInTheDocument();
-      expect(screen.getByTestId('dashboard-chart-burndown')).toBeInTheDocument();
-      expect(screen.queryByTestId('dashboard-chart-distribution')).not.toBeInTheDocument();
+      expect(screen.getByTestId(DASHBOARD_TEST_IDS.chartVelocity)).toBeInTheDocument();
+      expect(screen.getByTestId(DASHBOARD_TEST_IDS.chartBurndown)).toBeInTheDocument();
+      expect(screen.queryByTestId(DASHBOARD_TEST_IDS.chartDistribution)).not.toBeInTheDocument();
     });
   }, 20000);
 
@@ -530,15 +549,15 @@ describe('Dashboard smoke scenarios', () => {
     await waitFor(() => expect(mockedGetSprintBurndown).toHaveBeenCalledWith(activeSprintScenario.sprint_id));
     await waitFor(() => {
       expect(screen.getByText(/Timeline data/i)).toBeInTheDocument();
-      expect(document.querySelectorAll('[data-testid="dashboard-upcoming-item"]').length).toBe(2);
+      expect(screen.getAllByTestId(DASHBOARD_TEST_IDS.upcomingItem)).toHaveLength(2);
     });
 
     await openAdvancedFilters();
-    await selectDropdownOption('dashboard-filter-date-range', 'Last 7 Days');
+    await selectDropdownOption(DASHBOARD_TEST_IDS.filterDateRange, 'Last 7 Days');
 
     await waitFor(() => {
       expect(screen.getByText(/Timeline data/i)).toBeInTheDocument();
-      expect(document.querySelectorAll('[data-testid="dashboard-upcoming-item"]').length).toBe(1);
+      expect(screen.getAllByTestId(DASHBOARD_TEST_IDS.upcomingItem)).toHaveLength(1);
       expect(mockedGetSprintBurndown.mock.calls.length).toBeGreaterThanOrEqual(2);
     });
     expect(
@@ -546,6 +565,28 @@ describe('Dashboard smoke scenarios', () => {
         ([sprintId]) => Number(sprintId) === Number(activeSprintScenario.sprint_id)
       )
     ).toBe(true);
+  }, 20000);
+
+  it('shows explicit empty upcoming state when selected date range has no activity window', async () => {
+    mockedListTasksPaginated.mockResolvedValueOnce({
+      data: emptyWindowScenarioTasks,
+      meta: {
+        total: emptyWindowScenarioTasks.length,
+        page: 1,
+        per_page: 500,
+        total_pages: 1,
+        has_next: false,
+        has_prev: false,
+      },
+    });
+
+    renderDashboard();
+    await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
+    await openAdvancedFilters();
+    await selectDropdownOption(DASHBOARD_TEST_IDS.filterDateRange, 'Last 7 Days');
+
+    expect(await screen.findByText('No upcoming tasks.')).toBeInTheDocument();
+    expect(screen.queryAllByTestId(DASHBOARD_TEST_IDS.upcomingItem)).toHaveLength(0);
   }, 20000);
 
   it('applies quick filter active and recent transitions deterministically', async () => {
@@ -611,14 +652,10 @@ describe('Dashboard smoke scenarios', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     renderDashboard();
     await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
-    await screen.findByTestId('dashboard-chart-velocity');
-    await screen.findByTestId('dashboard-chart-burndown');
+    await screen.findByTestId(DASHBOARD_TEST_IDS.chartVelocity);
+    await screen.findByTestId(DASHBOARD_TEST_IDS.chartBurndown);
 
-    const chartWarningCalls = warnSpy.mock.calls.filter((args) =>
-      /(filler plugin|annotation plugin|chart\.js.*warning|failed to register scale)/i.test(
-        args.map((entry) => String(entry)).join(' ')
-      )
-    );
+    const chartWarningCalls = warnSpy.mock.calls.filter((args) => isDashboardChartWarning(args));
     expect(chartWarningCalls).toHaveLength(0);
     warnSpy.mockRestore();
   }, 15000);

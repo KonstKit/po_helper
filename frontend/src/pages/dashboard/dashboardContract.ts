@@ -58,7 +58,32 @@ export const TASK_SCOPE_DEFAULTS = {
 export const PARTIAL_SCOPE_LABEL = 'Showing partial data';
 
 export const DASHBOARD_TEST_IDS = {
+  page: 'dashboard-page',
+  header: 'dashboard-header',
+  viewDetails: 'dashboard-view-details',
+  filtersRoot: 'dashboard-filters',
+  filterProject: 'dashboard-filter-project',
+  filterDateRange: 'dashboard-filter-date-range',
+  filterChartView: 'dashboard-filter-chart-view',
+  sectionCharts: 'dashboard-section-charts',
+  sectionInsights: 'dashboard-section-insights',
+  sectionStats: 'dashboard-section-stats',
+  chartVelocity: 'dashboard-chart-velocity',
+  chartBurndown: 'dashboard-chart-burndown',
+  chartDistribution: 'dashboard-chart-distribution',
+  riskPanel: 'dashboard-risk-panel',
+  riskItem: 'dashboard-risk-item',
+  upcomingPanel: 'dashboard-upcoming-panel',
+  upcomingItem: 'dashboard-upcoming-item',
+  cardTotal: 'card-total',
+  cardCompleted: 'card-completed',
+  cardInProgress: 'card-in-progress',
+  cardBlockers: 'card-blockers',
+  cardBudget: 'card-budget',
+  cardRoi: 'card-roi',
+  cardWip: 'card-wip',
   partialScopeBadge: 'dashboard-partial-scope',
+  drilldownItem: 'dashboard-drilldown-item',
 } as const;
 
 export const isDateRangeOption = (value: unknown): value is DateRangeOption =>

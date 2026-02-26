@@ -2,7 +2,7 @@
 level: 2
 file_id: plan_57
 parent: plan_40
-status: pending
+status: in_progress
 created: 2026-02-18 10:41
 children: [plan_58, plan_59, plan_60]
 ---
@@ -40,6 +40,25 @@ This module ensures the refactor remains durable. It replaces brittle legacy DOM
   - Brief: Cover key regression surfaces end-to-end within the test harness.
 - [ ] plan_60 - Add Observability and Performance Guardrails (estimated 120 minutes)
   - Brief: Add guardrails for warnings, refresh loops, and performance degradation.
+
+## Locked Regression Scope (for plan_58-60)
+
+| Surface | What Counts as Regression | Required Signal/Test |
+| --- | --- | --- |
+| Layout | duplicated sections or missing consolidated sections | stable section IDs present exactly once (`charts`, `insights`, `stats`) |
+| Filters | filter changes produce no visible impact | behavior tests for `dateRange`, `chartView`, `quickFilter` |
+| Sprint/WIP | active sprint loss causes crash/misleading values | explicit `no_sprint`/`not_available`/`error` states in tests |
+| Charts | panel mismatch or runtime warning noise | deterministic chart visibility tests + scoped warning gate |
+
+## Definition of Done for Block 58-60
+
+- [x] Regression scope is explicit and testable for layout/filters/sprint/charts.
+- [x] Stable dashboard test-id contract is centralized and reused by UI + tests.
+- [x] Legacy-coupled selector inventory is documented and mapped to behavior assertions.
+- [x] Core scenario matrix is defined and linked to deterministic fixtures.
+- [x] Chart warning gate is scoped to known dashboard/chart warning signatures.
+- [x] Guardrail targets and thresholds are defined for observability baseline.
+- [ ] Full CI execution confirms runtime stability in target environment.
 
 ---
 

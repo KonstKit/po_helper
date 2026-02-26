@@ -2,7 +2,7 @@
 level: 3
 file_id: plan_60
 parent: plan_57
-status: pending
+status: in_progress
 created: 2026-02-18 10:41
 estimated_time: 120 minutes
 ---
@@ -39,6 +39,17 @@ Reduce time-to-diagnosis and prevent gradual degradation of dashboard quality ov
 - **Input**: Known risk list and performance baseline.
 - **Output**: Guardrail target list.
 - **Notes**: Keep targets minimal and actionable.
+
+### Step 1 Output (Current Pass)
+
+- guardrail targets are centralized in:
+  - `frontend/src/pages/dashboard/dashboardGuardrails.ts`
+- target definitions include:
+  - `refreshLoop`: signal + `threshold=6` events over `windowMs=30000`
+  - `filterApplyBudget`: signal + `p95BudgetMs=300`
+  - `initBudget`: signal + `p95BudgetMs=700`
+  - `chartWarnings`: scoped warning signature set for dashboard chart warnings
+- runtime usage wired in `frontend/src/pages/Dashboard.tsx` via shared refresh-loop thresholds.
 
 ### Step 2: Add Observable Signals
 - **Action**: Add lightweight signals consistent with existing conventions (logs/metrics/events).
