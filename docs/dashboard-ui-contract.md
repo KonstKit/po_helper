@@ -93,7 +93,7 @@ Date range maps to backend `sprints_count`:
   - `dashboard-chart-distribution`
 - Insights:
   - `dashboard-risk-panel`
-  - `dashboard-risk-item-{index}`
+  - `dashboard-risk-item` (repeatable per row)
   - `dashboard-upcoming-panel`
   - `dashboard-upcoming-item`
 - Stats cards:
