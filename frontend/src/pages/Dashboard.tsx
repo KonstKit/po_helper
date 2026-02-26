@@ -279,7 +279,7 @@ const Dashboard: React.FC = () => {
     const timeoutId = setTimeout(() => {
       const duration = Math.max(0, nowMs() - startedAt);
       const filterApplyTarget = DASHBOARD_GUARDRAIL_TARGETS.filterApplyBudget;
-      recordDuration('filter_apply_ms', duration);
+      recordDuration('filter_apply_ms', duration, filterApplyTarget.sampleWindow);
       if (
         isAboveBudget('filter_apply_ms', filterApplyTarget.p95BudgetMs) &&
         shouldReportBudgetBreach('filter_apply_ms', filterApplyTarget.p95BudgetMs)
@@ -628,7 +628,7 @@ const Dashboard: React.FC = () => {
 
     const duration = Math.max(0, nowMs() - initStartedAtRef.current);
     const initBudgetTarget = DASHBOARD_GUARDRAIL_TARGETS.initBudget;
-    recordDuration('dashboard_init_ms', duration);
+    recordDuration('dashboard_init_ms', duration, initBudgetTarget.sampleWindow);
     if (
       isAboveBudget('dashboard_init_ms', initBudgetTarget.p95BudgetMs) &&
       shouldReportBudgetBreach('dashboard_init_ms', initBudgetTarget.p95BudgetMs)

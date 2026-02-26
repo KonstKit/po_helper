@@ -66,6 +66,22 @@ This document describes lightweight runtime guardrails for the dashboard stabili
   - sparse velocity empty-state behavior
   - known chart-warning signature gate
 
+## Verification Runs (2026-02-26)
+- Dashboard regression tests in Docker:
+  - Command profile: `vitest src/pages/__tests__/Dashboard.test.tsx --run`
+  - Artifact: `artifacts/tests/plan_60_dashboard_tests.txt`
+  - Result: `1 passed file`, `17 passed tests`
+- Repository typecheck gate runs in Docker:
+  - Artifacts:
+    - `artifacts/typecheck/plan_66_repo_typecheck_run_1.txt`
+    - `artifacts/typecheck/plan_66_repo_typecheck_run_2.txt`
+  - Result: both runs PASS with zero TypeScript diagnostics.
+- Regression lock scan:
+  - Artifact: `artifacts/typecheck/plan_66_bypass_scan.txt`
+  - Result: empty (`0` matches).
+- Note:
+  - The test artifact contains expected stderr from negative-path test (`shows WIP error state when endpoint fails`) where failure is intentionally mocked.
+
 ## Operational Notes
 - Guardrails are intentionally low-noise and do not block UI flow.
 - Warnings are diagnostic signals, not user-facing errors.

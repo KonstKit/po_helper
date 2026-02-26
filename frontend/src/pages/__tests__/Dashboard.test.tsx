@@ -441,9 +441,11 @@ describe('Dashboard smoke scenarios', () => {
       },
     ]);
     mockedGetSprintWipStatus.mockResolvedValueOnce({
+      total_active: 0,
       assignees: [],
       limit_default: 6,
-    } as unknown as Awaited<ReturnType<typeof getSprintWipStatus>>);
+      error: 'malformed payload',
+    });
 
     renderDashboard();
     await waitFor(() => expect(mockedGetSprintWipStatus).toHaveBeenCalled());

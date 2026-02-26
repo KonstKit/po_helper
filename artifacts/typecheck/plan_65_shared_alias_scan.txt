@@ -1,0 +1,343 @@
+﻿frontend/src/pages\Dashboard.tsx:86:type WipWidgetState = 'no_sprint' | 'loading' | 'ready' | 'not_available' | 'error';
+frontend/src/pages\Dashboard.tsx:87:type BurndownWidgetState = 'no_sprint' | 'loading' | 'ready' | 'not_available' | 'error';
+frontend/src/pages\Dashboard.tsx:114:interface DashboardProjectCandidate {
+frontend/src/components\AdvancedFieldMapping.tsx:29:interface AdvancedFieldMappingProps {
+frontend/src/pages\dashboard\DashboardStatsSection.tsx:18:interface StatCardProps {
+frontend/src/pages\dashboard\DashboardStatsSection.tsx:87:interface DashboardStatsSectionProps {
+frontend/src/components\VelocityChart.tsx:8:export interface VelocityDataPoint {
+frontend/src/components\VelocityChart.tsx:14:export interface VelocityChartProps {
+frontend/src/components\AnalyticsFilters.tsx:23:interface AnalyticsFiltersProps {
+frontend/src/components\AnalyticsFilters.tsx:33:interface ProjectOption {
+frontend/src/components\AnalyticsFilters.tsx:38:type TimeRange = AnalyticsFiltersProps['timeRange'];
+frontend/src/components\AnalyticsFilters.tsx:39:type PrMetricsRange = NonNullable<AnalyticsFiltersProps['prMetricsRange']>;
+frontend/src/services\api\pagination.ts:3:type PaginationOptions = {
+frontend/src/services\analytics.ts:6:export interface AnalyticsEvent {
+frontend/src/services\analytics.ts:14:export interface OnboardingMetrics {
+frontend/src/services\analytics.ts:25:export interface TimeToValueMetrics {
+frontend/src/services\analytics.ts:34:export interface FeatureAdoptionMetrics {
+frontend/src/services\analytics.ts:49:interface OnboardingActionData {
+frontend/src/services\jiraFieldsApi.ts:6:export interface JiraFieldSchema {
+frontend/src/services\jiraFieldsApi.ts:15:export interface JiraSprint {
+frontend/src/services\jiraFieldsApi.ts:26:export interface JiraFieldConfiguration {
+frontend/src/services\jiraFieldsApi.ts:32:export interface JiraField {
+frontend/src/services\jiraFieldsApi.ts:40:export interface FieldMapping {
+frontend/src/services\jiraFieldsApi.ts:54:export interface CalibrationResult {
+frontend/src/services\jiraFieldsApi.ts:65:export interface FieldDiscoveryResult {
+frontend/src/services\jiraFieldsApi.ts:76:export interface TestMappingResult {
+frontend/src/pages\dashboard\dashboardDerivations.ts:15:export type VelocityTrend = 'up' | 'down' | 'flat';
+frontend/src/pages\dashboard\dashboardDerivations.ts:17:export interface BurndownChartModel {
+frontend/src/pages\dashboard\dashboardDerivations.ts:22:export interface DashboardStats {
+frontend/src/pages\dashboard\dashboardDerivations.ts:30:export interface RiskItem {
+frontend/src/pages\dashboard\dashboardDerivations.ts:37:export interface UpcomingTaskItem {
+frontend/src/pages\dashboard\dashboardDerivations.ts:43:type DrilldownOpener = (title: string, filter: (row: Task) => boolean) => void;
+frontend/src/components\BackendStatusAlert.tsx:5:type HealthChangeDetail = { isHealthy: boolean; status: BackendHealthStatus };
+frontend/src/components\BackendStatusAlert.tsx:6:type BackendErrorDetail = { message: string };
+frontend/src/services\api\users.ts:45:export interface LoginResponse {
+frontend/src/services\api\users.ts:70:export interface OAuth2Providers {
+frontend/src/services\api\users.ts:75:export interface OAuth2AuthURL {
+frontend/src/services\api\users.ts:80:export interface OAuth2Token {
+frontend/src/services\api\users.ts:138:export interface MFAStatus {
+frontend/src/services\api\users.ts:144:export interface MFASetupResponse {
+frontend/src/services\api\users.ts:151:export interface MFAVerifyResponse {
+frontend/src/services\api\users.ts:157:export interface MFALoginResponse {
+frontend/src/components\KPIBar.tsx:10:export interface KPIMetric {
+frontend/src/components\KPIBar.tsx:21:export interface KPIBarProps {
+frontend/src/services\api\knowledge.ts:10:export interface ConfluenceSpace {
+frontend/src/services\api\knowledge.ts:17:export interface ConfluenceSpacesResponse {
+frontend/src/services\api\knowledge.ts:37:export interface ConfluencePage {
+frontend/src/services\api\knowledge.ts:46:export interface ConfluencePagesResponse {
+frontend/src/services\api\knowledge.ts:87:export interface ConfluencePageDetail {
+frontend/src/services\api\knowledge.ts:105:export interface PrdRequirement {
+frontend/src/services\api\knowledge.ts:111:export interface PrdRequirementsResponse {
+frontend/src/services\api\knowledge.ts:125:export interface ConfluenceSyncResult {
+frontend/src/services\api\knowledge.ts:156:export interface SpaceTreeNode {
+frontend/src/services\api\knowledge.ts:162:export interface SpaceTreeResponse {
+frontend/src/services\api\knowledge.ts:199:export interface ADRResponse {
+frontend/src/services\api\knowledge.ts:218:export interface ResearchResponse {
+frontend/src/components\OptionalIntegrations.tsx:15:interface OptionalIntegrationsProps {
+frontend/src/pages\dashboard\DashboardInsightsSection.tsx:18:interface DashboardInsightsSectionProps {
+frontend/src/components\SuggestedLinksPanel.tsx:55:interface SuggestedLinksPanelProps {
+frontend/src/components\QuickSetupPanel.tsx:26:interface QuickSetupPanelProps {
+frontend/src/components\QuickSetupPanel.tsx:40:type MappedFieldKey = keyof QuickSetupPanelProps['mappedFields'];
+frontend/src/components\Layout.tsx:47:interface NavigationItem {
+frontend/src/components\Layout.tsx:54:interface NavigationGroup {
+frontend/src/pages\dashboard\dashboardContract.ts:10:export type DateRangeOption = (typeof DATE_RANGE_OPTIONS)[number];
+frontend/src/pages\dashboard\dashboardContract.ts:13:export type ChartViewOption = (typeof CHART_VIEW_OPTIONS)[number];
+frontend/src/pages\dashboard\dashboardContract.ts:16:export type QuickFilterOption = (typeof QUICK_FILTER_OPTIONS)[number];
+frontend/src/pages\dashboard\dashboardContract.ts:44:export interface TaskScope {
+frontend/src/components\IntegrationCard.tsx:12:interface IntegrationCardProps {
+frontend/src/services\api\integrations.ts:21:export interface JiraProject {
+frontend/src/services\api\integrations.ts:28:export interface JiraProjectsResponse {
+frontend/src/services\api\integrations.ts:247:export interface BitbucketSettings {
+frontend/src/services\api\integrations.ts:255:export interface BitbucketTestResponse {
+frontend/src/services\api\integrations.ts:352:export interface IntegrationStatusResponse {
+frontend/src/pages\__tests__\fixtures\dashboard-scenarios.ts:4:export type DashboardScenarioId =
+frontend/src/pages\__tests__\fixtures\dashboard-scenarios.ts:15:export interface DashboardScenarioDefinition {
+frontend/src/services\api\sprints.ts:14:export interface Sprint {
+frontend/src/services\api\sprints.ts:34:export interface SprintsResponse {
+frontend/src/services\api\sprints.ts:41:export interface SprintQuality {
+frontend/src/services\api\sprints.ts:48:export interface SprintWipStatus {
+frontend/src/services\api\sprints.ts:61:export interface SprintCapacity {
+frontend/src/services\api\sprints.ts:75:export interface Board {
+frontend/src/services\api\sprints.ts:81:export interface BoardsResponse {
+frontend/src/pages\dashboard\DashboardChartsSection.tsx:8:interface DashboardChartsSectionProps {
+frontend/src/components\HelpPanel.tsx:21:interface HelpStep {
+frontend/src/components\HelpPanel.tsx:26:interface HelpPanelProps {
+frontend/src/services\api\types.ts:24:export interface PaginationParams {
+frontend/src/services\api\types.ts:32:export interface PaginationMeta {
+frontend/src/services\api\types.ts:42:export interface PaginatedResponse<T> {
+frontend/src/services\api\types.ts:51:export interface User {
+frontend/src/services\api\types.ts:66:export interface IntegrationSettings {
+frontend/src/services\api\types.ts:77:export interface GithubTestResponse {
+frontend/src/services\api\types.ts:93:export interface Project {
+frontend/src/services\api\types.ts:126:export interface PRSampleSummary {
+frontend/src/services\api\types.ts:139:export interface PRMetricsSummary {
+frontend/src/services\api\types.ts:163:export interface GetPRMetricsOptions {
+frontend/src/services\api\types.ts:171:export interface TeamHealthMetrics {
+frontend/src/services\api\types.ts:191:export type RepositoryProvider = 'github' | 'gitlab';
+frontend/src/services\api\types.ts:193:export interface RepositoryInfo {
+frontend/src/services\api\types.ts:200:export interface ProjectRepositoryLink {
+frontend/src/services\api\types.ts:210:export interface BindRepositoryPayload {
+frontend/src/services\api\types.ts:217:export interface GitlabProjectSummary {
+frontend/src/services\api\types.ts:232:export interface GitlabProjectsResponse {
+frontend/src/services\api\types.ts:244:export interface GitImportRepoStats {
+frontend/src/services\api\types.ts:265:export interface GitImportSummary {
+frontend/src/services\api\types.ts:275:export interface TaskItem {
+frontend/src/services\api\types.ts:307:export type SeverityLevel = 'critical' | 'high' | 'medium' | 'low';
+frontend/src/services\api\types.ts:308:export type DefectStatus = 'open' | 'investigating' | 'resolved' | 'closed';
+frontend/src/services\api\types.ts:309:export type RootCause = 'missing_test' | 'edge_case' | 'integration' | 'regression' | 'environment' | 'configuration' | 'third_party' | 'unknown';
+frontend/src/services\api\types.ts:311:export interface EscapedDefect {
+frontend/src/services\api\types.ts:336:export interface EscapedDefectCreate {
+frontend/src/services\api\types.ts:351:export interface EscapedDefectUpdate {
+frontend/src/services\api\types.ts:366:export interface QualitySummary {
+frontend/src/services\api\types.ts:385:export interface RootCauseAnalysis {
+frontend/src/services\api\types.ts:392:export interface ComponentAnalysis {
+frontend/src/services\api\types.ts:399:export interface DefectTrend {
+frontend/src/services\api\types.ts:407:export interface QualityTrendData {
+frontend/src/services\api\types.ts:413:export interface QualityDashboard {
+frontend/src/services\api\types.ts:421:export interface DefectMetrics {
+frontend/src/services\api\types.ts:448:export interface DefectMetricsCalculationResult {
+frontend/src/services\api\types.ts:465:export type ReportFormat = 'pdf' | 'excel' | 'json' | 'csv';
+frontend/src/services\api\types.ts:467:export type ReportSection =
+frontend/src/services\api\types.ts:478:export interface TestCoverageSection {
+frontend/src/services\api\types.ts:492:export interface PRQualitySection {
+frontend/src/services\api\types.ts:502:export interface ComponentHealthItem {
+frontend/src/services\api\types.ts:511:export interface RecommendationItem {
+frontend/src/services\api\types.ts:519:export interface SprintQualityReport {
+frontend/src/services\api\types.ts:547:export interface ReportGenerationRequest {
+frontend/src/services\api\types.ts:556:export interface ReportGenerationResponse {
+frontend/src/services\api\types.ts:571:export interface TraceabilityTypeStats {
+frontend/src/services\api\types.ts:582:export interface TraceabilityMatrixSummary {
+frontend/src/services\api\types.ts:592:export interface TraceabilityBackfillResult {
+frontend/src/services\api\types.ts:599:export interface TraceabilityFlowNode {
+frontend/src/services\api\types.ts:606:export interface TraceabilityFlowEdge {
+frontend/src/services\api\types.ts:613:export interface TraceabilityRequirementFlow {
+frontend/src/services\api\types.ts:618:export interface TraceabilityNeighborArtifact {
+frontend/src/services\api\types.ts:627:export interface TraceabilityNeighborLink {
+frontend/src/services\api\types.ts:633:export interface TraceabilityTaskArtifacts {
+frontend/src/services\api\types.ts:639:export interface GitHubPullRequest {
+frontend/src/services\api\types.ts:658:export interface GitHubPullResponse {
+frontend/src/services\api\types.ts:666:export type QualityGateProvider = 'github' | 'gitlab' | 'generic';
+frontend/src/services\api\types.ts:668:export interface QualityPullRequest {
+frontend/src/services\api\types.ts:685:export interface PullRequestsResponse {
+frontend/src/services\api\types.ts:691:export interface QualityGateAssessment {
+frontend/src/services\api\types.ts:710:export interface QualityGateResult extends QualityGateAssessment {
+frontend/src/services\api\types.ts:716:export interface FullChainNode {
+frontend/src/services\api\types.ts:728:export interface FullChainEdge {
+frontend/src/services\api\types.ts:736:export interface FullChainResponse {
+frontend/src/services\api\types.ts:749:export interface ImpactedArtifact {
+frontend/src/services\api\types.ts:759:export interface ImpactAnalysisResponse {
+frontend/src/services\api\types.ts:775:export interface OrphanedArtifact {
+frontend/src/services\api\types.ts:787:export type OrphanedArtifactsResponse = PaginatedResponse<OrphanedArtifact> & {
+frontend/src/services\api\types.ts:792:export interface ConfidenceDistribution {
+frontend/src/services\api\types.ts:804:export interface RecalculateConfidenceResult {
+frontend/src/services\api\types.ts:810:export interface SuggestedLinkArtifact {
+frontend/src/services\api\types.ts:819:export interface SuggestedLink {
+frontend/src/services\api\types.ts:833:export type SuggestedLinksResponse = PaginatedResponse<SuggestedLink>;
+frontend/src/services\api\types.ts:835:export interface SuggestedLinksStats {
+frontend/src/services\api\types.ts:844:export interface GenerateSuggestionsResult {
+frontend/src/services\api\types.ts:854:export interface SyncSourceHealth {
+frontend/src/services\api\types.ts:862:export interface SyncProjectHealth {
+frontend/src/services\api\types.ts:871:export interface SyncHealthResponse {
+frontend/src/services\api\types.ts:884:export interface DetailedSyncHealthResponse {
+frontend/src/services\api\types.ts:910:export interface ConsistencyIssue {
+frontend/src/services\api\types.ts:931:export interface ConsistencyCheckRecommendation {
+frontend/src/services\api\types.ts:939:export interface ConsistencyCheckResponse {
+frontend/src/services\api\types.ts:959:export interface FixConsistencyResult {
+frontend/src/services\api\types.ts:969:export interface DetailedCycle {
+frontend/src/services\api\types.ts:986:export interface DetailedCyclesResponse {
+frontend/src/services\api\types.ts:996:export interface CapacitySetting {
+frontend/src/services\api\types.ts:1011:export interface TeamCapacitySummary {
+frontend/src/services\api\types.ts:1027:export interface TeamHealthCheck {
+frontend/src/services\api\types.ts:1044:export interface HealthTrend {
+frontend/src/services\api\types.ts:1050:export interface TeamHealthSummary {
+frontend/src/services\api\types.ts:1058:export interface CFDSnapshot {
+frontend/src/services\api\types.ts:1076:export interface CFDData {
+frontend/src/services\api\types.ts:1082:export interface FlowMetrics {
+frontend/src/services\api\types.ts:1094:export type FlakyTestStatus = 'active' | 'fixed' | 'ignored' | 'quarantined';
+frontend/src/services\api\types.ts:1095:export type FlakyTestCause = 'race_condition' | 'timing' | 'environment' | 'external_dependency' | 'data_dependency' | 'resource_leak' | 'unknown';
+frontend/src/services\api\types.ts:1097:export interface FlakyTest {
+frontend/src/services\api\types.ts:1120:export interface FlakyTestCreate {
+frontend/src/services\api\types.ts:1133:export interface FlakyTestUpdate {
+frontend/src/services\api\types.ts:1141:export interface FlakyTestSummary {
+frontend/src/services\api\types.ts:1156:export interface FileCoverageDelta {
+frontend/src/services\api\types.ts:1167:export interface DeltaCoverage {
+frontend/src/services\api\types.ts:1185:export type CoveragePriority = 'critical' | 'high' | 'medium' | 'low';
+frontend/src/services\api\types.ts:1187:export interface ComponentCoverage {
+frontend/src/services\api\types.ts:1208:export interface ComponentCoverageSummary {
+frontend/src/services\api\types.ts:1218:export interface CoverageTrendPoint {
+frontend/src/services\api\types.ts:1226:export interface CoverageTrendData {
+frontend/src/services\api\types.ts:1236:export interface TestAnalyticsDashboard {
+frontend/src/services\api\types.ts:1259:export interface TestRun {
+frontend/src/services\api\types.ts:1274:export interface TestResult {
+frontend/src/services\api\types.ts:1290:export interface CoverageReportListItem {
+frontend/src/services\api\types.ts:1305:export interface TestTrendPoint {
+frontend/src/services\api\types.ts:1312:export interface CoverageTrendItem {
+frontend/src/services\api\types.ts:1320:export interface LocalFlakyTest {
+frontend/src/services\api\types.ts:1334:export interface VelocitySprintSummary {
+frontend/src/services\api\types.ts:1341:export type VelocityTrendDirection = 'increasing' | 'decreasing' | 'stable' | 'insufficient_data';
+frontend/src/services\api\types.ts:1343:export interface VelocityResponse {
+frontend/src/services\api\types.ts:1351:export interface BurndownPoint {
+frontend/src/services\api\types.ts:1358:export interface BurndownResponse {
+frontend/src/services\api\types.ts:1365:export interface RiskItem {
+frontend/src/services\api\types.ts:1377:export interface RisksResponse {
+frontend/src/services\api\types.ts:1382:export interface DoraLeadTimeStats {
+frontend/src/services\api\types.ts:1389:export interface DoraRecoveryStats {
+frontend/src/services\api\types.ts:1395:export interface DoraTotals {
+frontend/src/services\api\types.ts:1401:export interface DoraTimeframe {
+frontend/src/services\api\types.ts:1406:export interface DoraMetrics {
+frontend/src/services\api\types.ts:1419:export interface TeamMemberActivity {
+frontend/src/services\api\types.ts:1432:export interface QualityHistoryItem {
+frontend/src/services\api\types.ts:1444:export interface ForecastResponse {
+frontend/src/services\api\types.ts:1457:export interface ReactFlowPosition {
+frontend/src/services\api\types.ts:1463:export interface ReactFlowNode {
+frontend/src/services\api\types.ts:1471:export interface ReactFlowEdge {
+frontend/src/services\api\types.ts:1480:export interface FlowJSON {
+frontend/src/services\api\types.ts:1488:export interface TraceabilityRule {
+frontend/src/services\api\types.ts:1512:export interface TraceabilityRuleCreate {
+frontend/src/services\api\types.ts:1526:export interface TraceabilityRuleUpdate {
+frontend/src/services\api\types.ts:1540:export interface TraceabilityRuleExecution {
+frontend/src/services\api\types.ts:1564:export interface FlowValidationIssue {
+frontend/src/services\api\types.ts:1571:export interface FlowValidationResult {
+frontend/src/services\api\types.ts:1578:export type TraceabilityRuleListResponse = PaginatedResponse<TraceabilityRule>;
+frontend/src/services\api\types.ts:1581:export type TraceabilityRuleExecutionListResponse = PaginatedResponse<TraceabilityRuleExecution>;
+frontend/src/services\api\types.ts:1584:export interface ListRulesOptions {
+frontend/src/services\api\types.ts:1594:export interface ListRuleExecutionsOptions {
+frontend/src/services\api\types.ts:1603:export interface RuleExecutionResult {
+frontend/src/services\api\types.ts:1614:export interface RuleScheduleUpdate {
+frontend/src/services\api\types.ts:1619:export interface RuleScheduleResponse {
+frontend/src/services\api\types.ts:1626:export interface RuleWebhookResponse {
+frontend/src/services\api\types.ts:1637:export type ExportFormat = 'xlsx' | 'csv' | 'pdf';
+frontend/src/services\api\types.ts:1638:export type ExportStatus = 'pending' | 'processing' | 'completed' | 'failed';
+frontend/src/services\api\types.ts:1641:export interface RTMExportFilters {
+frontend/src/services\api\types.ts:1651:export interface ExportTaskCreate {
+frontend/src/services\api\types.ts:1660:export interface ExportTaskStatus {
+frontend/src/services\api\types.ts:1675:export interface RTMFilters {
+frontend/src/services\api\types.ts:1689:export interface RTMPagination {
+frontend/src/services\api\types.ts:1697:export interface ArtifactSummary {
+frontend/src/services\api\types.ts:1709:export interface RTMCellLink {
+frontend/src/services\api\types.ts:1716:export interface RTMCell {
+frontend/src/services\api\types.ts:1730:export interface RTMMatrixCoverage {
+frontend/src/services\api\types.ts:1750:export interface RTMMatrixResponse {
+frontend/src/services\api\types.ts:1761:export interface MatrixConfigBase {
+frontend/src/services\api\types.ts:1772:export interface MatrixConfigCreate extends MatrixConfigBase {}
+frontend/src/services\api\types.ts:1775:export interface MatrixConfigUpdate {
+frontend/src/services\api\types.ts:1785:export interface MatrixConfig extends MatrixConfigBase {
+frontend/src/components\OnboardingWizard.tsx:37:interface OnboardingWizardProps {
+frontend/src/components\OnboardingWizard.tsx:43:interface OnboardingState {
+frontend/src/pages\dashboard\DashboardHeader.tsx:5:interface DashboardHeaderProps {
+frontend/src/components\security\MFASettings.tsx:53:type SetupStep = 'idle' | 'loading' | 'qr' | 'verify' | 'backup' | 'complete';
+frontend/src/components\security\MFASettings.tsx:55:interface MFASettingsProps {
+frontend/src/components\EmptyState.tsx:4:export interface EmptyStateAction {
+frontend/src/components\EmptyState.tsx:10:export interface EmptyStateProps {
+frontend/src/components\RequireAuth.tsx:6:interface RequireAuthProps {
+frontend/src/services\api\projects.ts:201:export interface JiraProjectSyncResponse {
+frontend/src/services\api\analytics.ts:159:export interface BudgetHoursResponse {
+frontend/src/services\api\analytics.ts:186:export interface ValueMetricsResponse {
+frontend/src/services\api\analytics.ts:214:export interface TestTrendResponse {
+frontend/src/services\api\analytics.ts:230:export interface CoverageTrendResponse {
+frontend/src/services\api\analytics.ts:298:export interface QualityGateEvaluatePayload {
+frontend/src/services\api\analytics.ts:341:export interface QualityHistoryResponse {
+frontend/src/components\CircularProgressWithLabel.tsx:4:type Props = {
+frontend/src/components\quality\QualityReportPanel.tsx:53:interface QualityReportPanelProps {
+frontend/src/pages\TraceabilityVisualization.tsx:48:interface TabPanelProps {
+frontend/src/components\quality\QualityDashboard.tsx:78:interface QualityDashboardProps {
+frontend/src/components\traceability\ValidationPanel.tsx:22:interface ValidationPanelProps {
+frontend/src/components\DashboardFilters.tsx:36:interface Project {
+frontend/src/components\DashboardFilters.tsx:43:interface DashboardFiltersProps {
+frontend/src/components\traceability\DataConsistencyPanel.tsx:63:interface DataConsistencyPanelProps {
+frontend/src/components\BackfillProgressDialog.tsx:20:export interface BackfillStep {
+frontend/src/components\BackfillProgressDialog.tsx:28:export interface BackfillProgressDialogProps {
+frontend/src/components\ToastProvider.tsx:4:interface Toast {
+frontend/src/components\ToastProvider.tsx:11:interface ToastContextType {
+frontend/src/components\ToastProvider.tsx:29:interface ToastProviderProps {
+frontend/src/components\traceability\ImpactAnalysisPanel.tsx:41:interface ImpactAnalysisPanelProps {
+frontend/src/components\traceability\MatrixConfigPanel.tsx:59:interface MatrixConfigPanelProps {
+frontend/src/components\traceability\MatrixConfigPanel.tsx:65:interface ConfigFormData {
+frontend/src/components\traceability\ImportExportDialog.tsx:18:interface ImportExportDialogProps {
+frontend/src/components\traceability\ImportExportDialog.tsx:26:interface TabPanelProps {
+frontend/src/pages\TraceabilityFlowBuilder.tsx:100:type TraceabilityNodeData = Record<string, unknown>;
+frontend/src/pages\TraceabilityFlowBuilder.tsx:101:type TraceabilityEdgeData = Record<string, unknown>;
+frontend/src/pages\TraceabilityFlowBuilder.tsx:102:type TraceabilityNode = Node<TraceabilityNodeData>;
+frontend/src/pages\TraceabilityFlowBuilder.tsx:103:type TraceabilityEdge = Edge<TraceabilityEdgeData>;
+frontend/src/components\traceability\MatrixExportDialog.tsx:40:interface MatrixExportDialogProps {
+frontend/src/components\traceability\TraceabilityGraph.tsx:35:interface TraceabilityGraphProps {
+frontend/src/components\traceability\TraceabilityGraph.tsx:42:interface D3Node extends d3.SimulationNodeDatum {
+frontend/src/components\traceability\TraceabilityGraph.tsx:54:interface D3Link extends d3.SimulationLinkDatum<D3Node> {
+frontend/src/components\traceability\TraceabilityGraph.tsx:62:interface D3LinkInput {
+frontend/src/components\traceability\TemplateDialog.tsx:21:interface TemplateDialogProps {
+frontend/src/components\traceability\SyncHealthDashboard.tsx:57:interface SyncHealthDashboardProps {
+frontend/src/components\traceability\RTMMatrixViewer.tsx:47:interface RTMMatrixViewerProps {
+frontend/src/components\traceability\nodes\BaseNode.tsx:5:interface BaseNodeData {
+frontend/src/components\traceability\nodes\BaseNode.tsx:10:interface BaseNodeProps {
+frontend/src/pages\TraceabilityExecutionHistory.tsx:36:interface RuleExecutionDisplay extends TraceabilityRuleExecution {
+frontend/src/pages\TraceabilityExecutionHistory.tsx:44:type StatusFilter = 'all' | TraceabilityRuleExecution['status'];
+frontend/src/pages\Projects.tsx:54:type ProjectStats = Partial<Project> & {
+frontend/src/pages\Projects.tsx:62:type NewProject = {
+frontend/src/components\traceability\PropertiesPanelEditable.tsx:22:interface NodeFilters {
+frontend/src/components\traceability\PropertiesPanelEditable.tsx:39:interface NodeConfig {
+frontend/src/components\traceability\PropertiesPanelEditable.tsx:64:interface NodeData {
+frontend/src/components\traceability\PropertiesPanelEditable.tsx:127:interface PropertiesPanelEditableProps {
+frontend/src/pages\SprintCapacity.tsx:28:interface TabPanelProps {
+frontend/src/components\traceability\RTMMatrixFilters.tsx:42:interface RTMMatrixFiltersProps {
+frontend/src/components\capacity\CapacitySettingsPanel.tsx:53:interface CapacitySettingsPanelProps {
+frontend/src/components\capacity\TeamHealthDashboard.tsx:41:interface TeamHealthDashboardProps {
+frontend/src/components\capacity\TeamHealthDashboard.tsx:47:type HealthMetricKey =
+frontend/src/components\capacity\TeamHealthDashboard.tsx:76:type TrendDirection = 'improving' | 'declining' | 'stable';
+frontend/src/components\capacity\TeamHealthDashboard.tsx:84:interface HealthFormData {
+frontend/src/components\traceability\Toolbox.tsx:30:interface ToolboxProps {
+frontend/src/components\traceability\Toolbox.tsx:35:interface NodeTemplate {
+frontend/src/components\traceability\Toolbox.tsx:43:type NodeTemplateData = Record<string, unknown>;
+frontend/src/pages\Traceability.tsx:69:interface BackfillState {
+frontend/src/pages\Traceability.tsx:76:type CoreLinkType = 'implements' | 'tests' | 'deploys' | 'derives_from';
+frontend/src/pages\Traceability.tsx:88:interface LinkTypeBreakdown {
+frontend/src/pages\Traceability.tsx:96:interface TypeRow {
+frontend/src/pages\Quality.tsx:26:interface TabPanelProps {
+frontend/src/components\testing\TestAnalyticsDashboard.tsx:49:interface Props {
+frontend/src/pages\Login.tsx:38:type OAuthProvider = 'google' | 'microsoft';
+frontend/src/pages\Tasks.tsx:31:interface TaskRow extends TaskItem {
+frontend/src/pages\Settings.tsx:27:interface TabPanelProps {
+frontend/src/pages\Settings.tsx:33:type AuthMode = 'PAT' | 'Basic';
+frontend/src/pages\Settings.tsx:35:type JiraSettings = {
+frontend/src/pages\Settings.tsx:41:type ConfluenceSettings = {
+frontend/src/pages\Settings.tsx:47:type NotificationSettings = {
+frontend/src/pages\Settings.tsx:54:type GeneralSettings = {
+frontend/src/pages\Settings.tsx:61:type MessageState = { type: 'success' | 'error'; text: string };
+frontend/src/pages\Settings.tsx:63:type GitProviderSettings = {
+frontend/src/pages\Settings.tsx:69:type TestRailSettings = {
+frontend/src/components\traceability\OrphanedArtifactsPanel.tsx:38:interface OrphanedArtifactsPanelProps {
+frontend/src/components\capacity\CFDVisualization.tsx:40:interface CFDVisualizationProps {
+frontend/src/components\capacity\CFDVisualization.tsx:65:type ViewMode = 'cumulative' | 'wip' | 'throughput';
+frontend/src/components\capacity\CFDVisualization.tsx:66:type WipTrend = 'increasing' | 'decreasing' | 'stable';
+frontend/src/pages\Knowledge.tsx:22:interface ConfluenceSpace {
+frontend/src/pages\Knowledge.tsx:28:interface ConfluencePage {
+frontend/src/pages\Knowledge.tsx:39:interface RequirementRow {
+frontend/src/pages\Testing.tsx:30:interface TabPanelProps {
+frontend/src/pages\Testing.tsx:58:interface CoverageFile {
+frontend/src/pages\Testing.tsx:66:type TestProvider = 'all' | 'github' | 'gitlab' | 'generic';
+frontend/src/pages\projectDetail\ProjectDetailTabs.tsx:47:type ThresholdsState = {
+frontend/src/pages\projectDetail\ProjectDetailTabs.tsx:52:type BulkProgressState = {
+frontend/src/pages\projectDetail\ProjectDetailTabs.tsx:58:type RepoActionState = { type: "primary" | "remove"; id: number } | null;
+frontend/src/pages\projectDetail\ProjectDetailTabs.tsx:60:type ProjectDetailTabsProps = {
+frontend/src/pages\projectDetail\ProjectDetailTabs.tsx:96:interface TeamMemberDisplay {
+frontend/src/pages\projectDetail\ProjectDetailTabs.tsx:104:interface TabPanelProps {

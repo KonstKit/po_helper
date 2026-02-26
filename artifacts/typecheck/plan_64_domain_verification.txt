@@ -1,0 +1,5 @@
+domain=plan_64
+artifact=artifacts/typecheck/plan_64_full_typecheck.txt
+diagnostics=0
+domain_matches=0
+status=PASS

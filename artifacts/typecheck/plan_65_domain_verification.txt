@@ -1,0 +1,7 @@
+domain=plan_65
+artifact=artifacts/typecheck/plan_65_full_typecheck.txt
+diagnostics=0
+shared_alias_scan=artifacts/typecheck/plan_65_shared_alias_scan.txt
+shared_alias_scan_lines=343
+migration_log=artifacts/typecheck/plan_65_migration_log.md
+status=PASS

@@ -1,0 +1,7 @@
+npm warn deprecated @mui/base@5.0.0-beta.40-1: This package has been replaced by @base-ui-components/react
+
+added 679 packages in 11m
+
+> po-helper-frontend@1.0.0 typecheck
+> tsc --noEmit --pretty false
+

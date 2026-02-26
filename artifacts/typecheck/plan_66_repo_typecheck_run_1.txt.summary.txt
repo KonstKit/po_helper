@@ -1,0 +1,3 @@
+file=artifacts/typecheck/plan_66_repo_typecheck_run_1.txt
+diagnostics=0
+status=PASS
