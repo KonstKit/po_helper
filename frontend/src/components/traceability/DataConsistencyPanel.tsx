@@ -402,7 +402,7 @@ const DataConsistencyPanel: React.FC<DataConsistencyPanelProps> = ({
     const staleLabel =
       typeof staleDays === 'number' ? `${staleDays}d ago` : 'Unknown';
     const staleColor =
-      typeof staleDays === 'number' && staleDays > 180 ? 'error' : 'warning';
+      typeof staleDays !== 'number' ? 'default' : staleDays > 180 ? 'error' : 'warning';
 
     return (
       <TableRow key={idx}>
