@@ -93,7 +93,18 @@ const Analytics = () => {
       setGithubPullLoading(true);
 
       try {
-        const { data, errors } = await loadParallel({
+        const { data, errors } = await loadParallel<{
+          velocity: () => Promise<VelocityResponse>;
+          burndown: () => Promise<BurndownResponse>;
+          risks: () => Promise<RisksResponse>;
+          valueMetrics: () => Promise<ValueMetricsResponse>;
+          teamHealth: () => Promise<TeamHealthMetrics>;
+          forecast: () => Promise<ForecastResponse>;
+          tasks: () => Promise<TaskItem[]>;
+          testTrend: () => Promise<TestTrendPoint[]>;
+          coverageTrend: () => Promise<CoverageTrendItem[]>;
+          githubPulls: () => Promise<GitHubPullRequest[]>;
+        }>({
           velocity: () => getVelocity(projectId),
           burndown: () => getBurndown(projectId),
           risks: () => getRisks(projectId),
@@ -308,7 +319,27 @@ const Analytics = () => {
     return { labels, datasets: [{ data, backgroundColor: labels.map((l,i)=>['rgba(75,192,192,0.8)','rgba(255,206,86,0.8)','rgba(255,99,132,0.8)','rgba(156,39,176,0.8)'][i%4]) }] };
   }, [risks]);
 
-  const chartOptions: ChartOptions<'line' | 'bar' | 'doughnut'> = {
+  const lineChartOptions: ChartOptions<'line'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top',
+      },
+    },
+  };
+
+  const barChartOptions: ChartOptions<'bar'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top',
+      },
+    },
+  };
+
+  const doughnutChartOptions: ChartOptions<'doughnut'> = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -589,7 +620,7 @@ const Analytics = () => {
               Team Velocity Trend
             </Typography>
             <Box height={300}>
-              <Line data={velocityData} options={chartOptions} />
+              <Line data={velocityData} options={lineChartOptions} />
             </Box>
           </Paper>
         </Grid>
@@ -601,7 +632,7 @@ const Analytics = () => {
               Risk Distribution
             </Typography>
             <Box height={300}>
-              <Doughnut data={riskDistribution} options={chartOptions} />
+              <Doughnut data={riskDistribution} options={doughnutChartOptions} />
             </Box>
           </Paper>
         </Grid>
@@ -613,7 +644,7 @@ const Analytics = () => {
               Current Sprint Burndown
             </Typography>
             <Box height={300}>
-              <Line data={burndownData} options={chartOptions} />
+              <Line data={burndownData} options={lineChartOptions} />
             </Box>
           </Paper>
         </Grid>
@@ -625,7 +656,7 @@ const Analytics = () => {
               Test Trend (Total vs Failed)
             </Typography>
             <Box height={300}>
-              <Line data={testTrendData} options={chartOptions} />
+              <Line data={testTrendData} options={lineChartOptions} />
             </Box>
           </Paper>
         </Grid>
@@ -637,7 +668,7 @@ const Analytics = () => {
               Coverage Trend (% by day)
             </Typography>
             <Box height={300}>
-              <Line data={coverageTrendData} options={chartOptions} />
+              <Line data={coverageTrendData} options={lineChartOptions} />
             </Box>
           </Paper>
         </Grid>
@@ -793,7 +824,7 @@ const Analytics = () => {
               Team Performance
             </Typography>
             <Box height={300}>
-              <Bar data={teamPerformanceData} options={chartOptions} />
+              <Bar data={teamPerformanceData} options={barChartOptions} />
             </Box>
           </Paper>
         </Grid>

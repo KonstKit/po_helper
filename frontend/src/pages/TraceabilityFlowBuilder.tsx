@@ -98,8 +98,9 @@ const nodeTypes: NodeTypes = {
 };
 
 type TraceabilityNodeData = Record<string, unknown>;
+type TraceabilityEdgeData = Record<string, unknown>;
 type TraceabilityNode = Node<TraceabilityNodeData>;
-type TraceabilityEdge = Edge<TraceabilityNodeData>;
+type TraceabilityEdge = Edge<TraceabilityEdgeData>;
 
 const DEFAULT_RULE_NAME = 'Untitled Rule';
 const EMPTY_FLOW: FlowJSON = {
@@ -111,25 +112,29 @@ const EMPTY_FLOW: FlowJSON = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const mapServerValidationIssue = (
-  issue: unknown,
-  type: 'error' | 'warning'
-): ValidationError | ValidationWarning => {
+const getValidationIssueFields = (issue: unknown) => {
   const normalized = isRecord(issue) ? issue : {};
   return {
-    type,
     message: String(normalized.message || 'Validation issue'),
     nodeId: typeof normalized.node_id === 'string' ? normalized.node_id : undefined,
     edgeId: typeof normalized.edge_id === 'string' ? normalized.edge_id : undefined,
   };
 };
 
+const mapServerValidationError = (issue: unknown): ValidationError => ({
+  type: 'error',
+  ...getValidationIssueFields(issue),
+});
+
+const mapServerValidationWarning = (issue: unknown): ValidationWarning => ({
+  type: 'warning',
+  ...getValidationIssueFields(issue),
+});
+
 const mapServerValidation = (result: FlowValidationResult): ValidationResult => ({
   valid: result.valid,
-  errors: result.errors.map((error) => mapServerValidationIssue(error, 'error')),
-  warnings: result.warnings.map((warning) =>
-    mapServerValidationIssue(warning, 'warning')
-  ),
+  errors: result.errors.map((error) => mapServerValidationError(error)),
+  warnings: result.warnings.map((warning) => mapServerValidationWarning(warning)),
 });
 
 const extractServerValidationFromError = (error: unknown): ValidationResult | null => {
@@ -157,10 +162,8 @@ const extractServerValidationFromError = (error: unknown): ValidationResult | nu
 
   return {
     valid: false,
-    errors: errorsRaw.map((item) => mapServerValidationIssue(item, 'error')),
-    warnings: warningsRaw.map((item) =>
-      mapServerValidationIssue(item, 'warning')
-    ),
+    errors: errorsRaw.map((item) => mapServerValidationError(item)),
+    warnings: warningsRaw.map((item) => mapServerValidationWarning(item)),
   };
 };
 
@@ -177,6 +180,16 @@ const normalizeEdge = (edge: FlowJSON['edges'][number], index: number): Traceabi
   target: edge.target,
   sourceHandle: edge.sourceHandle ?? null,
   targetHandle: edge.targetHandle ?? null,
+});
+
+const normalizeImportedNode = (node: Node): TraceabilityNode => ({
+  ...node,
+  data: isRecord(node.data) ? node.data : {},
+});
+
+const normalizeImportedEdge = (edge: Edge): TraceabilityEdge => ({
+  ...edge,
+  data: isRecord(edge.data) ? edge.data : {},
 });
 
 const buildFlowData = (nodes: TraceabilityNode[], edges: TraceabilityEdge[]): FlowJSON => ({
@@ -200,8 +213,8 @@ const buildSnapshot = (name: string, flow: FlowJSON): string =>
   JSON.stringify({ name: name.trim(), flow });
 
 const TraceabilityFlowBuilder: React.FC = () => {
-  const [nodes, setNodes, onNodesChange] = useNodesState<TraceabilityNode>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<TraceabilityEdge>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<TraceabilityNodeData>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<TraceabilityEdgeData>([]);
   const [selectedNode, setSelectedNode] = useState<TraceabilityNode | null>(null);
 
   const [importExportOpen, setImportExportOpen] = useState(false);
@@ -871,8 +884,8 @@ const TraceabilityFlowBuilder: React.FC = () => {
         nodes={nodes}
         edges={edges}
         onImport={(importedNodes, importedEdges) => {
-          setNodes(importedNodes as TraceabilityNode[]);
-          setEdges(importedEdges as TraceabilityEdge[]);
+          setNodes(importedNodes.map((node) => normalizeImportedNode(node)));
+          setEdges(importedEdges.map((edge) => normalizeImportedEdge(edge)));
         }}
       />
 
@@ -880,8 +893,8 @@ const TraceabilityFlowBuilder: React.FC = () => {
         open={templateDialogOpen}
         onClose={() => setTemplateDialogOpen(false)}
         onApplyTemplate={(templateNodes, templateEdges) => {
-          setNodes(templateNodes as TraceabilityNode[]);
-          setEdges(templateEdges as TraceabilityEdge[]);
+          setNodes(templateNodes.map((node) => normalizeImportedNode(node)));
+          setEdges(templateEdges.map((edge) => normalizeImportedEdge(edge)));
         }}
       />
 

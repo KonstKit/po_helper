@@ -208,14 +208,14 @@ const TraceabilityVisualization: React.FC = () => {
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
           <FormControl size="small" sx={{ minWidth: 200 }}>
             <InputLabel>Project</InputLabel>
-            <Select
-              value={projectId ?? ''}
+            <Select<string>
+              value={projectId !== undefined ? String(projectId) : ''}
               label="Project"
               onChange={handleProjectChange}
             >
               <MenuItem value="">All Projects</MenuItem>
               {projects.map((p) => (
-                <MenuItem key={p.id} value={p.id}>
+                <MenuItem key={p.id} value={String(p.id)}>
                   {p.name || p.jira_key}
                 </MenuItem>
               ))}

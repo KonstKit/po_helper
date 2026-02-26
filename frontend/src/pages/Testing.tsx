@@ -275,8 +275,12 @@ const Testing: React.FC = () => {
         <Typography variant="h4">Testing</Typography>
         <FormControl size="small" sx={{ minWidth: 200 }}>
           <InputLabel>Project</InputLabel>
-          <Select label="Project" value={projectId} onChange={handleProjectChange}>
-            {projects.map((p)=> (<MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>))}
+          <Select<string>
+            label="Project"
+            value={projectId === '' ? '' : String(projectId)}
+            onChange={handleProjectChange}
+          >
+            {projects.map((p)=> (<MenuItem key={p.id} value={String(p.id)}>{p.name}</MenuItem>))}
           </Select>
         </FormControl>
       </Box>
@@ -298,9 +302,9 @@ const Testing: React.FC = () => {
           </ToggleButtonGroup>
           <FormControl size="small" sx={{ minWidth: 140 }}>
             <InputLabel>Range</InputLabel>
-            <Select label="Range" value={days} onChange={handleDaysChange}>
-              <MenuItem value={30}>Last 30 days</MenuItem>
-              <MenuItem value={90}>Last 90 days</MenuItem>
+            <Select<string> label="Range" value={String(days)} onChange={handleDaysChange}>
+              <MenuItem value="30">Last 30 days</MenuItem>
+              <MenuItem value="90">Last 90 days</MenuItem>
             </Select>
           </FormControl>
         </Box>

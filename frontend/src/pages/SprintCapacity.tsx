@@ -120,12 +120,12 @@ const SprintCapacity: React.FC = () => {
             <FormControl fullWidth size="small">
               <InputLabel>Project</InputLabel>
               <Select
-                value={projectId}
+                value={projectId === '' ? '' : String(projectId)}
                 label="Project"
                 onChange={handleProjectChange}
               >
                 {projects.map((p) => (
-                  <MenuItem key={p.id} value={p.id}>
+                  <MenuItem key={p.id} value={String(p.id)}>
                     {p.name}
                   </MenuItem>
                 ))}
@@ -136,7 +136,7 @@ const SprintCapacity: React.FC = () => {
             <FormControl fullWidth size="small">
               <InputLabel>Sprint (optional)</InputLabel>
               <Select
-                value={sprintId}
+                value={sprintId === '' ? '' : String(sprintId)}
                 label="Sprint (optional)"
                 onChange={handleSprintChange}
                 >
@@ -145,7 +145,7 @@ const SprintCapacity: React.FC = () => {
                     const sprintIdentifier = getCanonicalSprintId(s);
                     if (sprintIdentifier === null) return null;
                     return (
-                      <MenuItem key={sprintIdentifier} value={sprintIdentifier}>
+                      <MenuItem key={sprintIdentifier} value={String(sprintIdentifier)}>
                         {s.name} {isSprintActive(s) ? '(Active)' : ''}
                       </MenuItem>
                     );

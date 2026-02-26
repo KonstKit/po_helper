@@ -363,14 +363,9 @@ const normalizeSyncHealth = (raw: unknown): SyncHealthResponse => {
 const normalizeDetailedSyncHealth = (raw: unknown): DetailedSyncHealthResponse => {
   const payload = asRecord(raw);
 
-  // Legacy/expected shape
-  if (typeof payload.project_id === 'number' && payload.link_coverage && payload.by_type && payload.by_source) {
-    return payload as DetailedSyncHealthResponse;
-  }
-
   const projectRaw = asRecord(payload.project);
   const artifactsRaw = asRecord(payload.artifacts);
-  const coverageRaw = asRecord(payload.coverage);
+  const coverageRaw = asRecord(payload.coverage ?? payload.link_coverage);
 
   const projectId = asFiniteNumber(projectRaw.id ?? payload.project_id, 0);
   const projectName = typeof projectRaw.name === 'string'

@@ -142,10 +142,12 @@ class AnalyticsService {
         break;
 
       case 'step_completed':
-        if (!metrics.stepsCompleted.includes(data?.step)) {
-          metrics.stepsCompleted.push(data?.step);
+        if (typeof data?.step === 'number') {
+          if (!metrics.stepsCompleted.includes(data.step)) {
+            metrics.stepsCompleted.push(data.step);
+          }
+          metrics.currentStep = data.step;
         }
-        metrics.currentStep = data?.step;
         break;
 
       case 'completed':

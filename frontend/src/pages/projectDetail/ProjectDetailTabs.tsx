@@ -321,10 +321,10 @@ const ProjectDetailTabs = ({
       <Box mb={2} display="flex" alignItems="center" gap={2}>
         <FormControl size="small" sx={{ minWidth: 220 }}>
           <InputLabel>Board</InputLabel>
-          <Select
+          <Select<string>
             label="Board"
-            value={boardId}
-            onChange={(event: SelectChangeEvent) => {
+            value={boardId === "" ? "" : String(boardId)}
+            onChange={(event: SelectChangeEvent<string>) => {
               const next = Number(event.target.value);
               if (Number.isFinite(next)) {
                 void onBoardChange(next);
@@ -332,7 +332,7 @@ const ProjectDetailTabs = ({
             }}
           >
             {boards.map((b) => (
-              <MenuItem key={b.id} value={b.id}>
+              <MenuItem key={b.id} value={String(b.id)}>
                 {b.name}
               </MenuItem>
             ))}
@@ -340,10 +340,10 @@ const ProjectDetailTabs = ({
         </FormControl>
         <FormControl size="small" sx={{ minWidth: 220 }}>
           <InputLabel>Sprint</InputLabel>
-          <Select
+          <Select<string>
             label="Sprint"
-            value={selectedSprint}
-            onChange={(event: SelectChangeEvent) => {
+            value={selectedSprint === "" ? "" : String(selectedSprint)}
+            onChange={(event: SelectChangeEvent<string>) => {
               const next = Number(event.target.value);
               if (Number.isFinite(next)) {
                 void onSprintChange(next);
@@ -359,7 +359,7 @@ const ProjectDetailTabs = ({
               const sprintId = getCanonicalSprintId(s);
               if (typeof sprintId !== "number") return null;
               return (
-                <MenuItem key={sprintId} value={sprintId}>
+                <MenuItem key={sprintId} value={String(sprintId)}>
                   {s.name} ({getSprintStateLabel(s)})
                 </MenuItem>
               );
