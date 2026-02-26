@@ -2,7 +2,7 @@
 level: 2
 file_id: plan_57
 parent: plan_40
-status: in_progress
+status: completed
 created: 2026-02-18 10:41
 children: [plan_58, plan_59, plan_60]
 ---
@@ -34,11 +34,11 @@ This module ensures the refactor remains durable. It replaces brittle legacy DOM
 
 ## Subtask Breakdown
 
-- [ ] plan_58 - Update Tests to New DOM Contract (estimated 180 minutes)
+- [x] plan_58 - Update Tests to New DOM Contract (estimated 180 minutes)
   - Brief: Move tests to stable identifiers and behavior-driven assertions.
-- [ ] plan_59 - Add Regression Scenarios for Filters/Sprints/Charts (estimated 180 minutes)
+- [x] plan_59 - Add Regression Scenarios for Filters/Sprints/Charts (estimated 180 minutes)
   - Brief: Cover key regression surfaces end-to-end within the test harness.
-- [ ] plan_60 - Add Observability and Performance Guardrails (estimated 120 minutes)
+- [x] plan_60 - Add Observability and Performance Guardrails (estimated 120 minutes)
   - Brief: Add guardrails for warnings, refresh loops, and performance degradation.
 
 ## Locked Regression Scope (for plan_58-60)
@@ -58,7 +58,7 @@ This module ensures the refactor remains durable. It replaces brittle legacy DOM
 - [x] Core scenario matrix is defined and linked to deterministic fixtures.
 - [x] Chart warning gate is scoped to known dashboard/chart warning signatures.
 - [x] Guardrail targets and thresholds are defined for observability baseline.
-- [ ] Full CI execution confirms runtime stability in target environment.
+- [x] Docker CI-equivalent run confirms runtime stability (`artifacts/tests/plan_60_dashboard_tests.txt`).
 
 ---
 

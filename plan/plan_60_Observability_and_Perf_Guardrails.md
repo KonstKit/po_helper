@@ -2,7 +2,7 @@
 level: 3
 file_id: plan_60
 parent: plan_57
-status: in_progress
+status: completed
 created: 2026-02-18 10:41
 estimated_time: 120 minutes
 ---
@@ -57,17 +57,42 @@ Reduce time-to-diagnosis and prevent gradual degradation of dashboard quality ov
 - **Output**: Observable dashboard behavior signals.
 - **Notes**: Avoid excessive logging.
 
+### Step 2 Output (Current Pass)
+
+- Runtime guardrail signals for refresh-loop and budget breaches are sourced from:
+  - `frontend/src/pages/dashboard/dashboardGuardrails.ts`
+- Signal strings in `frontend/src/pages/Dashboard.tsx` are emitted via `DASHBOARD_GUARDRAIL_TARGETS.*.signal`.
+
 ### Step 3: Add Performance Budgets
 - **Action**: Define and enforce basic performance budgets for key interactions (initial load, filter changes).
 - **Input**: Baseline measurements.
 - **Output**: Budget thresholds and enforcement approach.
 - **Notes**: Use a deterministic, bounded aggregator (rolling window of durations) so tests can deterministically verify threshold behavior independent of wall-clock jitter.
 
+### Step 3 Output (Current Pass)
+
+- Budget thresholds are enforced from `DASHBOARD_GUARDRAIL_TARGETS`:
+  - `filter_apply_ms_p95 <= 300`
+  - `dashboard_init_ms_p95 <= 700`
+- Budget sample window is wired from targets into recorder:
+  - `recordDuration('filter_apply_ms', duration, sampleWindow)`
+  - `recordDuration('dashboard_init_ms', duration, sampleWindow)`
+- Latch behavior is enforced by `shouldReportBudgetBreach(...)` in `frontend/src/utils/dashboardPerfGuards.ts`.
+
 ### Step 4: Verification and Documentation
 - **Action**: Validate signals appear as expected and document how to use them in diagnosis.
 - **Input**: Guardrail implementation.
 - **Output**: Verified guardrails and usage notes.
 - **Notes**: Coordinate with QA and release readiness.
+
+### Step 4 Output (Current Pass)
+
+- Docker dashboard regression test run completed:
+  - artifact: `artifacts/tests/plan_60_dashboard_tests.txt`
+  - result: `1 passed file`, `17 passed tests`
+- Documentation updated:
+  - `docs/dashboard-observability.md`
+  - includes guardrail signals, thresholds, and verification artifact references.
 
 ---
 

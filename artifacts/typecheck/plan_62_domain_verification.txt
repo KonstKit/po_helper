@@ -1,0 +1,5 @@
+domain=plan_62
+artifact=artifacts/typecheck/plan_62_full_typecheck.txt
+diagnostics=0
+domain_matches=0
+status=PASS
