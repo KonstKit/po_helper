@@ -365,7 +365,8 @@ const normalizeDetailedSyncHealth = (raw: unknown): DetailedSyncHealthResponse =
 
   const projectRaw = asRecord(payload.project);
   const artifactsRaw = asRecord(payload.artifacts);
-  const coverageRaw = asRecord(payload.coverage ?? payload.link_coverage);
+  const coverageRaw = asRecord(payload.coverage);
+  const legacyCoverageRaw = asRecord(payload.link_coverage);
 
   const projectId = asFiniteNumber(projectRaw.id ?? payload.project_id, 0);
   const projectName = typeof projectRaw.name === 'string'
@@ -399,8 +400,14 @@ const normalizeDetailedSyncHealth = (raw: unknown): DetailedSyncHealthResponse =
     totalArtifacts = Object.values(bySource).reduce((sum, value) => sum + value, 0);
   }
 
-  const orphanedCount = asFiniteNumber(coverageRaw.orphaned_artifacts, asFiniteNumber(payload.orphaned_count, 0));
-  const linkedArtifacts = asFiniteNumber(coverageRaw.linked_artifacts, 0);
+  const orphanedCount = asFiniteNumber(
+    coverageRaw.orphaned_artifacts,
+    asFiniteNumber(legacyCoverageRaw.orphaned_artifacts, asFiniteNumber(payload.orphaned_count, 0)),
+  );
+  const linkedArtifacts = asFiniteNumber(
+    coverageRaw.linked_artifacts,
+    asFiniteNumber(legacyCoverageRaw.linked_artifacts, 0),
+  );
   const coveragePct = totalArtifacts > 0 ? (linkedArtifacts / totalArtifacts) * 100 : 0;
 
   const repositoriesRaw = Array.isArray(payload.repositories) ? payload.repositories : [];

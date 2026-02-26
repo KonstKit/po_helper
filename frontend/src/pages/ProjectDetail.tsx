@@ -1500,12 +1500,16 @@ const ProjectDetail = () => {
                 labelId="repo-provider-label"
                 label="Provider"
                 value={repoForm.provider}
-                onChange={(e: SelectChangeEvent<RepositoryProvider>) =>
+                onChange={(e: SelectChangeEvent<RepositoryProvider>) => {
+                  const nextProvider = e.target.value;
+                  if (nextProvider !== 'github' && nextProvider !== 'gitlab') {
+                    return;
+                  }
                   setRepoForm((form) => ({
                     ...form,
-                    provider: e.target.value === 'gitlab' ? 'gitlab' : 'github',
-                  }))
-                }
+                    provider: nextProvider,
+                  }));
+                }}
               >
                 <MenuItem value="github" disabled={!repoProviders.github}>GitHub</MenuItem>
                 <MenuItem value="gitlab" disabled={!repoProviders.gitlab}>GitLab</MenuItem>
