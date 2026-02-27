@@ -34,11 +34,15 @@ Legacy sections are intentionally removed and must not reappear:
 
 ## Persistence Contract
 - Storage keys:
+  - `dashboard_contract_version` (`v2`)
   - `dashboard_date_range`
   - `dashboard_chart_view`
   - `dashboard_quick_filter`
   - `dashboard_recent_project_ids`
   - `dashboard_last_project_id`
+- Legacy migration:
+  - legacy keys (`date_range`, `chart_view`, `quick_filter`, `recent_project_ids`, `last_project_id`) are migrated to canonical dashboard keys on startup.
+  - invalid persisted values are normalized back to defaults.
 - Defaults:
   - `dateRange = 30d`
   - `chartView = both`
@@ -108,6 +112,7 @@ Date range maps to backend `sprints_count`:
   - `dashboard-drilldown-item`
 - Scope:
   - `dashboard-partial-scope`
+  - `dashboard-task-scope-anomaly`
 
 ## State Contract
 - No project:
@@ -118,3 +123,5 @@ Date range maps to backend `sprints_count`:
 - Error:
   - Non-blocking alert with retry action.
   - Drilldown and unaffected sections remain available.
+- Task-scope anomaly:
+  - if `taskScope` metadata is inconsistent (`fetched > total`, `hasNext` contradictions), dashboard shows explicit warning banner (`dashboard-task-scope-anomaly`) and does not silently mask the mismatch.

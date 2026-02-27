@@ -6,6 +6,7 @@ import { storage } from '../../utils/storage';
 import { deduplicateRequest } from '../../utils/apiOptimization';
 import type { AxiosRequestConfig } from 'axios';
 import type { BurndownResponse } from './types';
+import { normalizeBurndownResponse } from './contractNormalization';
 
 // =============================================================================
 // Types
@@ -156,9 +157,14 @@ export const getProjectSprints = async (
 // Sprint Analytics
 // =============================================================================
 
-export const getSprintBurndown = async (sprintId: number): Promise<BurndownResponse> => {
-  const { data } = await api.get(`/v1/analytics/sprints/${sprintId}/burndown`);
-  return data as BurndownResponse;
+export const getSprintBurndown = async (
+  sprintId: number,
+  opts?: { signal?: AbortSignal }
+): Promise<BurndownResponse> => {
+  const { data } = await api.get(`/v1/analytics/sprints/${sprintId}/burndown`, {
+    signal: opts?.signal,
+  });
+  return normalizeBurndownResponse(data);
 };
 
 export const getSprintQuality = async (sprintId: number): Promise<SprintQuality> => {
@@ -170,7 +176,10 @@ export const getSprintQuality = async (sprintId: number): Promise<SprintQuality>
 // WIP Status
 // =============================================================================
 
-export const getSprintWipStatus = async (sprintId: number): Promise<SprintWipStatus> => {
+export const getSprintWipStatus = async (
+  sprintId: number,
+  opts?: { signal?: AbortSignal }
+): Promise<SprintWipStatus> => {
   const cacheKey = `wip_status_${sprintId}`;
 
   const cached = storage.get<SprintWipStatus>(cacheKey);
@@ -181,6 +190,7 @@ export const getSprintWipStatus = async (sprintId: number): Promise<SprintWipSta
 
   const { data } = await api.get(`/v1/analytics/sprints/${sprintId}/wip-status`, {
     timeout: 30000,
+    signal: opts?.signal,
   });
 
   storage.set(cacheKey, data, { ttl: CACHE_TTL });

@@ -57,3 +57,46 @@ jobs:
       - name: Lint
         working-directory: frontend
         run: npm run lint
+
+  dashboard-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Dashboard gate typecheck
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Dashboard gate tests
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/tests
+          cd frontend
+          DASHBOARD_GATE=1 NO_COLOR=1 npm test -- --run --silent=true \
+            src/pages/__tests__/Dashboard.test.tsx \
+            src/utils/__tests__/dashboardPerfGuards.test.ts \
+            src/pages/dashboard/__tests__/dashboardSignalEmitter.test.ts \
+            src/pages/dashboard/__tests__/dashboardContract.test.ts \
+            src/pages/dashboard/__tests__/dashboardPerfBudgetRegression.test.ts \
+            src/services/api/__tests__/contractNormalization.test.ts \
+            2>&1 | tee ../artifacts/tests/dashboard-gate-vitest.txt
+      - name: Build dashboard gate summary artifact
+        run: |
+          set -euo pipefail
+          {
+            echo "artifact=artifacts/tests/dashboard-gate-vitest.txt"
+            grep -E "Test Files|Tests|Duration" artifacts/tests/dashboard-gate-vitest.txt || true
+          } > artifacts/tests/dashboard-gate.summary.txt
+      - name: Upload dashboard gate artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-gate-artifacts
+          path: |
+            artifacts/tests/dashboard-gate-vitest.txt
+            artifacts/tests/dashboard-gate.summary.txt

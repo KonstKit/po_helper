@@ -1,14 +1,19 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import '../../test/setup-env';
-import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act, within, waitForElementToBeRemoved } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 
 import Dashboard from '../Dashboard';
-import { DASHBOARD_STORAGE_KEYS, DASHBOARD_TEST_IDS } from '../dashboard/dashboardContract';
-import { isDashboardChartWarning } from '../dashboard/dashboardGuardrails';
+import {
+  DASHBOARD_DEFAULTS,
+  DASHBOARD_STORAGE_CONTRACT,
+  DASHBOARD_STORAGE_KEYS,
+  DASHBOARD_TEST_IDS,
+} from '../dashboard/dashboardContract';
+import { DASHBOARD_GUARDRAIL_TARGETS, isDashboardChartWarning } from '../dashboard/dashboardGuardrails';
 import authReducer from '../../store/authSlice';
 import projectReducer from '../../store/projectSlice';
 import taskReducer from '../../store/taskSlice';
@@ -24,6 +29,7 @@ import {
   getSprintWipStatus,
   getIntegrationsStatus,
   getVelocity,
+  type VelocityResponse,
 } from '../../services/api';
 import {
   DASHBOARD_SCENARIO_MATRIX,
@@ -170,10 +176,10 @@ const preloadedState = {
 };
 
 class MockSocket extends EventTarget implements WebSocket {
-  static CONNECTING: 0 = 0;
-  static OPEN: 1 = 1;
-  static CLOSING: 2 = 2;
-  static CLOSED: 3 = 3;
+  static CONNECTING = 0 as const;
+  static OPEN = 1 as const;
+  static CLOSING = 2 as const;
+  static CLOSED = 3 as const;
   static instances: MockSocket[] = [];
   readonly CONNECTING: 0 = MockSocket.CONNECTING;
   readonly OPEN: 1 = MockSocket.OPEN;
@@ -352,7 +358,9 @@ describe('Dashboard smoke scenarios', () => {
     const control = await screen.findByTestId(testId);
     const combo = within(control).getByRole('combobox');
     fireEvent.mouseDown(combo);
-    fireEvent.click(await screen.findByRole('option', { name: optionLabel }));
+    const listbox = await screen.findByRole('listbox');
+    fireEvent.click(within(listbox).getByRole('option', { name: optionLabel }));
+    await waitForElementToBeRemoved(listbox);
   };
 
   it('maintains scenario matrix coverage for high-risk dashboard regressions', () => {
@@ -548,7 +556,12 @@ describe('Dashboard smoke scenarios', () => {
     });
 
     renderDashboard();
-    await waitFor(() => expect(mockedGetSprintBurndown).toHaveBeenCalledWith(activeSprintScenario.sprint_id));
+    await waitFor(() =>
+      expect(mockedGetSprintBurndown).toHaveBeenCalledWith(
+        activeSprintScenario.sprint_id,
+        expect.objectContaining({ signal: expect.any(Object) })
+      )
+    );
     await waitFor(() => {
       expect(screen.getByText(/Timeline data/i)).toBeInTheDocument();
       expect(screen.getAllByTestId(DASHBOARD_TEST_IDS.upcomingItem)).toHaveLength(2);
@@ -699,6 +712,140 @@ describe('Dashboard smoke scenarios', () => {
     );
   }, 15000);
 
+  it('migrates invalid persisted dashboard filters to canonical defaults', async () => {
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.dateRange, '999d');
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.chartView, 'broken');
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.quickFilter, 'wrong');
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.recentProjectIds, '{oops');
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.lastProjectId, 'abc');
+    localStorage.setItem('date_range', '14d');
+    localStorage.setItem('chart_view', 'velocity');
+
+    renderDashboard();
+    await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
+
+    expect(localStorage.getItem(DASHBOARD_STORAGE_KEYS.dateRange)).toBe(
+      DASHBOARD_DEFAULTS.dateRange
+    );
+    expect(localStorage.getItem(DASHBOARD_STORAGE_KEYS.chartView)).toBe(
+      DASHBOARD_DEFAULTS.chartView
+    );
+    expect(localStorage.getItem(DASHBOARD_STORAGE_KEYS.quickFilter)).toBe(
+      DASHBOARD_DEFAULTS.quickFilter
+    );
+    expect(localStorage.getItem(DASHBOARD_STORAGE_CONTRACT.versionKey)).toBe(
+      String(DASHBOARD_STORAGE_CONTRACT.currentVersion)
+    );
+    expect(localStorage.getItem('date_range')).toBeNull();
+    expect(localStorage.getItem('chart_view')).toBeNull();
+  }, 15000);
+
+  it('shows explicit task-scope anomaly warning when scope metadata is inconsistent', async () => {
+    mockedListTasksPaginated.mockResolvedValueOnce({
+      data: sampleTasks,
+      meta: {
+        total: 1,
+        page: 1,
+        per_page: 500,
+        total_pages: 1,
+        has_next: false,
+        has_prev: false,
+      },
+    });
+
+    renderDashboard();
+    await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
+    expect(await screen.findByTestId(DASHBOARD_TEST_IDS.taskScopeAnomalyBadge)).toBeInTheDocument();
+  }, 15000);
+
+  it('ignores stale async metric responses during rapid project switching', async () => {
+    let resolveSlowVelocity: ((value: VelocityResponse) => void) | null = null;
+    const slowVelocityPromise = new Promise<VelocityResponse>((resolve) => {
+      resolveSlowVelocity = resolve;
+    });
+    mockedListProjects.mockResolvedValueOnce({
+      data: [sampleProject, sampleProjectSecondary],
+      meta: {
+        total: 2,
+        page: 1,
+        per_page: 50,
+        total_pages: 1,
+        has_next: false,
+        has_prev: false,
+      },
+    });
+    mockedListTasksPaginated.mockImplementation((params) => {
+      const projectId = Number(params?.projectId ?? sampleProject.id);
+      return Promise.resolve({
+        data: projectId === sampleProjectSecondary.id ? [] : sampleTasks,
+        meta: {
+          total: projectId === sampleProjectSecondary.id ? 0 : sampleTasks.length,
+          page: 1,
+          per_page: 500,
+          total_pages: 1,
+          has_next: false,
+          has_prev: false,
+        },
+      });
+    });
+    mockedGetVelocity.mockImplementation((projectId) => {
+      if (Number(projectId) === sampleProject.id) {
+        return slowVelocityPromise;
+      }
+
+      return Promise.resolve({
+        average_velocity: 222,
+        sprints_analyzed: 2,
+        velocity_trend: 'stable',
+        sprint_velocities: [{ sprint_id: 2, sprint_name: 'Fast sprint', velocity: 222 }],
+      });
+    });
+
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.quickFilter, 'recent');
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.recentProjectIds, JSON.stringify([sampleProject.id]));
+    localStorage.setItem(DASHBOARD_STORAGE_KEYS.lastProjectId, String(sampleProject.id));
+
+    renderDashboard({
+      ...preloadedState,
+      project: {
+        ...preloadedState.project,
+        projects: [sampleProject, sampleProjectSecondary],
+        currentProject: null,
+      },
+    });
+    await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
+
+    await waitFor(() =>
+      expect(mockedGetVelocity.mock.calls.some((call) => Number(call[0]) === sampleProject.id)).toBe(true)
+    );
+
+    await openAdvancedFilters();
+    await selectDropdownOption(DASHBOARD_TEST_IDS.filterProject, sampleProjectSecondary.name);
+
+    await waitFor(() => {
+      const lastCall = mockedListTasksPaginated.mock.calls.at(-1);
+      expect(lastCall?.[0]).toMatchObject({ projectId: sampleProjectSecondary.id });
+    });
+    await waitFor(() =>
+      expect(mockedGetVelocity.mock.calls.some((call) => Number(call[0]) === sampleProjectSecondary.id)).toBe(
+        true
+      )
+    );
+    expect(await screen.findByText(/Target:\s*222h/i)).toBeInTheDocument();
+
+    await act(async () => {
+      resolveSlowVelocity?.({
+        average_velocity: 111,
+        sprints_analyzed: 2,
+        velocity_trend: 'stable',
+        sprint_velocities: [{ sprint_id: 1, sprint_name: 'Slow sprint', velocity: 111 }],
+      });
+      await slowVelocityPromise;
+    });
+
+    await waitFor(() => expect(screen.queryByText(/Target:\s*111h/i)).not.toBeInTheDocument());
+  }, 25000);
+
   it('refreshes data when websocket announces sync completion', async () => {
     renderDashboard();
     await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
@@ -727,4 +874,27 @@ describe('Dashboard smoke scenarios', () => {
 
     await screen.findByText(/Background sync failed/i);
   }, 15000);
+
+  it('emits refresh-loop signal once on websocket burst due to latch behavior', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    renderDashboard();
+    await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
+    await waitFor(() => expect(MockSocket.last()?.onmessage).toBeTypeOf('function'));
+
+    const socket = MockSocket.last();
+    await act(async () => {
+      for (let i = 0; i < 8; i += 1) {
+        socket?.triggerMessage({ type: 'jira_sync_complete', project_id: sampleProject.id });
+      }
+    });
+
+    await waitFor(() => {
+      const refreshLoopWarnings = warnSpy.mock.calls.filter(
+        (args) => args[0] === DASHBOARD_GUARDRAIL_TARGETS.refreshLoop.signal
+      );
+      expect(refreshLoopWarnings).toHaveLength(1);
+    });
+
+    warnSpy.mockRestore();
+  }, 20000);
 });

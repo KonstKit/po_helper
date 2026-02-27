@@ -52,36 +52,29 @@ import {
   DASHBOARD_GUARDRAIL_TARGETS,
 } from './dashboard/dashboardGuardrails';
 import {
+  detectTaskScopeAnomaly,
   DASHBOARD_STORAGE_KEYS,
   DASHBOARD_TEST_IDS,
   VELOCITY_SPRINTS_COUNT_MAP,
   formatTaskScopeLabel,
-  getUpcomingHorizonDays,
+  migrateDashboardStorageContract,
   parseChartViewOption,
   parseDateRangeOption,
-  parseNumberListFromStorage,
-  parseQuickFilterOption,
   type ChartViewOption,
   type DateRangeOption,
 } from './dashboard/dashboardContract';
 import {
-  buildActiveBlockers,
-  buildBurndownData,
-  buildDashboardStats,
-  buildVelocityDataFromApi,
-  buildEnhancedVelocityData,
   buildKpiMetrics,
-  buildOverdueTasks,
   buildRiskItems,
-  buildStaleInProgressTasks,
-  buildTargetVelocity,
-  buildTaskDistribution,
-  buildUpcomingTasks,
-  buildVelocitySeries,
-  buildVelocityTrend,
-  filterTasksByDateRange,
   formatDueDate,
 } from './dashboard/dashboardDerivations';
+import { makeSelectDashboardDerivedState } from './dashboard/dashboardSelectors';
+import {
+  emitDashboardFilterBudgetExceeded,
+  emitDashboardInitBudgetExceeded,
+  emitDashboardRefreshLoop,
+  emitDashboardRuntimeWarning,
+} from './dashboard/dashboardSignalEmitter';
 
 type WipWidgetState = 'no_sprint' | 'loading' | 'ready' | 'not_available' | 'error';
 type BurndownWidgetState = 'no_sprint' | 'loading' | 'ready' | 'not_available' | 'error';
@@ -125,10 +118,22 @@ const nowMs = (): number => {
   return Date.now();
 };
 
-const parseStoredProjectId = (value: string | null): number | null => {
-  if (!value) return null;
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+const toErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+};
+
+const isAbortLikeError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+  const details = error as { name?: string; code?: string; message?: string };
+  return (
+    details.name === 'AbortError' ||
+    details.name === 'CanceledError' ||
+    details.code === 'ERR_CANCELED' ||
+    details.message === 'canceled'
+  );
 };
 
 const isActiveProjectCandidate = (project: DashboardProjectCandidate): boolean => {
@@ -140,15 +145,14 @@ const isActiveProjectCandidate = (project: DashboardProjectCandidate): boolean =
 const resolveInitialProjectId = (projects: DashboardProjectCandidate[]): number | null => {
   if (projects.length === 0) return null;
 
+  const persistedState = migrateDashboardStorageContract();
   const sortedById = [...projects].sort((left, right) => left.id - right.id);
   const sortedByName = [...projects].sort((left, right) => left.name.localeCompare(right.name));
   const projectIds = new Set(sortedById.map((project) => project.id));
-  const quickFilter = parseQuickFilterOption(localStorage.getItem(DASHBOARD_STORAGE_KEYS.quickFilter));
-  const recentProjectIds = parseNumberListFromStorage(
-    localStorage.getItem(DASHBOARD_STORAGE_KEYS.recentProjectIds)
-  );
+  const quickFilter = persistedState.quickFilter;
+  const recentProjectIds = persistedState.recentProjectIds;
   const recentMatch = recentProjectIds.find((projectId) => projectIds.has(projectId)) ?? null;
-  const lastProjectId = parseStoredProjectId(localStorage.getItem(DASHBOARD_STORAGE_KEYS.lastProjectId));
+  const lastProjectId = persistedState.lastProjectId;
   const lastMatch = lastProjectId !== null && projectIds.has(lastProjectId) ? lastProjectId : null;
 
   if (quickFilter === 'active') {
@@ -215,6 +219,10 @@ const Dashboard: React.FC = () => {
   const pendingFilterApplyStartRef = useRef<number | null>(null);
   const refreshEventsRef = useRef<number[]>([]);
   const refreshLoopWarnedRef = useRef(false);
+  const refreshAbortRef = useRef<AbortController | null>(null);
+  const refreshRequestIdRef = useRef(0);
+  const refreshProjectMetricsRef = useRef<(() => Promise<void>) | null>(null);
+  const selectDashboardDerivedState = useMemo(makeSelectDashboardDerivedState, []);
   const [drilldown, setDrilldown] = useState<{ open: boolean; title: string; tasks: Task[] }>({
     open: false,
     title: '',
@@ -222,23 +230,23 @@ const Dashboard: React.FC = () => {
   });
 
   const [dateRange, setDateRange] = useState<DateRangeOption>(() =>
-    parseDateRangeOption(localStorage.getItem(DASHBOARD_STORAGE_KEYS.dateRange))
+    migrateDashboardStorageContract().dateRange
   );
   const [chartView, setChartView] = useState<ChartViewOption>(() =>
-    parseChartViewOption(localStorage.getItem(DASHBOARD_STORAGE_KEYS.chartView))
+    migrateDashboardStorageContract().chartView
   );
 
   const projectTasks = useMemo(
     () => (currentProject ? tasksByProject[currentProject.id] || [] : []),
     [currentProject, tasksByProject]
   );
+  const currentProjectId = currentProject?.id ?? null;
 
   useEffect(() => {
     const updateNow = () => setNow(Date.now());
-    const timeoutId = setTimeout(updateNow, 0);
+    updateNow();
     const intervalId = setInterval(updateNow, 60_000);
     return () => {
-      clearTimeout(timeoutId);
       clearInterval(intervalId);
     };
   }, []);
@@ -284,7 +292,7 @@ const Dashboard: React.FC = () => {
         isAboveBudget('filter_apply_ms', filterApplyTarget.p95BudgetMs) &&
         shouldReportBudgetBreach('filter_apply_ms', filterApplyTarget.p95BudgetMs)
       ) {
-        console.warn(filterApplyTarget.signal, {
+        emitDashboardFilterBudgetExceeded({
           duration,
           budget: filterApplyTarget.p95BudgetMs,
           sampleWindow: filterApplyTarget.sampleWindow,
@@ -299,16 +307,23 @@ const Dashboard: React.FC = () => {
     () => (currentProject ? taskScopeByProject[currentProject.id] : undefined),
     [currentProject, taskScopeByProject]
   );
+  const taskScopeAnomaly = useMemo(
+    () => detectTaskScopeAnomaly(currentTaskScope),
+    [currentTaskScope]
+  );
   const activeSprintId = useMemo(() => getCanonicalSprintId(activeSprint), [activeSprint]);
 
   const isPartialTaskScope = currentTaskScope?.isPartial === true;
 
   useEffect(() => {
+    refreshAbortRef.current?.abort();
+    refreshAbortRef.current = null;
+    refreshRequestIdRef.current += 1;
     refreshEventsRef.current = [];
     refreshLoopWarnedRef.current = false;
     initStartedAtRef.current = nowMs();
     initMetricsRecordedRef.current = false;
-  }, [currentProject?.id]);
+  }, [currentProjectId]);
 
   const resetLocalMetrics = useCallback(() => {
     setBudgetData(null);
@@ -351,9 +366,20 @@ const Dashboard: React.FC = () => {
 
   const refreshProjectMetrics = useCallback(async () => {
     if (!currentProject) {
+      refreshAbortRef.current?.abort();
+      refreshAbortRef.current = null;
       resetLocalMetrics();
       return;
     }
+
+    refreshAbortRef.current?.abort();
+    const controller = new AbortController();
+    refreshAbortRef.current = controller;
+    const signal = controller.signal;
+    const requestId = refreshRequestIdRef.current + 1;
+    refreshRequestIdRef.current = requestId;
+    const isActiveRequest = () =>
+      refreshRequestIdRef.current === requestId && !signal.aborted;
 
     const refreshEventTime = nowMs();
     const refreshLoopTarget = DASHBOARD_GUARDRAIL_TARGETS.refreshLoop;
@@ -363,7 +389,7 @@ const Dashboard: React.FC = () => {
     refreshEventsRef.current.push(refreshEventTime);
     if (!refreshLoopWarnedRef.current && refreshEventsRef.current.length >= refreshLoopTarget.threshold) {
       refreshLoopWarnedRef.current = true;
-      console.warn(refreshLoopTarget.signal, {
+      emitDashboardRefreshLoop({
         eventsInWindow: refreshEventsRef.current.length,
         threshold: refreshLoopTarget.threshold,
         windowMs: refreshLoopTarget.windowMs,
@@ -372,30 +398,50 @@ const Dashboard: React.FC = () => {
 
     try {
       const [budget, metrics] = await Promise.all([
-        getProjectBudgetHours(currentProject.id),
-        getProjectValueMetrics(currentProject.id),
+        getProjectBudgetHours(currentProject.id, { signal }),
+        getProjectValueMetrics(currentProject.id, { signal }),
       ]);
+      if (!isActiveRequest()) return;
       setBudgetData(budget);
       setValueMetrics(metrics);
       setLoadError(null);
     } catch (error) {
-      console.warn('Failed to refresh project metrics', error);
+      if (isAbortLikeError(error) || !isActiveRequest()) {
+        return;
+      }
+      emitDashboardRuntimeWarning('refreshMetricsFailed', {
+        projectId: currentProject.id,
+        error: toErrorMessage(error),
+      });
       setLoadError('Failed to refresh project metrics.');
     }
 
     try {
+      if (!isActiveRequest()) return;
       setVelocityLoading(true);
       const velocity = await getVelocity(currentProject.id, {
         sprintsCount: VELOCITY_SPRINTS_COUNT_MAP[dateRange],
+        signal,
       });
+      if (!isActiveRequest()) return;
       setVelocityData(velocity);
     } catch (error) {
-      console.warn('Failed to load velocity metrics', error);
+      if (isAbortLikeError(error) || !isActiveRequest()) {
+        return;
+      }
+      emitDashboardRuntimeWarning('velocityLoadFailed', {
+        projectId: currentProject.id,
+        dateRange,
+        error: toErrorMessage(error),
+      });
       setVelocityData(null);
     } finally {
-      setVelocityLoading(false);
+      if (isActiveRequest()) {
+        setVelocityLoading(false);
+      }
     }
 
+    if (!isActiveRequest()) return;
     if (activeSprintId === null) {
       setBurndownTimeline(null);
       setBurndownWidgetState('no_sprint');
@@ -408,10 +454,11 @@ const Dashboard: React.FC = () => {
     setBurndownWidgetState('loading');
 
     const [wipResult, burndownResult] = await Promise.allSettled([
-      getSprintWipStatus(activeSprintId),
-      getSprintBurndown(activeSprintId),
+      getSprintWipStatus(activeSprintId, { signal }),
+      getSprintBurndown(activeSprintId, { signal }),
     ]);
 
+    if (!isActiveRequest()) return;
     if (wipResult.status === 'fulfilled') {
       const wip = wipResult.value;
       if (!isValidWipPayload(wip) || typeof wip.error === 'string') {
@@ -422,7 +469,12 @@ const Dashboard: React.FC = () => {
         setWipWidgetState('ready');
       }
     } else {
-      console.warn('Failed to load WIP status', wipResult.reason);
+      if (!isAbortLikeError(wipResult.reason)) {
+        emitDashboardRuntimeWarning('wipLoadFailed', {
+          sprintId: activeSprintId,
+          error: toErrorMessage(wipResult.reason),
+        });
+      }
       setWipStatus(null);
       setWipWidgetState('error');
     }
@@ -440,26 +492,34 @@ const Dashboard: React.FC = () => {
         setBurndownWidgetState('ready');
       }
     } else {
-      console.warn('Failed to load burndown timeline', burndownResult.reason);
+      if (!isAbortLikeError(burndownResult.reason)) {
+        emitDashboardRuntimeWarning('burndownLoadFailed', {
+          sprintId: activeSprintId,
+          error: toErrorMessage(burndownResult.reason),
+        });
+      }
       setBurndownTimeline(null);
       setBurndownWidgetState('error');
     }
   }, [activeSprintId, currentProject, dateRange, resetLocalMetrics]);
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      void refreshProjectMetrics();
-    }, 0);
-    return () => clearTimeout(timeoutId);
+    refreshProjectMetricsRef.current = refreshProjectMetrics;
   }, [refreshProjectMetrics]);
 
   useEffect(() => {
-    if (!currentProject) {
+    void refreshProjectMetrics();
+  }, [refreshProjectMetrics]);
+
+  useEffect(() => {
+    if (currentProjectId === null) {
       if (wsRef.current) {
         try {
           wsRef.current.close();
         } catch (error) {
-          console.warn('Failed to close dashboard websocket', error);
+          emitDashboardRuntimeWarning('websocketCloseFailed', {
+            error: toErrorMessage(error),
+          });
         }
         wsRef.current = null;
       }
@@ -473,21 +533,25 @@ const Dashboard: React.FC = () => {
     socket.onmessage = async (event) => {
       try {
         const message = JSON.parse(event.data || '{}');
-        if (message?.type === 'jira_sync_complete' && Number(message?.project_id) === currentProject.id) {
-          await dispatch(loadProjectData({ projectId: currentProject.id, force: true }));
-          await refreshProjectMetrics();
+        if (message?.type === 'jira_sync_complete' && Number(message?.project_id) === currentProjectId) {
+          await dispatch(loadProjectData({ projectId: currentProjectId, force: true }));
+          await refreshProjectMetricsRef.current?.();
           setLoadError(null);
-        } else if (message?.type === 'jira_sync_failed' && Number(message?.project_id) === currentProject.id) {
+        } else if (message?.type === 'jira_sync_failed' && Number(message?.project_id) === currentProjectId) {
           const detail = typeof message?.detail === 'string' ? message.detail : '';
           setLoadError(detail ? `Background sync failed: ${detail}` : 'Background sync failed.');
         }
       } catch (error) {
-        console.warn('Failed to process dashboard websocket message', error);
+        emitDashboardRuntimeWarning('websocketMessageFailed', {
+          error: toErrorMessage(error),
+        });
       }
     };
 
     socket.onerror = (error) => {
-      console.warn('Dashboard websocket error', error);
+      emitDashboardRuntimeWarning('websocketError', {
+        error: toErrorMessage(error),
+      });
     };
 
     socket.onclose = () => {
@@ -501,12 +565,14 @@ const Dashboard: React.FC = () => {
         try {
           socket.close();
         } catch (error) {
-          console.warn('Failed to close dashboard websocket on cleanup', error);
+          emitDashboardRuntimeWarning('websocketCleanupCloseFailed', {
+            error: toErrorMessage(error),
+          });
         }
         wsRef.current = null;
       }
     };
-  }, [currentProject, dispatch, refreshProjectMetrics]);
+  }, [currentProjectId, dispatch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -517,11 +583,20 @@ const Dashboard: React.FC = () => {
           // no-op: connectivity check
         }
       } catch (error) {
-        console.warn('Integrations status check failed', error);
+        emitDashboardRuntimeWarning('integrationsStatusFailed', {
+          error: toErrorMessage(error),
+        });
       }
     })();
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      refreshAbortRef.current?.abort();
+      refreshAbortRef.current = null;
     };
   }, []);
 
@@ -531,47 +606,31 @@ const Dashboard: React.FC = () => {
     void refreshProjectMetrics();
   }, [currentProject, dispatch, refreshProjectMetrics]);
 
-  const stats = useMemo(() => buildDashboardStats(projectTasks, now), [projectTasks, now]);
-  const dateScopedTasks = useMemo(
-    () => filterTasksByDateRange(projectTasks, dateRange, now),
-    [projectTasks, dateRange, now]
-  );
-  const scopedStats = useMemo(() => buildDashboardStats(dateScopedTasks, now), [dateScopedTasks, now]);
-  const velocityChartData = useMemo(
-    () => buildVelocityDataFromApi(velocityData),
-    [velocityData]
-  );
-  const burndownModel = useMemo(() => buildBurndownData(burndownTimeline), [burndownTimeline]);
-  const taskDistribution = useMemo(() => buildTaskDistribution(projectTasks), [projectTasks]);
-  const overdueTasks = useMemo(() => buildOverdueTasks(dateScopedTasks, now), [dateScopedTasks, now]);
-  const activeBlockers = useMemo(() => buildActiveBlockers(dateScopedTasks), [dateScopedTasks]);
-  const staleInProgressTasks = useMemo(
-    () => buildStaleInProgressTasks(dateScopedTasks, now),
-    [dateScopedTasks, now]
-  );
-  const velocitySeries = useMemo(() => buildVelocitySeries(velocityChartData), [velocityChartData]);
-  const velocityTrend = useMemo(
-    () => buildVelocityTrend(velocityData, velocitySeries),
-    [velocityData, velocitySeries]
-  );
-  const enhancedVelocityData = useMemo(
-    () => buildEnhancedVelocityData(velocityChartData, velocitySeries),
-    [velocityChartData, velocitySeries]
-  );
-  const targetVelocity = useMemo(() => {
-    if (typeof velocityData?.average_velocity === 'number') {
-      return Math.round(velocityData.average_velocity);
-    }
-    return buildTargetVelocity(velocitySeries);
-  }, [velocityData, velocitySeries]);
+  const derivedState = selectDashboardDerivedState({
+    projectTasks,
+    dateRange,
+    now,
+    velocityData,
+    burndownTimeline,
+  });
+  const {
+    stats,
+    scopedStats,
+    burndownModel,
+    taskDistribution,
+    overdueTasks,
+    activeBlockers,
+    staleInProgressTasks,
+    velocitySeries,
+    velocityTrend,
+    enhancedVelocityData,
+    targetVelocity,
+    upcomingTasks,
+  } = derivedState;
   const riskItems = useMemo(
     () =>
       buildRiskItems(overdueTasks, activeBlockers, staleInProgressTasks, velocityTrend, openDrilldown),
     [overdueTasks, activeBlockers, staleInProgressTasks, velocityTrend, openDrilldown]
-  );
-  const upcomingTasks = useMemo(
-    () => buildUpcomingTasks(dateScopedTasks, now, getUpcomingHorizonDays(dateRange)),
-    [dateScopedTasks, now, dateRange]
   );
   const kpiMetrics = useMemo(
     () =>
@@ -633,7 +692,7 @@ const Dashboard: React.FC = () => {
       isAboveBudget('dashboard_init_ms', initBudgetTarget.p95BudgetMs) &&
       shouldReportBudgetBreach('dashboard_init_ms', initBudgetTarget.p95BudgetMs)
     ) {
-      console.warn(initBudgetTarget.signal, {
+      emitDashboardInitBudgetExceeded({
         duration,
         budget: initBudgetTarget.p95BudgetMs,
         sampleWindow: initBudgetTarget.sampleWindow,
@@ -695,6 +754,12 @@ const Dashboard: React.FC = () => {
         />
       ) : (
         <>
+          {taskScopeAnomaly && (
+            <Alert data-testid={DASHBOARD_TEST_IDS.taskScopeAnomalyBadge} severity="warning" sx={{ mb: 3 }}>
+              {taskScopeAnomaly.message}
+            </Alert>
+          )}
+
           {isPartialTaskScope && currentTaskScope && (
             <Alert data-testid={DASHBOARD_TEST_IDS.partialScopeBadge} severity="info" sx={{ mb: 3 }}>
               {formatTaskScopeLabel(currentTaskScope)}
