@@ -4,6 +4,10 @@
 import api, { CACHE_TTL, withRetry } from './client';
 import { storage } from '../../utils/storage';
 import { deduplicateRequest } from '../../utils/apiOptimization';
+import {
+  normalizeBurndownResponse,
+  normalizeVelocityResponse,
+} from './contractNormalization';
 import type {
   PRMetricsSummary,
   TeamHealthMetrics,
@@ -44,18 +48,29 @@ const makeCacheKey = (prefix: string, params?: Record<string, unknown>): string 
 
 export const getVelocity = async (
   projectId: number,
-  opts?: { sprintsCount?: number }
+  opts?: { sprintsCount?: number; signal?: AbortSignal }
 ): Promise<VelocityResponse> => {
   const cacheKey = makeCacheKey(`velocity_${projectId}`, { sprints_count: opts?.sprintsCount });
   const cached = storage.get<VelocityResponse>(cacheKey);
   if (cached !== null) return cached;
 
+  if (opts?.signal) {
+    const { data } = await api.get(`/v1/analytics/projects/${projectId}/velocity`, {
+      params: { sprints_count: opts.sprintsCount },
+      signal: opts.signal,
+    });
+    const normalized = normalizeVelocityResponse(data);
+    storage.set(cacheKey, normalized, { ttl: CACHE_TTL * 2 });
+    return normalized;
+  }
+
   return deduplicateRequest(cacheKey, async () => {
     const { data } = await api.get(`/v1/analytics/projects/${projectId}/velocity`, {
       params: { sprints_count: opts?.sprintsCount },
     });
-    storage.set(cacheKey, data, { ttl: CACHE_TTL * 2 });
-    return data as VelocityResponse;
+    const normalized = normalizeVelocityResponse(data);
+    storage.set(cacheKey, normalized, { ttl: CACHE_TTL * 2 });
+    return normalized;
   });
 };
 
@@ -71,8 +86,9 @@ export const getBurndown = async (
     const { data } = await api.get(`/v1/analytics/projects/${projectId}/burndown`, {
       params: { sprint_id: sprintId },
     });
-    storage.set(cacheKey, data, { ttl: CACHE_TTL });
-    return data as BurndownResponse;
+    const normalized = normalizeBurndownResponse(data);
+    storage.set(cacheKey, normalized, { ttl: CACHE_TTL });
+    return normalized;
   });
 };
 
@@ -165,13 +181,25 @@ export interface BudgetHoursResponse {
   top_overruns: Array<{ key: string; overrun_hours: number }>;
 }
 
-export const getProjectBudgetHours = async (projectId: number): Promise<BudgetHoursResponse> => {
+export const getProjectBudgetHours = async (
+  projectId: number,
+  opts?: { signal?: AbortSignal }
+): Promise<BudgetHoursResponse> => {
   const cacheKey = `budget_hours_${projectId}`;
 
   const cached = storage.get<BudgetHoursResponse>(cacheKey);
   if (cached !== null) {
     console.debug('[API] Using cached budget hours');
     return cached;
+  }
+
+  if (opts?.signal) {
+    const { data } = await api.get(`/v1/analytics/projects/${projectId}/budget-hours`, {
+      timeout: 30000,
+      signal: opts.signal,
+    });
+    storage.set(cacheKey, data, { ttl: CACHE_TTL * 2 });
+    return data as BudgetHoursResponse;
   }
 
   return deduplicateRequest(cacheKey, async () => {
@@ -189,13 +217,25 @@ export interface ValueMetricsResponse {
   roi: number;
 }
 
-export const getProjectValueMetrics = async (projectId: number): Promise<ValueMetricsResponse> => {
+export const getProjectValueMetrics = async (
+  projectId: number,
+  opts?: { signal?: AbortSignal }
+): Promise<ValueMetricsResponse> => {
   const cacheKey = `value_metrics_${projectId}`;
 
   const cached = storage.get<ValueMetricsResponse>(cacheKey);
   if (cached !== null) {
     console.debug('[API] Using cached value metrics');
     return cached;
+  }
+
+  if (opts?.signal) {
+    const { data } = await api.get(`/v1/analytics/projects/${projectId}/value-metrics`, {
+      timeout: 30000,
+      signal: opts.signal,
+    });
+    storage.set(cacheKey, data, { ttl: CACHE_TTL * 2 });
+    return data as ValueMetricsResponse;
   }
 
   return deduplicateRequest(cacheKey, async () => {

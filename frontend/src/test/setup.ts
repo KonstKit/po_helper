@@ -1,9 +1,30 @@
-import { afterEach, vi } from 'vitest';
+import { afterEach, beforeEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 
+const isDashboardGate = process.env.DASHBOARD_GATE === '1';
+
+let consoleErrorSpy: ReturnType<typeof vi.spyOn> | null = null;
+
+if (isDashboardGate) {
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+}
+
 // Cleanup after each test
 afterEach(() => {
+  if (isDashboardGate && consoleErrorSpy && consoleErrorSpy.mock.calls.length > 0) {
+    const rendered = consoleErrorSpy.mock.calls
+      .map((call) => call.map((entry) => String(entry)).join(' '))
+      .join('\n');
+    consoleErrorSpy.mockRestore();
+    consoleErrorSpy = null;
+    throw new Error(`dashboard-gate: console.error was called\n${rendered}`);
+  }
+
+  consoleErrorSpy?.mockRestore();
+  consoleErrorSpy = null;
   cleanup();
 });
 

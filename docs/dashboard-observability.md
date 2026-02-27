@@ -5,6 +5,7 @@ This document describes lightweight runtime guardrails for the dashboard stabili
 
 ## Source of Truth
 - Guardrail target definitions: `frontend/src/pages/dashboard/dashboardGuardrails.ts`
+- Runtime signal emitter: `frontend/src/pages/dashboard/dashboardSignalEmitter.ts`
 - Performance budget tracking: `frontend/src/utils/dashboardPerfGuards.ts`
 
 ## Guardrail Signals
@@ -48,6 +49,20 @@ This document describes lightweight runtime guardrails for the dashboard stabili
   - `failed to register scale`
 - Purpose: prevent silent reintroduction of chart plugin/registration regressions.
 
+### Runtime Warning Signals
+- Signals (single source of truth in `DASHBOARD_GUARDRAIL_TARGETS.runtimeWarnings`):
+  - `[DashboardGuardrails] refresh_metrics_failed`
+  - `[DashboardGuardrails] velocity_load_failed`
+  - `[DashboardGuardrails] wip_load_failed`
+  - `[DashboardGuardrails] burndown_load_failed`
+  - `[DashboardGuardrails] websocket_close_failed`
+  - `[DashboardGuardrails] websocket_message_processing_failed`
+  - `[DashboardGuardrails] websocket_error`
+  - `[DashboardGuardrails] websocket_cleanup_close_failed`
+  - `[DashboardGuardrails] integrations_status_check_failed`
+- Emission contract:
+  - all dashboard warnings are emitted via `dashboardSignalEmitter` (envelope includes `source=dashboard`, `emittedAt` timestamp, and structured payload).
+
 ## Budget Enforcement Rules
 - Budget checks run against deterministic rolling p95 from `frontend/src/utils/dashboardPerfGuards.ts`.
 - Each budget breach is latched: one warning per metric/budget tuple per page lifecycle.
@@ -65,6 +80,14 @@ This document describes lightweight runtime guardrails for the dashboard stabili
   - quick-filter deterministic transitions
   - sparse velocity empty-state behavior
   - known chart-warning signature gate
+  - request-race safety on rapid project switching (stale async responses ignored)
+  - refresh-loop latch behavior under websocket burst
+  - task-scope anomaly warning rendering
+- Additional guardrail/contract coverage:
+  - `dashboardSignalEmitter` payload-format unit tests
+  - storage contract migration/fallback unit tests
+  - API boundary contract normalization tests for velocity/burndown
+  - 1k-task perf budget regression tests for `filter_apply_ms` and `dashboard_init_ms`
 
 ## Verification Runs (2026-02-26)
 - Dashboard regression tests in Docker:
@@ -85,6 +108,10 @@ This document describes lightweight runtime guardrails for the dashboard stabili
 ## Operational Notes
 - Guardrails are intentionally low-noise and do not block UI flow.
 - Warnings are diagnostic signals, not user-facing errors.
+- CI gate:
+  - workflow job `dashboard-gate` runs `typecheck` + focused dashboard tests and uploads:
+    - `artifacts/tests/dashboard-gate-vitest.txt`
+    - `artifacts/tests/dashboard-gate.summary.txt`
 - Any new dashboard feature should preserve:
   - `filter_apply_ms_p95 <= 300`
   - `dashboard_init_ms_p95 <= 700`

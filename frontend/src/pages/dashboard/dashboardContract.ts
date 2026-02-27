@@ -6,6 +6,19 @@ export const DASHBOARD_STORAGE_KEYS = {
   lastProjectId: 'dashboard_last_project_id',
 } as const;
 
+export const DASHBOARD_STORAGE_CONTRACT = {
+  versionKey: 'dashboard_contract_version',
+  currentVersion: 2,
+} as const;
+
+export const DASHBOARD_STORAGE_LEGACY_KEYS = {
+  dateRange: ['date_range'],
+  chartView: ['chart_view'],
+  quickFilter: ['quick_filter'],
+  recentProjectIds: ['recent_project_ids'],
+  lastProjectId: ['last_project_id'],
+} as const;
+
 export const DATE_RANGE_OPTIONS = ['7d', '14d', '30d', '90d', '180d', '365d', 'all'] as const;
 export type DateRangeOption = (typeof DATE_RANGE_OPTIONS)[number];
 
@@ -49,6 +62,17 @@ export interface TaskScope {
   capHit?: boolean;
 }
 
+export type TaskScopeAnomalyCode =
+  | 'negative_fetched'
+  | 'fetched_exceeds_total'
+  | 'has_next_conflict'
+  | 'partial_flag_conflict';
+
+export interface TaskScopeAnomaly {
+  code: TaskScopeAnomalyCode;
+  message: string;
+}
+
 export const TASK_SCOPE_DEFAULTS = {
   pageSize: 500,
   maxPages: 40,
@@ -83,6 +107,7 @@ export const DASHBOARD_TEST_IDS = {
   cardRoi: 'card-roi',
   cardWip: 'card-wip',
   partialScopeBadge: 'dashboard-partial-scope',
+  taskScopeAnomalyBadge: 'dashboard-task-scope-anomaly',
   drilldownItem: 'dashboard-drilldown-item',
 } as const;
 
@@ -103,6 +128,121 @@ export const parseChartViewOption = (value: unknown): ChartViewOption =>
 
 export const parseQuickFilterOption = (value: unknown): QuickFilterOption =>
   isQuickFilterOption(value) ? value : DASHBOARD_DEFAULTS.quickFilter;
+
+const parseLastProjectId = (value: string | null): number | null => {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+interface DashboardStorageLike {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+  removeItem: (key: string) => void;
+}
+
+export interface DashboardPersistedState {
+  dateRange: DateRangeOption;
+  chartView: ChartViewOption;
+  quickFilter: QuickFilterOption;
+  recentProjectIds: number[];
+  lastProjectId: number | null;
+  version: number;
+}
+
+const getLocalStorageSafe = (): DashboardStorageLike | null => {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    return localStorage;
+  } catch {
+    return null;
+  }
+};
+
+const readStoredValue = (
+  storage: DashboardStorageLike,
+  key: string,
+  legacyKeys: readonly string[]
+): string | null => {
+  const direct = storage.getItem(key);
+  if (direct !== null) {
+    return direct;
+  }
+
+  for (const legacyKey of legacyKeys) {
+    const legacyValue = storage.getItem(legacyKey);
+    if (legacyValue !== null) {
+      return legacyValue;
+    }
+  }
+
+  return null;
+};
+
+export const migrateDashboardStorageContract = (
+  storage: DashboardStorageLike | null = getLocalStorageSafe()
+): DashboardPersistedState => {
+  const fallback: DashboardPersistedState = {
+    dateRange: DASHBOARD_DEFAULTS.dateRange,
+    chartView: DASHBOARD_DEFAULTS.chartView,
+    quickFilter: DASHBOARD_DEFAULTS.quickFilter,
+    recentProjectIds: [],
+    lastProjectId: null,
+    version: DASHBOARD_STORAGE_CONTRACT.currentVersion,
+  };
+
+  if (!storage) {
+    return fallback;
+  }
+
+  const dateRange = parseDateRangeOption(
+    readStoredValue(storage, DASHBOARD_STORAGE_KEYS.dateRange, DASHBOARD_STORAGE_LEGACY_KEYS.dateRange)
+  );
+  const chartView = parseChartViewOption(
+    readStoredValue(storage, DASHBOARD_STORAGE_KEYS.chartView, DASHBOARD_STORAGE_LEGACY_KEYS.chartView)
+  );
+  const quickFilter = parseQuickFilterOption(
+    readStoredValue(storage, DASHBOARD_STORAGE_KEYS.quickFilter, DASHBOARD_STORAGE_LEGACY_KEYS.quickFilter)
+  );
+  const recentProjectIds = parseNumberListFromStorage(
+    readStoredValue(
+      storage,
+      DASHBOARD_STORAGE_KEYS.recentProjectIds,
+      DASHBOARD_STORAGE_LEGACY_KEYS.recentProjectIds
+    )
+  ).slice(0, DASHBOARD_DEFAULTS.recentProjectsLimit);
+  const lastProjectId = parseLastProjectId(
+    readStoredValue(storage, DASHBOARD_STORAGE_KEYS.lastProjectId, DASHBOARD_STORAGE_LEGACY_KEYS.lastProjectId)
+  );
+
+  const nextState: DashboardPersistedState = {
+    dateRange,
+    chartView,
+    quickFilter,
+    recentProjectIds,
+    lastProjectId,
+    version: DASHBOARD_STORAGE_CONTRACT.currentVersion,
+  };
+
+  storage.setItem(DASHBOARD_STORAGE_KEYS.dateRange, nextState.dateRange);
+  storage.setItem(DASHBOARD_STORAGE_KEYS.chartView, nextState.chartView);
+  storage.setItem(DASHBOARD_STORAGE_KEYS.quickFilter, nextState.quickFilter);
+  storage.setItem(DASHBOARD_STORAGE_KEYS.recentProjectIds, JSON.stringify(nextState.recentProjectIds));
+  if (nextState.lastProjectId !== null) {
+    storage.setItem(DASHBOARD_STORAGE_KEYS.lastProjectId, String(nextState.lastProjectId));
+  } else {
+    storage.removeItem(DASHBOARD_STORAGE_KEYS.lastProjectId);
+  }
+  storage.setItem(DASHBOARD_STORAGE_CONTRACT.versionKey, String(DASHBOARD_STORAGE_CONTRACT.currentVersion));
+
+  Object.values(DASHBOARD_STORAGE_LEGACY_KEYS)
+    .flat()
+    .forEach((legacyKey) => {
+      storage.removeItem(legacyKey);
+    });
+
+  return nextState;
+};
 
 export const getDateRangeDays = (dateRange: DateRangeOption): number | null => {
   if (dateRange === 'all') return null;
@@ -127,6 +267,53 @@ export const formatTaskScopeLabel = (scope: TaskScope): string => {
     return `${PARTIAL_SCOPE_LABEL}: ${scope.fetched}/${scope.total} tasks${suffix}`;
   }
   return `${PARTIAL_SCOPE_LABEL}: ${scope.fetched} tasks${suffix}`;
+};
+
+export const detectTaskScopeAnomaly = (scope: TaskScope | undefined): TaskScopeAnomaly | null => {
+  if (!scope) return null;
+
+  if (scope.fetched < 0) {
+    return {
+      code: 'negative_fetched',
+      message: 'Task scope metadata is inconsistent (negative fetched count).',
+    };
+  }
+
+  if (typeof scope.total === 'number' && scope.total >= 0 && scope.fetched > scope.total) {
+    return {
+      code: 'fetched_exceeds_total',
+      message: 'Task scope metadata is inconsistent (fetched exceeds total).',
+    };
+  }
+
+  if (
+    scope.hasNext &&
+    typeof scope.total === 'number' &&
+    scope.total >= 0 &&
+    scope.fetched >= scope.total &&
+    scope.capHit !== true
+  ) {
+    return {
+      code: 'has_next_conflict',
+      message: 'Task scope metadata is inconsistent (hasNext conflicts with totals).',
+    };
+  }
+
+  if (
+    scope.isPartial &&
+    !scope.hasNext &&
+    scope.capHit !== true &&
+    typeof scope.total === 'number' &&
+    scope.total >= 0 &&
+    scope.fetched >= scope.total
+  ) {
+    return {
+      code: 'partial_flag_conflict',
+      message: 'Task scope metadata is inconsistent (partial flag conflicts with totals).',
+    };
+  }
+
+  return null;
 };
 
 export const parseNumberListFromStorage = (value: string | null): number[] => {

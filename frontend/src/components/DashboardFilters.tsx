@@ -24,10 +24,10 @@ import {
   DASHBOARD_TEST_IDS,
   DATE_RANGE_OPTIONS,
   QUICK_FILTER_OPTIONS,
+  migrateDashboardStorageContract,
   parseChartViewOption,
   parseDateRangeOption,
   parseNumberListFromStorage,
-  parseQuickFilterOption,
   type ChartViewOption,
   type DateRangeOption,
   type QuickFilterOption,
@@ -78,8 +78,8 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
   onChartViewChange,
 }) => {
   const [expanded, setExpanded] = useState(false);
-  const [quickFilter, setQuickFilter] = useState<QuickFilterOption>(() =>
-    parseQuickFilterOption(localStorage.getItem(DASHBOARD_STORAGE_KEYS.quickFilter))
+  const [quickFilter, setQuickFilter] = useState<QuickFilterOption>(
+    () => migrateDashboardStorageContract().quickFilter
   );
 
   const projectIds = useMemo(() => new Set(projects.map((project) => project.id)), [projects]);

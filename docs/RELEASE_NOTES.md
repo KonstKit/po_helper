@@ -1,5 +1,17 @@
 # Release Notes
 
+## 2026-02-27
+
+### Dashboard Stabilization
+- Completed dashboard refactor acceptance tracks for UI consolidation, filter semantics, sprint/WIP alignment, chart correctness, and guardrails.
+- Replaced direct dashboard warning calls with a centralized structured emitter (`dashboardSignalEmitter`) bound to `DASHBOARD_GUARDRAIL_TARGETS`.
+- Added request race protection (abort/cancel + stale-response latch) for rapid project/filter switches.
+- Added versioned dashboard persistence contract (`dashboard_contract_version`), legacy key migration, and invalid-value normalization.
+- Added task-scope anomaly warning banner for inconsistent scope metadata.
+- Added API payload normalization for velocity and burndown contracts at the API boundary.
+- Added focused CI `dashboard-gate` job (typecheck + dashboard regression tests + artifact summary upload).
+- Added dashboard handover document with changelog, known limits, and guardrail diagnostics runbook.
+
 ## 2025-09-30
 
 ### Security & Authentication
