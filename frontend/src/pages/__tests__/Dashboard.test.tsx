@@ -429,7 +429,7 @@ describe('Dashboard smoke scenarios', () => {
     expect(within(wipCard).getByText('--')).toBeInTheDocument();
   }, 15000);
 
-  it('shows not-available WIP state when payload is malformed', async () => {
+  it('shows not-available WIP state when payload carries an error flag', async () => {
     mockedListSprints.mockResolvedValueOnce([
       {
         id: 901,
