@@ -14,18 +14,21 @@ if (isDashboardGate) {
 
 // Cleanup after each test
 afterEach(() => {
-  if (isDashboardGate && consoleErrorSpy && consoleErrorSpy.mock.calls.length > 0) {
-    const rendered = consoleErrorSpy.mock.calls
-      .map((call) => call.map((entry) => String(entry)).join(' '))
-      .join('\n');
-    consoleErrorSpy.mockRestore();
-    consoleErrorSpy = null;
-    throw new Error(`dashboard-gate: console.error was called\n${rendered}`);
-  }
-
+  const gateCalls =
+    isDashboardGate && consoleErrorSpy
+      ? consoleErrorSpy.mock.calls
+      : [];
+  const hasGateError = gateCalls.length > 0;
+  const rendered = hasGateError
+    ? gateCalls.map((call) => call.map((entry) => String(entry)).join(' ')).join('\n')
+    : '';
   consoleErrorSpy?.mockRestore();
   consoleErrorSpy = null;
   cleanup();
+
+  if (hasGateError) {
+    throw new Error(`dashboard-gate: console.error was called\n${rendered}`);
+  }
 });
 
 // Mock window.matchMedia
