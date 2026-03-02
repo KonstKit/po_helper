@@ -23,16 +23,16 @@ async def get_sprint_wip_status(
     try:
         done_statuses = list(DONE_STATUSES)
 
+        assignee_expr = func.coalesce(Task.assignee_email, Task.assignee_name, "unassigned")
+
         aggregates_stmt = (
             select(
-                func.coalesce(Task.assignee_email, Task.assignee_name, "unassigned").label(
-                    "assignee"
-                ),
+                assignee_expr.label("assignee"),
                 func.count(Task.id).label("active_count"),
             )
             .where(Task.sprint_id == sprint_id)
             .where(func.lower(Task.status).notin_(done_statuses))
-            .group_by(func.coalesce(Task.assignee_email, Task.assignee_name, "unassigned"))
+            .group_by(assignee_expr)
         )
 
         aggregates_rows = (await db.execute(aggregates_stmt)).mappings().all()
