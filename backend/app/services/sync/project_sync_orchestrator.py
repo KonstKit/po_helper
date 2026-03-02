@@ -24,6 +24,7 @@ from app.services.sync_tracking import (
     get_or_create_source,
     start_sync_task,
     finish_sync_task,
+    touch_sync_task_heartbeat,
     upsert_sync_state,
 )
 
@@ -140,12 +141,47 @@ class ProjectSyncOrchestrator:
                 return result
 
             result.total_issues = len(issues)
+            await self._heartbeat_sync_task(sync_task_id, {"issues_total": result.total_issues})
 
             # Run each sync service independently
             result.issues = await self._sync_issues(project_key, project_id, issues)
+            await self._heartbeat_sync_task(
+                sync_task_id,
+                {
+                    "issues_total": result.total_issues,
+                    "issues_processed": result.issues.total_processed if result.issues else 0,
+                    "issues_added": result.issues.total_added if result.issues else 0,
+                    "issues_updated": result.issues.total_updated if result.issues else 0,
+                },
+            )
             result.worklogs = await self._sync_worklogs(project_key, project_id, issues)
+            await self._heartbeat_sync_task(
+                sync_task_id,
+                {
+                    "issues_total": result.total_issues,
+                    "worklogs_imported": (
+                        result.worklogs.total_worklogs_imported if result.worklogs else 0
+                    ),
+                },
+            )
             result.snapshots = await self._sync_snapshots(project_id)
+            await self._heartbeat_sync_task(
+                sync_task_id,
+                {
+                    "issues_total": result.total_issues,
+                    "snapshots_created": (
+                        result.snapshots.total_snapshots_created if result.snapshots else 0
+                    ),
+                },
+            )
             result.boards = await self._sync_boards(project_key, project_id)
+            await self._heartbeat_sync_task(
+                sync_task_id,
+                {
+                    "issues_total": result.total_issues,
+                    "tasks_linked": result.boards.total_tasks_linked if result.boards else 0,
+                },
+            )
 
             # Update project metadata
             await self._update_project_metadata(project_id, issues)
@@ -247,6 +283,24 @@ class ProjectSyncOrchestrator:
                     logger.warning("Failed to finalize Jira sync tracking: %s", exc)
 
         return result
+
+    async def _heartbeat_sync_task(
+        self,
+        sync_task_id: Optional[int],
+        item_counts: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if sync_task_id is None:
+            return
+        try:
+            async with AsyncSessionLocal() as tracking_db:
+                await touch_sync_task_heartbeat(
+                    tracking_db,
+                    sync_task_id,
+                    item_counts=item_counts,
+                )
+                await tracking_db.commit()
+        except Exception as exc:
+            logger.debug("Failed to heartbeat Jira sync task id=%s: %s", sync_task_id, exc)
 
     async def _ensure_jira_connection(self, project_id: int | None = None) -> None:
         """Ensure Jira service is connected (for Celery workers)."""

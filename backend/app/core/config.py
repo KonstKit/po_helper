@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     # Traceability caching (in-memory, optional)
     ENABLE_MATRIX_CACHE: bool = False
     MATRIX_CACHE_TTL_SECONDS: int = 300
+    SYNC_TASK_RUNNING_TTL_SECONDS: int = 7200  # Auto-fail running sync tasks without heartbeat
 
     # Webhook secrets
     GITHUB_WEBHOOK_SECRET: Optional[str] = None
@@ -94,6 +95,7 @@ class Settings(BaseSettings):
     # Pagination settings for Jira API
     JIRA_PAGE_SIZE: int = 50  # Fetch 50 items per request
     JIRA_MAX_RESULTS: int = 500  # Maximum total results to fetch
+    JIRA_WORKLOG_MAX_PAGES: int = 2000  # Hard safety cap for worklog pagination loops
 
     # Cache settings for Jira data
     JIRA_CACHE_TTL: int = 300  # Cache TTL in seconds (5 minutes)

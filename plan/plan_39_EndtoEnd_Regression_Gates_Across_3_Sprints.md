@@ -2,7 +2,7 @@
 level: 3
 file_id: plan_39
 parent: plan_36
-status: pending
+status: completed
 created: 2026-02-16 20:55
 estimated_time: 420 minutes
 ---
@@ -16,6 +16,29 @@ Deliver the end-to-end regression gates across 3 sprints capability within the q
 
 ### Task Purpose
 Reduce execution instability by enforcing consistent behavior for this task scope.
+
+### Completion Status (2026-03-02)
+- Added CI gate job `plan39-regression-gate` in `.github/workflows/quality.yml`.
+- Added backend regression coverage:
+  - `backend/tests/test_plan39_three_sprint_regression.py`
+  - `backend/tests/test_sync_dashboard_consistency.py`
+- Added sync resilience coverage:
+  - `backend/tests/test_jira_board_service.py`
+  - `backend/tests/test_sync_tracking_recovery.py`
+- Gate now enforces two consecutive regression runs on the same 3-sprint set and fails on mismatch.
+- Gate publishes mandatory artifacts:
+  - typecheck: `artifacts/typecheck/plan_39_typecheck.txt`
+  - tests: `artifacts/tests/plan_39_regression_run_1.txt`, `artifacts/tests/plan_39_regression_run_2.txt`
+  - warnings: `artifacts/tests/plan_39_warning_scan.txt`
+  - lock: `artifacts/tests/plan_39_regression_lock.txt`
+
+### Regression Lock Policy
+- `plan_39_regression_lock.txt` is generated only when:
+  - typecheck passes,
+  - regression run #1 passes,
+  - regression run #2 passes,
+  - pass-count signatures match across both runs.
+- Any deviation blocks the gate and downstream release-readiness flow.
 
 ---
 

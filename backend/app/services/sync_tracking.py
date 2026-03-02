@@ -1,13 +1,28 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.traceability import Source, SyncState, SyncTask
 from app.services.audit_log import record_audit_event
+
+STALE_RUNNING_ERROR_CODE = "stale_running_ttl"
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 async def get_or_create_source(
@@ -63,12 +78,16 @@ async def start_sync_task(
     cursor_in: str | None = None,
     item_counts: dict[str, Any] | None = None,
 ) -> SyncTask:
+    await recover_stale_running_sync_tasks(db)
+
+    started_at = _utcnow()
     task = SyncTask(
         source_id=source_id,
         project_id=project_id,
         task_type=task_type,
         status="running",
-        started_at=datetime.utcnow(),
+        started_at=started_at,
+        heartbeat_at=started_at,
         cursor_in=cursor_in,
         item_counts=item_counts,
         trigger=trigger,
@@ -90,6 +109,78 @@ async def start_sync_task(
     return task
 
 
+async def touch_sync_task_heartbeat(
+    db: AsyncSession,
+    task_id: int,
+    item_counts: dict[str, Any] | None = None,
+) -> Optional[SyncTask]:
+    task = await db.get(SyncTask, task_id)
+    if task is None or task.status != "running":
+        return task
+
+    task.heartbeat_at = _utcnow()
+    if item_counts is not None:
+        task.item_counts = item_counts
+    return task
+
+
+async def recover_stale_running_sync_tasks(
+    db: AsyncSession,
+    ttl_seconds: int | None = None,
+) -> int:
+    effective_ttl = ttl_seconds
+    if effective_ttl is None:
+        effective_ttl = int(getattr(settings, "SYNC_TASK_RUNNING_TTL_SECONDS", 7200) or 7200)
+    effective_ttl = max(1, int(effective_ttl))
+
+    now_utc = _utcnow()
+    stale_before = now_utc - timedelta(seconds=effective_ttl)
+
+    stmt = select(SyncTask).where(
+        SyncTask.status == "running",
+        or_(
+            SyncTask.heartbeat_at <= stale_before,
+            (SyncTask.heartbeat_at.is_(None) & (SyncTask.started_at <= stale_before)),
+        ),
+    )
+    stale_tasks = list((await db.execute(stmt)).scalars().all())
+    if not stale_tasks:
+        return 0
+
+    for task in stale_tasks:
+        previous_heartbeat = _as_utc(task.heartbeat_at)
+        started_at = _as_utc(task.started_at)
+        task.status = "failed"
+        task.finished_at = now_utc
+        task.heartbeat_at = now_utc
+        last_heartbeat = previous_heartbeat or started_at
+        if started_at:
+            task.duration_ms = int((now_utc - started_at).total_seconds() * 1000)
+
+        task.error_code = STALE_RUNNING_ERROR_CODE
+        heartbeat_str = last_heartbeat.isoformat() if last_heartbeat else "unknown"
+        task.error_message = (
+            f"Auto-failed stale running sync task: heartbeat exceeded TTL "
+            f"({effective_ttl}s), last heartbeat={heartbeat_str}"
+        )
+
+        await record_audit_event(
+            db,
+            action="sync_recover_stale_running",
+            entity_type="sync_task",
+            entity_id=task.id,
+            project_id=task.project_id,
+            outcome="failed",
+            payload={
+                "status": task.status,
+                "error_code": task.error_code,
+                "ttl_seconds": effective_ttl,
+            },
+        )
+
+    return len(stale_tasks)
+
+
 async def finish_sync_task(
     db: AsyncSession,
     task_id: int,
@@ -103,11 +194,14 @@ async def finish_sync_task(
     if task is None:
         return None
 
-    finished_at = datetime.utcnow()
+    finished_at = _utcnow()
     task.status = status
     task.finished_at = finished_at
+    task.heartbeat_at = finished_at
     if task.started_at:
-        task.duration_ms = int((finished_at - task.started_at).total_seconds() * 1000)
+        started_at = _as_utc(task.started_at)
+        if started_at:
+            task.duration_ms = int((finished_at - started_at).total_seconds() * 1000)
 
     if item_counts is not None:
         task.item_counts = item_counts
