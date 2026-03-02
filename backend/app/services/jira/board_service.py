@@ -232,9 +232,29 @@ class JiraBoardService:
             endpoint = f"/rest/api/{ver}/issue/{issue_key}/worklog"
             start_at = 0
             items: List[Dict[str, Any]] = []
+            max_pages = max(1, int(getattr(settings, "JIRA_WORKLOG_MAX_PAGES", 2000) or 2000))
+            seen_starts = set()
 
             try:
                 while True:
+                    if start_at in seen_starts:
+                        logger.warning(
+                            "Detected worklog pagination loop for issue %s (v%s), startAt=%s",
+                            issue_key,
+                            ver,
+                            start_at,
+                        )
+                        break
+                    if len(seen_starts) >= max_pages:
+                        logger.warning(
+                            "Worklog pagination page limit reached for issue %s (v%s): %s pages",
+                            issue_key,
+                            ver,
+                            max_pages,
+                        )
+                        break
+                    seen_starts.add(start_at)
+
                     params = {"startAt": start_at, "maxResults": 100}
 
                     # Use dedicated timeout for worklog requests
@@ -265,7 +285,34 @@ class JiraBoardService:
 
                     if not logs:
                         break
-                    start_at += len(logs)
+
+                    response_start_at = data.get("startAt") if isinstance(data, dict) else None
+                    current_start_at = (
+                        int(response_start_at) if isinstance(response_start_at, int) else start_at
+                    )
+                    response_max_results = (
+                        data.get("maxResults") if isinstance(data, dict) else None
+                    )
+                    current_max_results = (
+                        int(response_max_results)
+                        if isinstance(response_max_results, int) and response_max_results > 0
+                        else params["maxResults"]
+                    )
+                    next_start_at = current_start_at + len(logs)
+                    total_count = data.get("total") if isinstance(data, dict) else None
+                    if isinstance(total_count, int) and next_start_at >= total_count:
+                        break
+                    if len(logs) < current_max_results:
+                        break
+                    if next_start_at <= current_start_at:
+                        logger.warning(
+                            "Non-advancing worklog pagination for issue %s (v%s), breaking at %s",
+                            issue_key,
+                            ver,
+                            current_start_at,
+                        )
+                        break
+                    start_at = next_start_at
 
                 self.circuit_breaker.record_success()
                 return items
@@ -309,9 +356,29 @@ class JiraBoardService:
                 endpoint = f"/rest/api/{ver}/issue/{issue_key}/worklog"
                 start_at = 0
                 items: List[Dict[str, Any]] = []
+                max_pages = max(1, int(getattr(settings, "JIRA_WORKLOG_MAX_PAGES", 2000) or 2000))
+                seen_starts = set()
 
                 try:
                     while True:
+                        if start_at in seen_starts:
+                            logger.warning(
+                                "Detected async worklog pagination loop for issue %s (v%s), startAt=%s",
+                                issue_key,
+                                ver,
+                                start_at,
+                            )
+                            break
+                        if len(seen_starts) >= max_pages:
+                            logger.warning(
+                                "Async worklog pagination page limit reached for issue %s (v%s): %s pages",
+                                issue_key,
+                                ver,
+                                max_pages,
+                            )
+                            break
+                        seen_starts.add(start_at)
+
                         params = {"startAt": start_at, "maxResults": 100}
                         worklog_timeout = getattr(settings, "JIRA_WORKLOG_TIMEOUT", None) or 60
 
@@ -335,11 +402,49 @@ class JiraBoardService:
 
                         if not logs:
                             break
-                        start_at += len(logs)
+
+                        response_start_at = data.get("startAt") if isinstance(data, dict) else None
+                        current_start_at = (
+                            int(response_start_at) if isinstance(response_start_at, int) else start_at
+                        )
+                        response_max_results = (
+                            data.get("maxResults") if isinstance(data, dict) else None
+                        )
+                        current_max_results = (
+                            int(response_max_results)
+                            if isinstance(response_max_results, int) and response_max_results > 0
+                            else params["maxResults"]
+                        )
+                        next_start_at = current_start_at + len(logs)
+                        total_count = data.get("total") if isinstance(data, dict) else None
+                        if isinstance(total_count, int) and next_start_at >= total_count:
+                            break
+                        if len(logs) < current_max_results:
+                            break
+                        if next_start_at <= current_start_at:
+                            logger.warning(
+                                "Non-advancing async worklog pagination for issue %s (v%s), breaking at %s",
+                                issue_key,
+                                ver,
+                                current_start_at,
+                            )
+                            break
+                        start_at = next_start_at
 
                     self.circuit_breaker.record_success()
                     return items
 
+                except httpx.TimeoutException as e:
+                    logger.warning(
+                        "Async get_issue_worklogs timeout (v%s) for %s: %s", ver, issue_key, e
+                    )
+                    try:
+                        metrics.inc("jira_worklog_timeout_total", labels={"ver": str(ver)})
+                    except Exception:
+                        pass
+                    self.circuit_breaker.record_failure()
+                    # Fail fast on timeout to avoid long hanging sync loops.
+                    return []
                 except Exception as e:
                     logger.warning(
                         "Async get_issue_worklogs (v%s) failed for %s: %s", ver, issue_key, e

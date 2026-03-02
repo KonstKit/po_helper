@@ -100,3 +100,111 @@ jobs:
           path: |
             artifacts/tests/dashboard-gate-vitest.txt
             artifacts/tests/dashboard-gate.summary.txt
+
+  plan39-regression-gate:
+    runs-on: ubuntu-latest
+    needs:
+      - backend-quality
+      - frontend-quality
+      - dashboard-gate
+    env:
+      DEBUG: "false"
+      SECRET_KEY: "test-secret-key-should-be-long-enough-1234567890"
+      ENCRYPTION_SECRET: "test-secret-key-should-be-long-enough-1234567890"
+      DATABASE_URL: "sqlite+aiosqlite:///./test.db"
+      SKIP_SERVICE_AUTOCONNECT: "1"
+      JIRA_BASE_URL: ""
+      JIRA_EMAIL: ""
+      JIRA_API_TOKEN: ""
+      ENABLE_MATRIX_CACHE: "false"
+      REDIS_URL: ""
+      CELERY_ENABLED: "false"
+      CELERY_BROKER_URL: ""
+      CELERY_RESULT_BACKEND: ""
+      PYTHONPATH: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install backend dependencies
+        run: python3 -m pip install -r backend/requirements.txt
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Plan 39 typecheck artifact
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/typecheck
+          cd frontend
+          npm run typecheck -- --pretty false \
+            2>&1 | tee ../artifacts/typecheck/plan_39_typecheck.txt
+
+      - name: Plan 39 three-sprint regression run #1
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/tests
+          pytest backend/tests/test_plan39_three_sprint_regression.py \
+            backend/tests/test_sync_dashboard_consistency.py -q \
+            2>&1 | tee artifacts/tests/plan_39_regression_run_1.txt
+
+      - name: Plan 39 three-sprint regression run #2
+        run: |
+          set -euo pipefail
+          pytest backend/tests/test_plan39_three_sprint_regression.py \
+            backend/tests/test_sync_dashboard_consistency.py -q \
+            2>&1 | tee artifacts/tests/plan_39_regression_run_2.txt
+
+      - name: Plan 39 warning artifact
+        run: |
+          set -euo pipefail
+          {
+            grep -i "warning" artifacts/typecheck/plan_39_typecheck.txt || true
+            grep -i "warning" artifacts/tests/plan_39_regression_run_1.txt || true
+            grep -i "warning" artifacts/tests/plan_39_regression_run_2.txt || true
+          } > artifacts/tests/plan_39_warning_scan.txt
+
+      - name: Build plan 39 regression lock artifact
+        run: |
+          set -euo pipefail
+          run_1_passes="$(grep -Eo '[0-9]+ passed' artifacts/tests/plan_39_regression_run_1.txt | tail -n 1 || true)"
+          run_2_passes="$(grep -Eo '[0-9]+ passed' artifacts/tests/plan_39_regression_run_2.txt | tail -n 1 || true)"
+          if [ -z "${run_1_passes}" ] || [ -z "${run_2_passes}" ]; then
+            echo "Regression runs did not report successful pass counts."
+            exit 1
+          fi
+          if [ "${run_1_passes}" != "${run_2_passes}" ]; then
+            echo "Regression run mismatch: ${run_1_passes} vs ${run_2_passes}"
+            exit 1
+          fi
+          {
+            echo "plan_39_regression_lock=PASS"
+            echo "regression_set=backend/tests/test_plan39_three_sprint_regression.py, backend/tests/test_sync_dashboard_consistency.py"
+            echo "run_1=${run_1_passes}"
+            echo "run_2=${run_2_passes}"
+            echo "typecheck_artifact=artifacts/typecheck/plan_39_typecheck.txt"
+            echo "warning_artifact=artifacts/tests/plan_39_warning_scan.txt"
+            echo "tests_artifacts=artifacts/tests/plan_39_regression_run_1.txt,artifacts/tests/plan_39_regression_run_2.txt"
+          } > artifacts/tests/plan_39_regression_lock.txt
+
+      - name: Upload plan 39 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-39-regression-artifacts
+          path: |
+            artifacts/typecheck/plan_39_typecheck.txt
+            artifacts/tests/plan_39_regression_run_1.txt
+            artifacts/tests/plan_39_regression_run_2.txt
+            artifacts/tests/plan_39_warning_scan.txt
+            artifacts/tests/plan_39_regression_lock.txt

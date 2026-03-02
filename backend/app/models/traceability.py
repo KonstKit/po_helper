@@ -328,6 +328,7 @@ class SyncTask(Base):
     task_type: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cursor_in: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -337,6 +338,10 @@ class SyncTask(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     trigger: Mapped[str | None] = mapped_column(String, nullable=True)  # manual|schedule|webhook
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_sync_tasks_status_heartbeat", "status", "heartbeat_at", "started_at"),
+    )
 
 
 class ConnectorConfig(Base):

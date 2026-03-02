@@ -182,6 +182,7 @@ class SyncTaskBase(BaseModel):
     task_type: str
     status: str
     started_at: Optional[datetime] = None
+    heartbeat_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     duration_ms: Optional[int] = None
     cursor_in: Optional[str] = None
