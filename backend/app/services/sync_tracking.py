@@ -127,6 +127,8 @@ async def touch_sync_task_heartbeat(
 async def recover_stale_running_sync_tasks(
     db: AsyncSession,
     ttl_seconds: int | None = None,
+    project_id: int | None = None,
+    task_id: int | None = None,
 ) -> int:
     effective_ttl = ttl_seconds
     if effective_ttl is None:
@@ -136,13 +138,19 @@ async def recover_stale_running_sync_tasks(
     now_utc = _utcnow()
     stale_before = now_utc - timedelta(seconds=effective_ttl)
 
-    stmt = select(SyncTask).where(
+    filters = [
         SyncTask.status == "running",
         or_(
             SyncTask.heartbeat_at <= stale_before,
             (SyncTask.heartbeat_at.is_(None) & (SyncTask.started_at <= stale_before)),
         ),
-    )
+    ]
+    if project_id is not None:
+        filters.append(SyncTask.project_id == project_id)
+    if task_id is not None:
+        filters.append(SyncTask.id == task_id)
+
+    stmt = select(SyncTask).where(*filters)
     stale_tasks = list((await db.execute(stmt)).scalars().all())
     if not stale_tasks:
         return 0

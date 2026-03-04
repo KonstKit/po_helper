@@ -4,7 +4,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from app.api.deps import get_current_user
+from app.main import app
 from app.models import Project
+from app.models import Permissions
 from app.models.traceability import SyncTask
 from app.services.sync_tracking import (
     STALE_RUNNING_ERROR_CODE,
@@ -129,3 +132,84 @@ async def test_sync_tasks_endpoint_auto_recovers_stale_running_task(client, db_s
 
     assert response_task["status"] == "failed"
     assert response_task["error_code"] == STALE_RUNNING_ERROR_CODE
+
+
+@pytest.mark.asyncio
+async def test_sync_tasks_endpoint_no_side_effect_on_forbidden_list_request(client, db_session):
+    class _NonAdminUser:
+        id = 42
+        email = "reader@example.com"
+        username = "reader"
+        full_name = "Reader User"
+        is_active = True
+        is_superuser = False
+
+        def has_permission(self, permission: str) -> bool:
+            return permission == Permissions.TRACEABILITY_VIEW
+
+        def has_role(self, _role: str) -> bool:
+            return False
+
+    async def _override_non_admin_user():
+        return _NonAdminUser()
+
+    previous_override = app.dependency_overrides.get(get_current_user)
+    app.dependency_overrides[get_current_user] = _override_non_admin_user
+    try:
+        project = Project(jira_key="NOFX", name="No Side Effect Project", status="active")
+        db_session.add(project)
+        await db_session.commit()
+        await db_session.refresh(project)
+
+        stale_at = datetime.now(timezone.utc) - timedelta(hours=4)
+        stale_task = SyncTask(
+            project_id=project.id,
+            task_type="jira_sync",
+            status="running",
+            started_at=stale_at,
+            heartbeat_at=stale_at,
+            trigger="manual",
+        )
+        db_session.add(stale_task)
+        await db_session.commit()
+        await db_session.refresh(stale_task)
+
+        response = await client.get("/api/v1/traceability/sync-tasks")
+        assert response.status_code == 403
+
+        task_after_forbidden = await db_session.get(SyncTask, stale_task.id)
+        assert task_after_forbidden is not None
+        assert task_after_forbidden.status == "running"
+    finally:
+        if previous_override is not None:
+            app.dependency_overrides[get_current_user] = previous_override
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+
+@pytest.mark.asyncio
+async def test_sync_tasks_endpoint_no_side_effect_on_not_found_task_request(client, db_session):
+    project = Project(jira_key="MISS", name="Missing Task Project", status="active")
+    db_session.add(project)
+    await db_session.commit()
+    await db_session.refresh(project)
+
+    stale_at = datetime.now(timezone.utc) - timedelta(hours=4)
+    stale_task = SyncTask(
+        project_id=project.id,
+        task_type="jira_sync",
+        status="running",
+        started_at=stale_at,
+        heartbeat_at=stale_at,
+        trigger="manual",
+    )
+    db_session.add(stale_task)
+    await db_session.commit()
+    await db_session.refresh(stale_task)
+
+    response = await client.get("/api/v1/traceability/sync-tasks/999999")
+    assert response.status_code == 404
+
+    task_after_not_found = await db_session.get(SyncTask, stale_task.id)
+    assert task_after_not_found is not None
+    assert task_after_not_found.status == "running"

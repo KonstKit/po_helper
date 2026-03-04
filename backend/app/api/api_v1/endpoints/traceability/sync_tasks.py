@@ -22,16 +22,18 @@ async def list_sync_tasks(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
-    recovered = await recover_stale_running_sync_tasks(db)
-    if recovered:
-        await db.commit()
-
     stmt = select(SyncTaskModel).order_by(SyncTaskModel.created_at.desc())
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
         stmt = stmt.where(SyncTaskModel.project_id == project_id)
     elif not current_user.has_permission(Permissions.ADMIN):
         raise HTTPException(status_code=403, detail="project_id is required")
+
+    if project_id is not None:
+        recovered = await recover_stale_running_sync_tasks(db, project_id=project_id)
+        if recovered:
+            await db.commit()
+
     if source_id is not None:
         stmt = stmt.where(SyncTaskModel.source_id == source_id)
     result = await db.execute(stmt)
@@ -44,11 +46,16 @@ async def get_sync_task(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
-    recovered = await recover_stale_running_sync_tasks(db)
-    if recovered:
-        await db.commit()
-
     task = await get_by_id_or_404(db, SyncTaskModel, task_id)
     if task.project_id is not None:
         await ensure_project_access(task.project_id, db, current_user)
+
+    recovered = await recover_stale_running_sync_tasks(
+        db,
+        project_id=task.project_id,
+        task_id=task.id,
+    )
+    if recovered:
+        await db.commit()
+        await db.refresh(task)
     return task
