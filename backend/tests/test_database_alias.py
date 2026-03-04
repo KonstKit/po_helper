@@ -11,3 +11,6 @@ def test_traceability_scheduler_registered_in_beat():
     assert "traceability-rule-scheduler-every-minute" in schedule
     entry = schedule["traceability-rule-scheduler-every-minute"]
     assert entry.get("task") == "traceability.scheduled_rule_execution"
+    assert "recover-stale-sync-tasks-every-5-min" in schedule
+    recovery_entry = schedule["recover-stale-sync-tasks-every-5-min"]
+    assert recovery_entry.get("task") == "maintenance.recover_stale_sync_tasks"

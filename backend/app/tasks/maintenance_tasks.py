@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.traceability import Baseline, BaselineItem
 from app.services.analytics.export_service import cleanup_old_exports
+from app.services.sync_tracking import recover_stale_running_sync_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -61,3 +62,17 @@ def cleanup_baselines_task() -> int:
     deleted = _run_async(_cleanup())
     logger.info("maintenance.cleanup_baselines deleted=%s", deleted)
     return deleted
+
+
+@celery_app.task(name="maintenance.recover_stale_sync_tasks")
+def recover_stale_sync_tasks_task() -> int:
+    async def _recover() -> int:
+        async with AsyncSessionLocal() as db:
+            recovered = await recover_stale_running_sync_tasks(db)
+            if recovered:
+                await db.commit()
+            return recovered
+
+    recovered = _run_async(_recover())
+    logger.info("maintenance.recover_stale_sync_tasks recovered=%s", recovered)
+    return recovered

@@ -29,11 +29,6 @@ async def list_sync_tasks(
     elif not current_user.has_permission(Permissions.ADMIN):
         raise HTTPException(status_code=403, detail="project_id is required")
 
-    if project_id is not None:
-        recovered = await recover_stale_running_sync_tasks(db, project_id=project_id)
-        if recovered:
-            await db.commit()
-
     if source_id is not None:
         stmt = stmt.where(SyncTaskModel.source_id == source_id)
     result = await db.execute(stmt)
@@ -49,13 +44,28 @@ async def get_sync_task(
     task = await get_by_id_or_404(db, SyncTaskModel, task_id)
     if task.project_id is not None:
         await ensure_project_access(task.project_id, db, current_user)
+    return task
 
+
+@router.post("/sync-tasks/recover-stale", response_model=dict)
+async def recover_stale_sync_tasks(
+    project_id: Optional[int] = Query(default=None),
+    task_id: Optional[int] = Query(default=None),
+    ttl_seconds: Optional[int] = Query(default=None, ge=1),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.ADMIN)),
+):
     recovered = await recover_stale_running_sync_tasks(
         db,
-        project_id=task.project_id,
-        task_id=task.id,
+        project_id=project_id,
+        task_id=task_id,
+        ttl_seconds=ttl_seconds,
     )
     if recovered:
         await db.commit()
-        await db.refresh(task)
-    return task
+    return {
+        "recovered": recovered,
+        "project_id": project_id,
+        "task_id": task_id,
+        "ttl_seconds": ttl_seconds,
+    }

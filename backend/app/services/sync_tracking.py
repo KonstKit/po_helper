@@ -78,7 +78,10 @@ async def start_sync_task(
     cursor_in: str | None = None,
     item_counts: dict[str, Any] | None = None,
 ) -> SyncTask:
-    await recover_stale_running_sync_tasks(db)
+    # Celery beat is the primary cleanup mechanism; keep this as a fallback
+    # for environments where periodic workers are disabled.
+    if not settings.CELERY_ENABLED:
+        await recover_stale_running_sync_tasks(db)
 
     started_at = _utcnow()
     task = SyncTask(
