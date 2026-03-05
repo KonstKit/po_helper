@@ -4,12 +4,12 @@ Celery tasks for scheduled Git polling sync.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
 from sqlalchemy import select
 
+from app.core.celery_async_runner import run_async
 from app.core.celery_app import celery_app
 from app.core.database import AsyncSessionLocal
 from app.models import ProjectRepository
@@ -43,7 +43,7 @@ def scheduled_git_sync() -> dict[str, Any]:
 
     results: list[dict[str, Any]] = []
     try:
-        results = asyncio.run(_run())
+        results = run_async(_run())
     except Exception as exc:
         logger.error("Scheduled Git sync failed: %s", exc)
         return {"status": "error", "message": str(exc), "projects": 0, "repositories": 0}

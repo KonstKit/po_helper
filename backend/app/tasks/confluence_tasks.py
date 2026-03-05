@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any, cast
 import logging
 import json
 import asyncio
+from datetime import datetime, timezone
 
 import requests
 from celery import Task
@@ -310,6 +311,22 @@ async def _process_page(db, page_data: Dict[str, Any]) -> bool:
     )
     existing = result.scalar_one_or_none()
 
+    created_dt = _parse_dt((page_data.get("history") or {}).get("createdDate"))
+    updated_dt = _parse_dt(
+        (page_data.get("version") or {}).get("when")
+        or (page_data.get("history") or {}).get("lastUpdated", {}).get("when")
+    )
+    if created_dt is None:
+        if existing is not None and existing.created is not None:
+            created_dt = existing.created
+        else:
+            created_dt = updated_dt or datetime.now(timezone.utc)
+    if updated_dt is None:
+        if existing is not None and existing.updated is not None:
+            updated_dt = existing.updated
+        else:
+            updated_dt = created_dt
+
     if existing:
         # Update existing
         existing.space_key = space_key
@@ -317,11 +334,9 @@ async def _process_page(db, page_data: Dict[str, Any]) -> bool:
         existing.page_type = page_data.get("type")
         existing.url = url
         existing.version = (page_data.get("version") or {}).get("number")
-        existing.created = _parse_dt((page_data.get("history") or {}).get("createdDate"))
-        existing.updated = _parse_dt(
-            (page_data.get("version") or {}).get("when")
-            or (page_data.get("history") or {}).get("lastUpdated", {}).get("when")
-        )
+        existing.created = created_dt
+        existing.updated = updated_dt
+        existing.updated_at = updated_dt
         existing.labels = (page_data.get("metadata") or {}).get("labels")
         existing.html = (page_data.get("body") or {}).get("storage", {}).get("value")
         return False
@@ -334,11 +349,9 @@ async def _process_page(db, page_data: Dict[str, Any]) -> bool:
             page_type=page_data.get("type"),
             url=url,
             version=(page_data.get("version") or {}).get("number"),
-            created=_parse_dt((page_data.get("history") or {}).get("createdDate")),
-            updated=_parse_dt(
-                (page_data.get("version") or {}).get("when")
-                or (page_data.get("history") or {}).get("lastUpdated", {}).get("when")
-            ),
+            created=created_dt,
+            updated=updated_dt,
+            updated_at=updated_dt,
             labels=(page_data.get("metadata") or {}).get("labels"),
             html=(page_data.get("body") or {}).get("storage", {}).get("value"),
         )

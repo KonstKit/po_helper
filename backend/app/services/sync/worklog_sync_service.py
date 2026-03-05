@@ -115,8 +115,16 @@ class WorklogSyncService:
                     db,
                     task_id_map=task_id_map,  # Pass pre-fetched map
                 )
+                await db.commit()
                 result.total_worklogs_imported += issue_result
+            except IntegrityError as e:
+                await db.rollback()
+                logger.warning(
+                    "Worklog sync rolled back for issue %s due to integrity error: %s", key, e
+                )
+                result.errors.append((key, str(e)))
             except Exception as e:
+                await db.rollback()
                 logger.error("Failed to sync worklogs for issue %s: %s", key, e, exc_info=True)
                 result.errors.append((key, str(e)))
 
@@ -171,19 +179,10 @@ class WorklogSyncService:
             logger.warning("Task not found for issue %s in project %d", issue_key, project_id)
             return 0
 
-        # Import worklogs
-        try:
-            async with db.begin():
-                for worklog in logs:
-                    await self._upsert_worklog(worklog, task_id, db)
-            return len(logs)
-        except IntegrityError:
-            # Unique jira_id race with another worker – ignore duplicate and continue
-            await db.rollback()
-            logger.debug(
-                "IntegrityError during worklog import for %s (likely duplicate)", issue_key
-            )
-            return 0
+        # Import worklogs. Commit/rollback boundaries are handled by caller per issue.
+        for worklog in logs:
+            await self._upsert_worklog(worklog, task_id, db)
+        return len(logs)
 
     async def _upsert_worklog(
         self,

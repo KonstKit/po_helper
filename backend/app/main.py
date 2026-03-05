@@ -119,6 +119,103 @@ async def _ensure_sqlite_columns() -> None:
         logger.warning("SQLite column migration failed: %s", e)
 
 
+async def _ensure_postgres_sync_tasks_schema() -> None:
+    """Reconcile critical sync_tasks schema drift for PostgreSQL startup."""
+    try:
+        engine_url = getattr(engine, "url", None)
+        if engine_url is None or engine_url.get_backend_name() != "postgresql":
+            return
+
+        async with engine.begin() as conn:
+            alembic_table_exists = bool(
+                await conn.scalar(
+                    text(
+                        """
+                        SELECT EXISTS (
+                            SELECT 1
+                            FROM information_schema.tables
+                            WHERE table_schema = current_schema()
+                              AND table_name = 'alembic_version'
+                        )
+                        """
+                    )
+                )
+            )
+            if not alembic_table_exists:
+                logger.warning(
+                    "Schema drift diagnostic: alembic_version table is missing; "
+                    "startup self-heal may indicate unapplied migrations"
+                )
+
+            sync_tasks_table_exists = bool(
+                await conn.scalar(
+                    text(
+                        """
+                        SELECT EXISTS (
+                            SELECT 1
+                            FROM information_schema.tables
+                            WHERE table_schema = current_schema()
+                              AND table_name = 'sync_tasks'
+                        )
+                        """
+                    )
+                )
+            )
+            if not sync_tasks_table_exists:
+                return
+
+            heartbeat_column_exists = bool(
+                await conn.scalar(
+                    text(
+                        """
+                        SELECT EXISTS (
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_schema = current_schema()
+                              AND table_name = 'sync_tasks'
+                              AND column_name = 'heartbeat_at'
+                        )
+                        """
+                    )
+                )
+            )
+            if not heartbeat_column_exists:
+                await conn.execute(
+                    text("ALTER TABLE sync_tasks ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ")
+                )
+                logger.warning("Startup self-heal applied: added sync_tasks.heartbeat_at")
+
+            heartbeat_index_exists = bool(
+                await conn.scalar(
+                    text(
+                        """
+                        SELECT EXISTS (
+                            SELECT 1
+                            FROM pg_indexes
+                            WHERE schemaname = current_schema()
+                              AND tablename = 'sync_tasks'
+                              AND indexname = 'ix_sync_tasks_status_heartbeat'
+                        )
+                        """
+                    )
+                )
+            )
+            if not heartbeat_index_exists:
+                await conn.execute(
+                    text(
+                        """
+                        CREATE INDEX IF NOT EXISTS ix_sync_tasks_status_heartbeat
+                        ON sync_tasks (status, heartbeat_at, started_at)
+                        """
+                    )
+                )
+                logger.warning(
+                    "Startup self-heal applied: created ix_sync_tasks_status_heartbeat"
+                )
+    except Exception as exc:
+        logger.warning("PostgreSQL sync_tasks schema reconciliation failed: %s", exc)
+
+
 async def _ensure_system_roles() -> None:
     """Create/update system RBAC roles if they are missing."""
     try:
@@ -152,6 +249,7 @@ async def _ensure_tables():
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+        await _ensure_postgres_sync_tasks_schema()
         await _ensure_sqlite_columns()
         await _ensure_system_roles()
         logger.info("Database schema ensured successfully")
