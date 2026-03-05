@@ -343,10 +343,12 @@ export const testTestrailConnection = async (payload: {
 // Simple cache to prevent API spam
 let _integrationStatusCache: unknown = null;
 let _integrationStatusCacheTime = 0;
+let _integrationStatusInFlight: Promise<IntegrationStatusResponse> | null = null;
 
 export const clearIntegrationStatusCache = () => {
   _integrationStatusCache = null;
   _integrationStatusCacheTime = 0;
+  _integrationStatusInFlight = null;
 };
 
 export interface IntegrationStatusResponse {
@@ -398,10 +400,28 @@ export const getIntegrationsStatus = async (): Promise<IntegrationStatusResponse
     return _integrationStatusCache as IntegrationStatusResponse;
   }
 
-  const { data } = await api.get("/v1/health/integrations");
+  if (_integrationStatusInFlight) {
+    return _integrationStatusInFlight;
+  }
 
-  _integrationStatusCache = data;
-  _integrationStatusCacheTime = now;
+  _integrationStatusInFlight = (async () => {
+    try {
+      const { data } = await api.get("/v1/health/integrations", {
+        timeout: 5000,
+      });
+      _integrationStatusCache = data;
+      _integrationStatusCacheTime = Date.now();
+      return data as IntegrationStatusResponse;
+    } catch (error) {
+      // Degrade gracefully for optional UI checks when backend is under load.
+      if (_integrationStatusCache) {
+        return _integrationStatusCache as IntegrationStatusResponse;
+      }
+      throw error;
+    } finally {
+      _integrationStatusInFlight = null;
+    }
+  })();
 
-  return data as IntegrationStatusResponse;
+  return _integrationStatusInFlight;
 };

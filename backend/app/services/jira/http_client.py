@@ -125,7 +125,11 @@ class JiraHttpClient:
         if self.base_url and not endpoint.startswith(("http://", "https://")):
             url = f"{self.base_url}{endpoint}"
         timeout = kwargs.pop("timeout", self.timeout)
-        max_tries = max(1, self.max_retries + 1)
+        max_retries_override = kwargs.pop("max_retries", None)
+        if max_retries_override is None:
+            max_tries = max(1, self.max_retries + 1)
+        else:
+            max_tries = max(1, int(max_retries_override) + 1)
 
         last_exc: Optional[Exception] = None
 

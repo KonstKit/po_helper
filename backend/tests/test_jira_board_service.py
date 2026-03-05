@@ -56,6 +56,46 @@ class _FakeResponse:
         return dict(self._payload)
 
 
+class _SyncFakeResponse:
+    def __init__(
+        self,
+        payload: Dict[str, Any],
+        status_code: int = 200,
+        content_type: str = "application/json",
+    ):
+        self._payload = payload
+        self.status_code = status_code
+        self.headers = {"content-type": content_type}
+        self.text = ""
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            request = httpx.Request("GET", "https://jira.example.com/fail")
+            response = httpx.Response(self.status_code, request=request)
+            raise httpx.HTTPStatusError("http error", request=request, response=response)
+
+    def json(self) -> Dict[str, Any]:
+        return dict(self._payload)
+
+
+class _SyncHttpClientRecorder:
+    base_url = "https://jira.example.com"
+    email = "jira@example.com"
+    api_token = "token"
+
+    def __init__(self, responses: List[Dict[str, Any]]):
+        self._responses = list(responses)
+        self.calls: List[Dict[str, Any]] = []
+
+    def headers(self) -> Dict[str, str]:
+        return {"Accept": "application/json"}
+
+    def get(self, endpoint: str, **kwargs: Any) -> _SyncFakeResponse:
+        self.calls.append({"endpoint": endpoint, **kwargs})
+        payload = self._responses.pop(0) if self._responses else {"values": []}
+        return _SyncFakeResponse(payload=payload)
+
+
 class _FakeAsyncClient:
     def __init__(self, actions: List[Any]):
         self.actions = actions
@@ -179,3 +219,53 @@ async def test_async_get_issue_worklogs_timeout_is_fail_fast(monkeypatch: pytest
     assert len(fake_client.calls) == 1
     assert circuit_breaker.success_calls == 0
     assert circuit_breaker.failure_calls == 1
+
+
+def test_list_boards_for_project_is_fail_fast_without_retries(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("app.services.jira.board_service.settings.JIRA_HTTP_TIMEOUT", 30)
+
+    http_client = _SyncHttpClientRecorder(
+        responses=[{"values": [{"id": 1, "name": "Board"}]}],
+    )
+    circuit_breaker = _DummyCircuitBreaker()
+    service = JiraBoardService(
+        http_client=http_client,  # type: ignore[arg-type]
+        circuit_breaker=circuit_breaker,
+        version_resolver=_DummyVersionResolver(["3"]),
+    )
+
+    boards = service.list_boards_for_project("PRJ")
+
+    assert boards == [{"id": 1, "name": "Board"}]
+    assert len(http_client.calls) >= 1
+    for call in http_client.calls:
+        assert call["timeout"] == 10
+        assert call["max_retries"] == 0
+    assert circuit_breaker.success_calls == 1
+    assert circuit_breaker.failure_calls == 0
+
+
+def test_list_sprints_is_fail_fast_without_retries(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("app.services.jira.board_service.settings.JIRA_HTTP_TIMEOUT", 30)
+    monkeypatch.setattr("app.services.jira.board_service.settings.JIRA_MAX_RESULTS", 50)
+    monkeypatch.setattr("app.services.jira.board_service.settings.JIRA_PAGE_SIZE", 50)
+
+    http_client = _SyncHttpClientRecorder(
+        responses=[{"values": [{"id": 10, "name": "Sprint 10"}], "total": 1}],
+    )
+    circuit_breaker = _DummyCircuitBreaker()
+    service = JiraBoardService(
+        http_client=http_client,  # type: ignore[arg-type]
+        circuit_breaker=circuit_breaker,
+        version_resolver=_DummyVersionResolver(["3"]),
+    )
+
+    sprints = service.list_sprints(123)
+
+    assert sprints == [{"id": 10, "name": "Sprint 10"}]
+    assert len(http_client.calls) >= 1
+    for call in http_client.calls:
+        assert call["timeout"] == 10
+        assert call["max_retries"] == 0
+    assert circuit_breaker.success_calls == 1
+    assert circuit_breaker.failure_calls == 0

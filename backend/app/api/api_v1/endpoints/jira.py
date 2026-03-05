@@ -2,8 +2,10 @@ import asyncio
 from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, BackgroundTasks, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from time import perf_counter
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.metrics import metrics
 from app.services.jira_sync import perform_project_sync
 from app.tasks.jira_tasks import sync_jira_project
 from app.models.settings import IntegrationSetting
@@ -17,6 +19,49 @@ import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+JIRA_PROJECT_BOARDS_SLOW_THRESHOLD_SECONDS = 3.0
+
+
+def _record_boards_guardrail(
+    project_key: str,
+    *,
+    duration_seconds: float,
+    status: str,
+    boards_count: int = 0,
+) -> None:
+    try:
+        metrics.observe(
+            "api_endpoint_duration_seconds",
+            duration_seconds,
+            labels={"endpoint": "jira_project_boards", "status": status},
+        )
+        if status != "ok":
+            metrics.inc(
+                "api_endpoint_error_total",
+                labels={"endpoint": "jira_project_boards"},
+            )
+        if duration_seconds > JIRA_PROJECT_BOARDS_SLOW_THRESHOLD_SECONDS:
+            metrics.inc(
+                "api_endpoint_slow_total",
+                labels={"endpoint": "jira_project_boards"},
+            )
+    except Exception:
+        pass
+
+    if status != "ok":
+        logger.warning(
+            "jira.project_boards.error project_key=%s duration=%.3f",
+            project_key,
+            duration_seconds,
+        )
+    elif duration_seconds > JIRA_PROJECT_BOARDS_SLOW_THRESHOLD_SECONDS:
+        logger.warning(
+            "jira.project_boards.slow project_key=%s boards=%s duration=%.3f threshold=%.3f",
+            project_key,
+            boards_count,
+            duration_seconds,
+            JIRA_PROJECT_BOARDS_SLOW_THRESHOLD_SECONDS,
+        )
 
 
 async def _call_jira(func, *args, **kwargs):
@@ -107,8 +152,24 @@ async def check_project_key(project_key: str):
 @router.get("/projects/{project_key}/boards")
 async def list_boards(project_key: str):
     """List Agile boards for a given project key."""
-    boards = await _call_jira(jira_service.list_boards_for_project, project_key)
-    return {"count": len(boards), "boards": boards}
+    start = perf_counter()
+    boards_count = 0
+    status = "ok"
+
+    try:
+        boards = await _call_jira(jira_service.list_boards_for_project, project_key)
+        boards_count = len(boards)
+        return {"count": boards_count, "boards": boards}
+    except Exception:
+        status = "error"
+        raise
+    finally:
+        _record_boards_guardrail(
+            project_key,
+            duration_seconds=perf_counter() - start,
+            status=status,
+            boards_count=boards_count,
+        )
 
 
 @router.get("/projects/{project_key}")

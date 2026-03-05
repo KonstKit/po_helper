@@ -63,9 +63,17 @@ class JiraBoardService:
 
         endpoint = "/rest/agile/1.0/board"
         params = {"projectKeyOrId": project_key}
+        # Boards endpoint is used by interactive UI. Keep it fail-fast to avoid
+        # long request hangs when Jira is slow/unreachable.
+        boards_timeout = min(int(getattr(settings, "JIRA_HTTP_TIMEOUT", 25) or 25), 10)
 
         try:
-            response = self.http_client.get(endpoint, params=params)
+            response = self.http_client.get(
+                endpoint,
+                params=params,
+                timeout=boards_timeout,
+                max_retries=0,
+            )
             response.raise_for_status()
 
             # Check content type
@@ -111,6 +119,9 @@ class JiraBoardService:
         all_items: List[Dict[str, Any]] = []
         max_results = settings.JIRA_MAX_RESULTS
         page_size = settings.JIRA_PAGE_SIZE
+        # Sprint lookup is UI-critical and should degrade quickly instead of
+        # blocking the page on repeated timeout retries.
+        sprint_timeout = min(int(getattr(settings, "JIRA_HTTP_TIMEOUT", 25) or 25), 10)
 
         try:
             while len(all_items) < max_results:
@@ -122,7 +133,12 @@ class JiraBoardService:
                 }
 
                 # Use shorter timeout for sprint queries
-                response = self.http_client.get(endpoint, params=params, timeout=15)
+                response = self.http_client.get(
+                    endpoint,
+                    params=params,
+                    timeout=sprint_timeout,
+                    max_retries=0,
+                )
                 response.raise_for_status()
 
                 # Check content type

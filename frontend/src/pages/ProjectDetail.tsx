@@ -994,13 +994,26 @@ const ProjectDetail = () => {
                       let attempts = 0;
                       const maxAttempts = 30;
                       await new Promise<void>((resolve) => {
+                        let pollInFlight = false;
+                        let pollReqCtrl: AbortController | null = null;
                         const iv = setInterval(async () => {
+                          if (pollInFlight) {
+                            return;
+                          }
+                          pollInFlight = true;
                           attempts++;
+                          if (pollReqCtrl) {
+                            pollReqCtrl.abort();
+                          }
+                          pollReqCtrl = new AbortController();
                           try {
                             const { page, pageSize } = taskPaginationRef.current;
                             const response = await listTasksByProjectPaginated(Number(id), {
                               skip: page * pageSize,
                               limit: pageSize,
+                            }, {
+                              signal: pollReqCtrl.signal,
+                              timeout: 8000,
                             });
                             taskTotal = response.meta.total;
                             if (taskTotal > 0) {
@@ -1009,8 +1022,14 @@ const ProjectDetail = () => {
                               lastRowsRef.current = response.data;
                             }
                           } catch (err) { void err; }
+                          finally {
+                            pollInFlight = false;
+                          }
                           if (taskTotal > 0 || attempts >= maxAttempts) {
                             clearInterval(iv);
+                            if (pollReqCtrl) {
+                              pollReqCtrl.abort();
+                            }
                             resolve();
                           }
                         }, 2000);
@@ -1853,8 +1872,13 @@ const ProjectDetail = () => {
                   let attempts = 0;
                   let taskTotal = 0;
                   const maxAttempts = 30; // ~60s if interval 2s
+                  let purgePollInFlight = false;
                   if (purgePollRef.current) clearInterval(purgePollRef.current);
                   purgePollRef.current = setInterval(async () => {
+                    if (purgePollInFlight) {
+                      return;
+                    }
+                    purgePollInFlight = true;
                     attempts++;
                     // abort previous in-flight request before issuing a new poll
                     if (purgeReqCtrlRef.current)
@@ -1864,6 +1888,9 @@ const ProjectDetail = () => {
                       const response = await listTasksByProjectPaginated(Number(id), {
                         skip: taskPaginationModel.page * taskPaginationModel.pageSize,
                         limit: taskPaginationModel.pageSize,
+                      }, {
+                        signal: purgeReqCtrlRef.current.signal,
+                        timeout: 8000,
                       });
                       taskTotal = response.meta.total;
                       if (taskTotal > 0) {
@@ -1872,6 +1899,9 @@ const ProjectDetail = () => {
                         lastRowsRef.current = response.data;
                       }
                     } catch (err) { void err; }
+                    finally {
+                      purgePollInFlight = false;
+                    }
                     if (taskTotal > 0 || attempts >= maxAttempts) {
                       if (purgePollRef.current) {
                         clearInterval(purgePollRef.current);
