@@ -39,11 +39,11 @@ Charts are highly visible and are a frequent source of user trust issues. Clean 
 
 ## Subtask Breakdown
 
-- [ ] plan_54 - Replace Synthetic Burndown With Real Timeline (estimated 180 minutes)
+- [x] plan_54 - Replace Synthetic Burndown With Real Timeline (estimated 180 minutes)
   - Brief: Prefer real timeline-based burndown and label fallbacks explicitly.
-- [ ] plan_55 - Standardize Velocity Computation and Labels (estimated 120 minutes)
+- [x] plan_55 - Standardize Velocity Computation and Labels (estimated 120 minutes)
   - Brief: Use consistent bucketing and stable labeling for velocity and trend.
-- [ ] plan_56 - Consolidate Chart Infrastructure and Fix Text Artifacts (estimated 90 minutes)
+- [x] plan_56 - Consolidate Chart Infrastructure and Fix Text Artifacts (estimated 90 minutes)
   - Brief: Ensure plugins/registration are consistent and remove encoding artifacts.
 
 ---

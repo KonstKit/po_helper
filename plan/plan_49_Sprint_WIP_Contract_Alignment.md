@@ -39,11 +39,11 @@ Sprint/WIP contract stability is required for correct dashboard widgets and for 
 
 ## Subtask Breakdown
 
-- [ ] plan_50 - Unify Sprint Status & Identifier Contract (estimated 120 minutes)
+- [x] plan_50 - Unify Sprint Status & Identifier Contract (estimated 120 minutes)
   - Brief: Define canonical sprint identity and "active" semantics across payloads.
-- [ ] plan_51 - Stabilize WIP and Sprint-Dependent Widgets (estimated 120 minutes)
+- [x] plan_51 - Stabilize WIP and Sprint-Dependent Widgets (estimated 120 minutes)
   - Brief: Ensure WIP widgets behave deterministically with correct fallbacks.
-- [ ] plan_52 - Add Runtime Guards for Contract Drift (estimated 90 minutes)
+- [x] plan_52 - Add Runtime Guards for Contract Drift (estimated 90 minutes)
   - Brief: Prevent regressions by validating payload shape and handling mismatches safely.
 
 ---

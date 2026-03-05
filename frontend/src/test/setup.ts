@@ -14,20 +14,39 @@ if (isDashboardGate) {
 
 // Cleanup after each test
 afterEach(() => {
-  const gateCalls =
-    isDashboardGate && consoleErrorSpy
-      ? consoleErrorSpy.mock.calls
-      : [];
-  const hasGateError = gateCalls.length > 0;
-  const rendered = hasGateError
-    ? gateCalls.map((call) => call.map((entry) => String(entry)).join(' ')).join('\n')
-    : '';
-  consoleErrorSpy?.mockRestore();
-  consoleErrorSpy = null;
-  cleanup();
+  const errorSpy = consoleErrorSpy;
+  let cleanupError: unknown = null;
 
-  if (hasGateError) {
-    throw new Error(`dashboard-gate: console.error was called\n${rendered}`);
+  try {
+    cleanup();
+  } catch (error) {
+    cleanupError = error;
+  } finally {
+    const gateCalls =
+      isDashboardGate && errorSpy
+        ? errorSpy.mock.calls
+        : [];
+    const hasGateError = gateCalls.length > 0;
+    const rendered = hasGateError
+      ? gateCalls.map((call) => call.map((entry) => String(entry)).join(' ')).join('\n')
+      : '';
+
+    errorSpy?.mockRestore();
+    consoleErrorSpy = null;
+
+    if (hasGateError) {
+      const cleanupDetails =
+        cleanupError !== null
+          ? `\ncleanup-error: ${String(cleanupError)}`
+          : '';
+      throw new Error(
+        `dashboard-gate: console.error was called\n${rendered}${cleanupDetails}`
+      );
+    }
+
+    if (cleanupError !== null) {
+      throw cleanupError;
+    }
   }
 });
 

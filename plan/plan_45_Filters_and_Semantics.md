@@ -39,11 +39,11 @@ This module turns the filter UI from a placeholder into a reliable interaction c
 
 ## Subtask Breakdown
 
-- [ ] plan_46 - Define Filter Semantics & Persistence (estimated 90 minutes)
+- [x] plan_46 - Define Filter Semantics & Persistence (estimated 90 minutes)
   - Brief: Specify meaning and scope for date range, chart view, and project quick filters.
-- [ ] plan_47 - Apply Date Range & Chart View End-to-End (estimated 180 minutes)
+- [x] plan_47 - Apply Date Range & Chart View End-to-End (estimated 180 minutes)
   - Brief: Ensure filters affect all computed metrics and visible sections consistently.
-- [ ] plan_48 - Implement Project Quick Filters Behavior (estimated 120 minutes)
+- [x] plan_48 - Implement Project Quick Filters Behavior (estimated 120 minutes)
   - Brief: Make "all/active/recent" behavior real and non-misleading.
 
 ## Execution Steps

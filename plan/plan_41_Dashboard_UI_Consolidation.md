@@ -39,11 +39,11 @@ This module is the foundation for all downstream work: filter semantics, sprint/
 
 ## Subtask Breakdown
 
-- [ ] plan_42 - Select Single Layout & Remove Duplication (estimated 150 minutes)
+- [x] plan_42 - Select Single Layout & Remove Duplication (estimated 150 minutes)
   - Brief: Choose the target layout and eliminate parallel rendering while preserving required capabilities.
-- [ ] plan_43 - Decompose Dashboard Into Sections (estimated 180 minutes)
+- [x] plan_43 - Decompose Dashboard Into Sections (estimated 180 minutes)
   - Brief: Refactor the dashboard into stable sections to reduce coupling and simplify change control.
-- [ ] plan_44 - Normalize Loading/Empty/Error States (estimated 120 minutes)
+- [x] plan_44 - Normalize Loading/Empty/Error States (estimated 120 minutes)
   - Brief: Ensure consistent UX patterns for loading, empty data, and error recovery.
 
 ---
