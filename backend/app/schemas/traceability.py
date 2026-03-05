@@ -204,6 +204,14 @@ class SyncTask(SyncTaskInDB):
     pass
 
 
+class SyncTaskRecoveryResult(BaseModel):
+    recovered: int = 0
+    project_id: Optional[int] = None
+    task_id: Optional[int] = None
+    all: bool = False
+    ttl_seconds: Optional[int] = None
+
+
 class AuditLogBase(BaseModel):
     tenant_id: Optional[str] = None
     project_id: Optional[int] = None

@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.api.deps import ensure_project_access, require_permission
 from app.models import User, Permissions
 from app.models.traceability import SyncTask as SyncTaskModel
-from app.schemas.traceability import SyncTask
+from app.schemas.traceability import SyncTask, SyncTaskRecoveryResult
 from app.services.sync_tracking import recover_stale_running_sync_tasks
 from app.utils import get_by_id_or_404
 
@@ -47,14 +47,21 @@ async def get_sync_task(
     return task
 
 
-@router.post("/sync-tasks/recover-stale", response_model=dict)
+@router.post("/sync-tasks/recover-stale", response_model=SyncTaskRecoveryResult)
 async def recover_stale_sync_tasks(
     project_id: Optional[int] = Query(default=None),
     task_id: Optional[int] = Query(default=None),
+    all: bool = Query(default=False),
     ttl_seconds: Optional[int] = Query(default=None, ge=1),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission(Permissions.ADMIN)),
 ):
+    if all:
+        project_id = None
+        task_id = None
+    elif project_id is None and task_id is None:
+        raise HTTPException(status_code=400, detail="Either project_id/task_id is required, or all=true")
+
     recovered = await recover_stale_running_sync_tasks(
         db,
         project_id=project_id,
@@ -63,9 +70,10 @@ async def recover_stale_sync_tasks(
     )
     if recovered:
         await db.commit()
-    return {
-        "recovered": recovered,
-        "project_id": project_id,
-        "task_id": task_id,
-        "ttl_seconds": ttl_seconds,
-    }
+    return SyncTaskRecoveryResult(
+        recovered=recovered,
+        project_id=project_id,
+        task_id=task_id,
+        all=all,
+        ttl_seconds=ttl_seconds,
+    )
