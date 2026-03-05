@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select
 
+from app.core.celery_async_runner import run_async
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -16,22 +16,13 @@ from app.services.sync_tracking import recover_stale_running_sync_tasks
 logger = logging.getLogger(__name__)
 
 
-def _run_async(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        asyncio.set_event_loop(loop)
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
-
-
 @celery_app.task(name="maintenance.cleanup_exports")
 def cleanup_exports_task() -> int:
     async def _cleanup() -> int:
         async with AsyncSessionLocal() as db:
             return await cleanup_old_exports(db, max_age_hours=settings.EXPORT_FILE_TTL_HOURS)
 
-    deleted = _run_async(_cleanup())
+    deleted = run_async(_cleanup())
     logger.info("maintenance.cleanup_exports deleted=%s", deleted)
     return deleted
 
@@ -59,7 +50,7 @@ def cleanup_baselines_task() -> int:
             await db.commit()
             return len(baseline_ids)
 
-    deleted = _run_async(_cleanup())
+    deleted = run_async(_cleanup())
     logger.info("maintenance.cleanup_baselines deleted=%s", deleted)
     return deleted
 
@@ -73,6 +64,6 @@ def recover_stale_sync_tasks_task() -> int:
                 await db.commit()
             return recovered
 
-    recovered = _run_async(_recover())
+    recovered = run_async(_recover())
     logger.info("maintenance.recover_stale_sync_tasks recovered=%s", recovered)
     return recovered

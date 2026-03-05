@@ -9,6 +9,7 @@ import logging
 from celery import Task, states
 from sqlalchemy import select
 from app.core.celery_app import celery_app
+from app.core.celery_async_runner import run_async
 from app.core.database import AsyncSessionLocal
 from app.services.jira_sync import perform_project_sync
 from app.core.cache import redis_client as _redis_client
@@ -17,7 +18,6 @@ from app.core.crypto import decrypt_str
 from app.core.config import settings
 from app.services.jira_service import jira_service
 import json
-import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -107,10 +107,6 @@ def sync_jira_project(
     start_time = datetime.utcnow()
 
     try:
-        # Create new event loop for this Celery worker thread
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
         logger.info(f"Starting Jira sync for project {project_key} (id={project_id})")
         self.update_progress(f"Initializing sync for {project_key}...", 0)
 
@@ -138,11 +134,11 @@ def sync_jira_project(
                             "PAT" if email is None else "Basic",
                         )
 
-        loop.run_until_complete(_ensure_jira_connected())
+        run_async(_ensure_jira_connected())
 
         # Run the actual sync
         self.update_progress(f"Syncing issues for {project_key}...", 10)
-        loop.run_until_complete(perform_project_sync(project_key, project_id, trigger=trigger))
+        run_async(perform_project_sync(project_key, project_id, trigger=trigger))
 
         # Calculate duration
         duration = (datetime.utcnow() - start_time).total_seconds()
@@ -198,13 +194,6 @@ def sync_jira_project(
         # Re-raise for Celery retry logic
         raise
 
-    finally:
-        # Clean up event loop
-        try:
-            loop.close()
-        except Exception:
-            pass
-
 
 @celery_app.task(name="jira.scheduled_sync")
 def scheduled_jira_sync() -> Dict[str, Any]:
@@ -226,13 +215,7 @@ def scheduled_jira_sync() -> Dict[str, Any]:
             )
             return list(result.scalars().all())
 
-    projects: list[Project] = []
-    loop = asyncio.new_event_loop()
-    try:
-        asyncio.set_event_loop(loop)
-        projects = loop.run_until_complete(_load_projects())
-    finally:
-        loop.close()
+    projects = run_async(_load_projects())
 
     if not projects:
         logger.info("No active Jira projects or Jira not configured; skipping scheduled sync")
