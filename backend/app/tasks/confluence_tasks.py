@@ -6,13 +6,13 @@ Provides robust background processing with retry logic and progress tracking.
 from typing import Optional, Dict, Any, cast
 import logging
 import json
-import asyncio
 from datetime import datetime, timezone
 
 import requests
 from celery import Task
 from sqlalchemy import select
 
+from app.core.celery_async_runner import run_async
 from app.core.celery_app import celery_app
 from app.core.database import AsyncSessionLocal
 from app.core.config import settings
@@ -33,12 +33,7 @@ def _load_confluence_setting() -> Optional[IntegrationSetting]:
             )
             return result.scalar_one_or_none()
 
-    loop = asyncio.new_event_loop()
-    try:
-        asyncio.set_event_loop(loop)
-        return loop.run_until_complete(_fetch_setting())
-    finally:
-        loop.close()
+    return run_async(_fetch_setting())
 
 
 def _ensure_confluence_connection() -> bool:
@@ -160,10 +155,7 @@ def sync_confluence_space(
         self.update_progress("Starting Confluence sync...", 5)
 
         # Run async sync in sync context (Celery doesn't natively support async)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(_async_sync_space(self, space_key, query, full_sync))
-        loop.close()
+        result = run_async(_async_sync_space(self, space_key, query, full_sync))
 
         # Send completion
         if channel_id and redis_client:
@@ -326,6 +318,7 @@ async def _process_page(db, page_data: Dict[str, Any]) -> bool:
             updated_dt = existing.updated
         else:
             updated_dt = created_dt
+    row_updated_at = datetime.now(timezone.utc)
 
     if existing:
         # Update existing
@@ -336,7 +329,7 @@ async def _process_page(db, page_data: Dict[str, Any]) -> bool:
         existing.version = (page_data.get("version") or {}).get("number")
         existing.created = created_dt
         existing.updated = updated_dt
-        existing.updated_at = updated_dt
+        existing.updated_at = row_updated_at
         existing.labels = (page_data.get("metadata") or {}).get("labels")
         existing.html = (page_data.get("body") or {}).get("storage", {}).get("value")
         return False
@@ -351,7 +344,7 @@ async def _process_page(db, page_data: Dict[str, Any]) -> bool:
             version=(page_data.get("version") or {}).get("number"),
             created=created_dt,
             updated=updated_dt,
-            updated_at=updated_dt,
+            updated_at=row_updated_at,
             labels=(page_data.get("metadata") or {}).get("labels"),
             html=(page_data.get("body") or {}).get("storage", {}).get("value"),
         )

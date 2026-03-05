@@ -12,7 +12,7 @@ class _FakeConnection:
         self._scalar_results = list(scalar_results)
         self.executed_sql: list[str] = []
 
-    async def scalar(self, _statement):
+    async def scalar(self, _statement, *_args, **_kwargs):
         if not self._scalar_results:
             raise AssertionError("Unexpected scalar() call")
         return self._scalar_results.pop(0)
@@ -57,7 +57,7 @@ async def test_postgres_startup_reconcile_repairs_missing_sync_tasks_heartbeat_a
     connection = _FakeConnection(
         scalar_results=[
             False,  # alembic_version table missing
-            True,  # sync_tasks exists
+            "public",  # sync_tasks schema
             False,  # heartbeat_at missing
             False,  # ix_sync_tasks_status_heartbeat missing
         ]
@@ -68,7 +68,7 @@ async def test_postgres_startup_reconcile_repairs_missing_sync_tasks_heartbeat_a
     await app_main._ensure_postgres_sync_tasks_schema()
 
     assert any(
-        "ALTER TABLE sync_tasks ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ" in sql
+        "ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ" in sql
         for sql in connection.executed_sql
     )
     assert any(
@@ -85,7 +85,7 @@ async def test_postgres_startup_reconcile_is_noop_when_schema_is_already_current
     connection = _FakeConnection(
         scalar_results=[
             True,  # alembic_version table exists
-            True,  # sync_tasks exists
+            "public",  # sync_tasks schema
             True,  # heartbeat_at exists
             True,  # ix_sync_tasks_status_heartbeat exists
         ]

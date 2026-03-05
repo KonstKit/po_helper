@@ -5,7 +5,6 @@ Provides background processing with progress tracking for matrix and graph expor
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -19,6 +18,7 @@ from openpyxl.utils import get_column_letter
 from sqlalchemy import update
 
 from app.core.cache import redis_client as _redis_client
+from app.core.celery_async_runner import run_async
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -114,14 +114,11 @@ def export_matrix_task(
     self.channel_id = channel_id
     self.export_task_id = export_task_id
 
-    loop = None
     try:
         self.update_progress("Starting matrix export...", 5)
 
         # Run async export in sync context
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(
+        result = run_async(
             _async_export_matrix(
                 self,
                 export_task_id,
@@ -153,12 +150,9 @@ def export_matrix_task(
     except Exception as exc:
         logger.error(f"Export task failed: {exc}")
 
-        # Update ExportTask status to failed (reuse existing loop if available)
+        # Update ExportTask status to failed
         try:
-            if loop is None or loop.is_closed():
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-            loop.run_until_complete(_update_export_status(export_task_id, "failed", str(exc)))
+            run_async(_update_export_status(export_task_id, "failed", str(exc)))
         except Exception as update_exc:
             # CRITICAL: Status update failed - task will appear stuck in DB
             logger.critical(
@@ -179,11 +173,6 @@ def export_matrix_task(
                 ),
             )
         raise
-
-    finally:
-        # Ensure event loop is always closed
-        if loop is not None and not loop.is_closed():
-            loop.close()
 
 
 async def _async_export_matrix(

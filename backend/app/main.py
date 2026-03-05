@@ -133,9 +133,9 @@ async def _ensure_postgres_sync_tasks_schema() -> None:
                         """
                         SELECT EXISTS (
                             SELECT 1
-                            FROM information_schema.tables
-                            WHERE table_schema = current_schema()
-                              AND table_name = 'alembic_version'
+                            FROM pg_class c
+                            WHERE c.relname = 'alembic_version'
+                              AND c.relkind IN ('r', 'p')
                         )
                         """
                     )
@@ -147,22 +147,26 @@ async def _ensure_postgres_sync_tasks_schema() -> None:
                     "startup self-heal may indicate unapplied migrations"
                 )
 
-            sync_tasks_table_exists = bool(
-                await conn.scalar(
-                    text(
-                        """
-                        SELECT EXISTS (
-                            SELECT 1
-                            FROM information_schema.tables
-                            WHERE table_schema = current_schema()
-                              AND table_name = 'sync_tasks'
-                        )
-                        """
-                    )
+            sync_tasks_schema = await conn.scalar(
+                text(
+                    """
+                    SELECT n.nspname
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE c.relname = 'sync_tasks'
+                      AND c.relkind IN ('r', 'p')
+                    ORDER BY
+                      CASE WHEN n.nspname = current_schema() THEN 0 ELSE 1 END,
+                      n.nspname
+                    LIMIT 1
+                    """
                 )
             )
-            if not sync_tasks_table_exists:
+            if not sync_tasks_schema:
                 return
+
+            safe_schema = str(sync_tasks_schema).replace('"', '""')
+            sync_tasks_qualified = f'"{safe_schema}"."sync_tasks"'
 
             heartbeat_column_exists = bool(
                 await conn.scalar(
@@ -170,18 +174,25 @@ async def _ensure_postgres_sync_tasks_schema() -> None:
                         """
                         SELECT EXISTS (
                             SELECT 1
-                            FROM information_schema.columns
-                            WHERE table_schema = current_schema()
-                              AND table_name = 'sync_tasks'
-                              AND column_name = 'heartbeat_at'
+                            FROM pg_attribute a
+                            JOIN pg_class c ON c.oid = a.attrelid
+                            JOIN pg_namespace n ON n.oid = c.relnamespace
+                            WHERE c.relname = 'sync_tasks'
+                              AND n.nspname = :schema_name
+                              AND a.attname = 'heartbeat_at'
+                              AND NOT a.attisdropped
                         )
                         """
-                    )
+                    ),
+                    {"schema_name": str(sync_tasks_schema)},
                 )
             )
             if not heartbeat_column_exists:
                 await conn.execute(
-                    text("ALTER TABLE sync_tasks ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ")
+                    text(
+                        f"ALTER TABLE {sync_tasks_qualified} "
+                        "ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ"
+                    )
                 )
                 logger.warning("Startup self-heal applied: added sync_tasks.heartbeat_at")
 
@@ -191,22 +202,22 @@ async def _ensure_postgres_sync_tasks_schema() -> None:
                         """
                         SELECT EXISTS (
                             SELECT 1
-                            FROM pg_indexes
-                            WHERE schemaname = current_schema()
-                              AND tablename = 'sync_tasks'
-                              AND indexname = 'ix_sync_tasks_status_heartbeat'
+                            FROM pg_class c
+                            JOIN pg_namespace n ON n.oid = c.relnamespace
+                            WHERE c.relkind = 'i'
+                              AND c.relname = 'ix_sync_tasks_status_heartbeat'
+                              AND n.nspname = :schema_name
                         )
                         """
-                    )
+                    ),
+                    {"schema_name": str(sync_tasks_schema)},
                 )
             )
             if not heartbeat_index_exists:
                 await conn.execute(
                     text(
-                        """
-                        CREATE INDEX IF NOT EXISTS ix_sync_tasks_status_heartbeat
-                        ON sync_tasks (status, heartbeat_at, started_at)
-                        """
+                        "CREATE INDEX IF NOT EXISTS ix_sync_tasks_status_heartbeat "
+                        f"ON {sync_tasks_qualified} (status, heartbeat_at, started_at)"
                     )
                 )
                 logger.warning(

@@ -13,6 +13,7 @@ T = TypeVar("T")
 
 _loop: asyncio.AbstractEventLoop | None = None
 _loop_lock = RLock()
+_run_lock = RLock()
 
 
 def _get_or_create_loop() -> asyncio.AbstractEventLoop:
@@ -32,15 +33,16 @@ def run_async(coro: Coroutine[Any, Any, T]) -> T:
     A single reusable loop avoids cross-loop Future attachment issues
     caused by repeatedly creating/closing loops for every task.
     """
-    loop = _get_or_create_loop()
-    try:
-        return loop.run_until_complete(coro)
-    except RuntimeError as exc:
-        if "Event loop is closed" not in str(exc):
-            raise
-        logger.warning("Recreating shared Celery async loop after closure: %s", exc)
-        close_async_loop()
-        return _get_or_create_loop().run_until_complete(coro)
+    with _run_lock:
+        loop = _get_or_create_loop()
+        try:
+            return loop.run_until_complete(coro)
+        except RuntimeError as exc:
+            if "Event loop is closed" not in str(exc):
+                raise
+            logger.warning("Recreating shared Celery async loop after closure: %s", exc)
+            close_async_loop()
+            return _get_or_create_loop().run_until_complete(coro)
 
 
 def close_async_loop() -> None:
