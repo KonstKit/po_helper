@@ -90,3 +90,4 @@ codex/
 
 # Generated exports
 backend/exports/
+exports/rtm_matrix_*.pdf
