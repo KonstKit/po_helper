@@ -212,12 +212,53 @@ async def test_sync_tasks_manual_recovery_endpoint_recovers_stale_running_task(c
     payload = response.json()
     assert payload["recovered"] == 1
     assert payload["project_id"] == project.id
+    assert payload["task_id"] is None
+    assert payload["all"] is False
 
     await db_session.refresh(stale_task)
     task_after_manual_recovery = await db_session.get(SyncTask, stale_task.id)
     assert task_after_manual_recovery is not None
     assert task_after_manual_recovery.status == "failed"
     assert task_after_manual_recovery.error_code == STALE_RUNNING_ERROR_CODE
+
+
+@pytest.mark.asyncio
+async def test_sync_tasks_manual_recovery_endpoint_supports_global_recovery(client, db_session):
+    project = Project(jira_key="RECG", name="Recovery Global Project", status="active")
+    db_session.add(project)
+    await db_session.commit()
+    await db_session.refresh(project)
+
+    stale_at = datetime.now(timezone.utc) - timedelta(hours=4)
+    stale_task = SyncTask(
+        project_id=project.id,
+        task_type="jira_sync",
+        status="running",
+        started_at=stale_at,
+        heartbeat_at=stale_at,
+        trigger="manual",
+    )
+    db_session.add(stale_task)
+    await db_session.commit()
+    await db_session.refresh(stale_task)
+
+    response = await client.post(
+        "/api/v1/traceability/sync-tasks/recover-stale",
+        params={"all": "true"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recovered"] == 1
+    assert payload["all"] is True
+    assert payload["project_id"] is None
+    assert payload["task_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_sync_tasks_manual_recovery_endpoint_requires_scope_or_all(client):
+    response = await client.post("/api/v1/traceability/sync-tasks/recover-stale")
+    assert response.status_code == 400
+    assert "Either project_id/task_id is required, or all=true" in response.text
 
 
 @pytest.mark.asyncio
