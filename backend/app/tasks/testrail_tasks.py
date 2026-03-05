@@ -4,13 +4,13 @@ Celery tasks for TestRail sync and linking.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import asdict
 from typing import Any, Optional
 
 from sqlalchemy import select
 
+from app.core.celery_async_runner import run_async
 from app.core.celery_app import celery_app
 from app.core.database import AsyncSessionLocal
 from app.models.traceability import ConnectorConfig
@@ -81,7 +81,7 @@ def sync_testrail_project(
             return payload
 
     try:
-        return asyncio.run(_run())
+        return run_async(_run())
     except Exception as exc:
         logger.error("TestRail sync task failed: %s", exc)
         return {"status": "error", "message": str(exc)}
@@ -114,7 +114,7 @@ def scheduled_testrail_sync() -> dict[str, Any]:
 
     configs: list[ConnectorConfig] = []
     try:
-        configs = asyncio.run(_load_configs())
+        configs = run_async(_load_configs())
     except Exception as exc:
         logger.error("Scheduled TestRail config load failed: %s", exc)
         return {"status": "error", "message": str(exc), "dispatched": 0, "skipped_configs": 0}

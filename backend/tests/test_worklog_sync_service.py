@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.models import Project, Task, WorkLog
 from app.services.sync.worklog_sync_service import WorklogSyncService
@@ -60,6 +61,7 @@ async def test_sync_worklogs_no_nested_transaction_error_with_active_session(db_
         issues=[_issue("WLTX-1", "2026-03-02T00:00:00.000+0000")],
         db=db_session,
     )
+    await db_session.commit()
 
     assert result.errors == []
     assert result.total_issues_processed == 1
@@ -123,6 +125,7 @@ async def test_sync_worklogs_rolls_back_failed_issue_and_continues(db_session):
         ],
         db=db_session,
     )
+    await db_session.commit()
 
     assert result.total_issues_processed == 2
     assert result.total_worklogs_imported == 1
@@ -136,3 +139,51 @@ async def test_sync_worklogs_rolls_back_failed_issue_and_continues(db_session):
         ).all()
     ]
     assert stored_ids == ["wl-success"]
+
+
+@pytest.mark.asyncio
+async def test_sync_worklogs_ignores_duplicate_worklog_integrity_error(db_session):
+    project = Project(jira_key="WLDUPE", name="Worklog Duplicate Project", status="active")
+    db_session.add(project)
+    await db_session.commit()
+    await db_session.refresh(project)
+
+    task = Task(
+        jira_id="jira-wldupe-1",
+        key="WLDUPE-1",
+        summary="Issue Dupe",
+        status="In Progress",
+        project_id=project.id,
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    service = WorklogSyncService(
+        _FakeJiraService({"WLDUPE-1": [_worklog("wl-dup")]})  # type: ignore[arg-type]
+    )
+    original_upsert = service._upsert_worklog
+
+    async def _duplicate_upsert(worklog: dict[str, object], task_id: int, db) -> None:
+        if worklog.get("id") == "wl-dup":
+            raise IntegrityError(
+                statement="INSERT INTO worklogs ...",
+                params={},
+                orig=Exception(
+                    'duplicate key value violates unique constraint "ix_worklogs_jira_id"'
+                ),
+            )
+        await original_upsert(worklog, task_id, db)
+
+    service._upsert_worklog = _duplicate_upsert  # type: ignore[method-assign]
+
+    result = await service.sync_worklogs(
+        project_key=project.jira_key,
+        project_id=project.id,
+        issues=[_issue("WLDUPE-1", "2026-03-02T00:00:00.000+0000")],
+        db=db_session,
+    )
+    await db_session.commit()
+
+    assert result.total_issues_processed == 1
+    assert result.total_worklogs_imported == 0
+    assert result.errors == []

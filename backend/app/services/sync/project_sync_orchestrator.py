@@ -398,6 +398,7 @@ class ProjectSyncOrchestrator:
                     issues,
                     db,
                 )
+                await db.commit()
                 return result
         except Exception as e:
             logger.error("Worklog sync failed for %s: %s", project_key, e, exc_info=True)

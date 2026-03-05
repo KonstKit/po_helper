@@ -44,6 +44,11 @@ class WorklogSyncService:
     def __init__(self, jira_service: JiraService):
         self.jira_service = jira_service
 
+    @staticmethod
+    def _is_duplicate_worklog_integrity_error(exc: IntegrityError) -> bool:
+        message = str(getattr(exc, "orig", exc)).lower()
+        return "unique" in message and "jira_id" in message
+
     async def sync_worklogs(
         self,
         project_key: str,
@@ -65,6 +70,11 @@ class WorklogSyncService:
 
         Returns:
             WorklogSyncResult with statistics and any errors
+
+        Transaction contract:
+            This service uses per-issue nested transactions (savepoints) for
+            partial-success isolation, but does not commit the outer session.
+            The caller owns the outer commit/rollback lifecycle.
         """
         if not issues:
             logger.warning("No issues provided for worklog sync for project %s", project_key)
@@ -109,22 +119,27 @@ class WorklogSyncService:
                 )
 
             try:
-                issue_result = await self._sync_issue_worklogs(
-                    key,
-                    project_id,
-                    db,
-                    task_id_map=task_id_map,  # Pass pre-fetched map
-                )
-                await db.commit()
+                async with db.begin_nested():
+                    issue_result = await self._sync_issue_worklogs(
+                        key,
+                        project_id,
+                        db,
+                        task_id_map=task_id_map,  # Pass pre-fetched map
+                    )
                 result.total_worklogs_imported += issue_result
             except IntegrityError as e:
-                await db.rollback()
-                logger.warning(
-                    "Worklog sync rolled back for issue %s due to integrity error: %s", key, e
-                )
-                result.errors.append((key, str(e)))
+                if self._is_duplicate_worklog_integrity_error(e):
+                    logger.debug(
+                        "Skipping duplicate worklog race for issue %s: %s",
+                        key,
+                        e,
+                    )
+                else:
+                    logger.warning(
+                        "Worklog sync rolled back for issue %s due to integrity error: %s", key, e
+                    )
+                    result.errors.append((key, str(e)))
             except Exception as e:
-                await db.rollback()
                 logger.error("Failed to sync worklogs for issue %s: %s", key, e, exc_info=True)
                 result.errors.append((key, str(e)))
 

@@ -9,11 +9,11 @@ Provides scheduled tasks for:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.core.celery_async_runner import run_async
 from app.core.celery_app import celery_app
 from app.core.database import AsyncSessionLocal
 
@@ -142,7 +142,7 @@ def execute_rule_task(rule_id: int) -> Dict[str, Any]:
     """
     logger.info("Executing traceability rule %d", rule_id)
     try:
-        result = asyncio.run(_execute_rule_async(rule_id))
+        result = run_async(_execute_rule_async(rule_id))
         logger.info(
             "Rule %d executed: status=%s, links_created=%d",
             rule_id,
@@ -163,7 +163,7 @@ def execute_all_rules_task(project_id: Optional[int] = None) -> List[Dict[str, A
     Optionally filter by project_id.
     """
     logger.info("Executing all enabled rules (project_id=%s)", project_id)
-    results = asyncio.run(_execute_all_enabled_rules_async(project_id))
+    results = run_async(_execute_all_enabled_rules_async(project_id))
     logger.info("Executed %d rules", len(results))
     return results
 
@@ -186,7 +186,7 @@ def recompute_derived_links_task(
         from_type,
         to_type,
     )
-    result = asyncio.run(_recompute_derived_links_async(project_id, from_type, to_type))
+    result = run_async(_recompute_derived_links_async(project_id, from_type, to_type))
     logger.info(
         "Derived links recomputed: computed=%d, created=%d",
         result.get("computed", 0),
@@ -203,7 +203,7 @@ def validate_project_task(project_id: int) -> Dict[str, Any]:
     Returns summary of validation results.
     """
     logger.info("Running validation for project %d", project_id)
-    result = asyncio.run(_validate_project_async(project_id))
+    result = run_async(_validate_project_async(project_id))
     logger.info(
         "Validation complete: status=%s, coverage=%.1f%%",
         result.get("status"),
@@ -309,7 +309,7 @@ def batch_materialize_task(project_id: int) -> Dict[str, Any]:
     results = []
     for from_type, to_type in derivation_configs:
         try:
-            result = asyncio.run(
+            result = run_async(
                 _recompute_derived_links_async(project_id, from_type, to_type)
             )
             results.append(result)
