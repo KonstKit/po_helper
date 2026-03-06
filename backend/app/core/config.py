@@ -25,8 +25,8 @@ class Settings(BaseSettings):
         # Fallback to SQLite for local development (shouldn't reach here with default set)
         return "sqlite+aiosqlite:///./po_helper.db"
 
-    DB_POOL_SIZE: int = 5
-    DB_POOL_MAX_OVERFLOW: int = 10
+    DB_POOL_SIZE: int = 3
+    DB_POOL_MAX_OVERFLOW: int = 2
     DB_POOL_TIMEOUT: int = 30
     DB_POOL_RECYCLE: int = 1800
     DB_POOL_PRE_PING: bool = True
@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: Optional[str] = None
     CELERY_TASK_ALWAYS_EAGER: bool = False
     CELERY_USE_IN_DEV: bool = False
+    CELERY_WORKER_CONCURRENCY: int = 4
+    CELERY_WORKER_PREFETCH_MULTIPLIER: int = 1
 
     # Redis cache / broker
     REDIS_URL: str = "redis://localhost:6379/0"

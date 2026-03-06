@@ -5,19 +5,22 @@ import logging
 from time import perf_counter
 
 from fastapi import APIRouter, Response, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.services.jira_service import jira_service
 from app.services.confluence_service import confluence_service
 from app.core.metrics import metrics
-from app.core.database import get_db
+from app.core.config import settings
+from app.core.database import AsyncSessionLocal, get_db
 from app.models.settings import IntegrationSetting
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 HEALTH_INTEGRATIONS_SLOW_THRESHOLD_SECONDS = 2.0
+READINESS_TIMEOUT_SECONDS = 3.0
 
 
 def _record_integrations_guardrail(
@@ -71,6 +74,60 @@ def _record_integrations_guardrail(
 async def health_check():
     """Basic health check endpoint."""
     return {"status": "healthy", "service": "po_helper"}
+
+
+async def _check_database_readiness() -> tuple[bool, str]:
+    try:
+        async with AsyncSessionLocal() as db:
+            await asyncio.wait_for(db.execute(text("SELECT 1")), timeout=READINESS_TIMEOUT_SECONDS)
+        return True, "ok"
+    except asyncio.TimeoutError:
+        return False, "timeout"
+    except Exception:
+        logger.warning("health.ready.database_failed", exc_info=True)
+        return False, "error"
+
+
+def _check_redis_readiness() -> tuple[bool, str]:
+    if not settings.REDIS_URL:
+        return False, "not_configured"
+
+    try:
+        import redis
+
+        client = redis.from_url(
+            settings.REDIS_URL,
+            decode_responses=True,
+            socket_connect_timeout=READINESS_TIMEOUT_SECONDS,
+            socket_timeout=READINESS_TIMEOUT_SECONDS,
+        )
+        try:
+            client.ping()
+        finally:
+            client.close()
+        return True, "ok"
+    except ImportError:
+        return False, "client_unavailable"
+    except Exception:
+        logger.warning("health.ready.redis_failed", exc_info=True)
+        return False, "error"
+
+
+@router.get("/ready")
+async def readiness_check() -> JSONResponse:
+    db_ok, db_status = await _check_database_readiness()
+    redis_ok, redis_status = _check_redis_readiness()
+    is_ready = db_ok and redis_ok
+
+    payload = {
+        "status": "ready" if is_ready else "degraded",
+        "service": "po_helper",
+        "dependencies": {
+            "database": {"ok": db_ok, "status": db_status},
+            "redis": {"ok": redis_ok, "status": redis_status},
+        },
+    }
+    return JSONResponse(status_code=200 if is_ready else 503, content=payload)
 
 
 def _jira_status():

@@ -35,6 +35,8 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     # Set the worker pool type
     worker_pool=worker_pool,
+    worker_concurrency=settings.CELERY_WORKER_CONCURRENCY,
+    worker_prefetch_multiplier=settings.CELERY_WORKER_PREFETCH_MULTIPLIER,
     beat_schedule={
         "jira-sync-every-15-min": {
             "task": "jira.scheduled_sync",

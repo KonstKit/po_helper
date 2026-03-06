@@ -98,3 +98,45 @@ def test_jira_boards_guardrail_marks_error_requests(monkeypatch: Any, caplog: An
     assert any(name == "api_endpoint_duration_seconds" for name, _, _ in dummy.observations)
     assert any(name == "api_endpoint_error_total" for name, _, _ in dummy.increments)
     assert "jira.project_boards.error" in caplog.text
+
+
+async def test_health_ready_returns_200_when_dependencies_are_available(
+    monkeypatch: Any, client: Any
+) -> None:
+    async def _db_ready() -> tuple[bool, str]:
+        return True, "ok"
+
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._check_database_readiness", _db_ready)
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health._check_redis_readiness",
+        lambda: (True, "ok"),
+    )
+
+    response = await client.get("/api/v1/health/ready")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ready"
+
+
+async def test_health_ready_returns_503_when_dependencies_are_degraded(
+    monkeypatch: Any, client: Any
+) -> None:
+    async def _db_degraded() -> tuple[bool, str]:
+        return False, "timeout"
+
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health._check_database_readiness",
+        _db_degraded,
+    )
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health._check_redis_readiness",
+        lambda: (False, "error"),
+    )
+
+    response = await client.get("/api/v1/health/ready")
+    data = response.json()
+
+    assert response.status_code == 503
+    assert data["status"] == "degraded"
+    assert data["dependencies"]["database"]["status"] == "timeout"
+    assert data["dependencies"]["redis"]["status"] == "error"
