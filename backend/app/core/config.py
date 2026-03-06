@@ -98,6 +98,7 @@ class Settings(BaseSettings):
     JIRA_PAGE_SIZE: int = 50  # Fetch 50 items per request
     JIRA_MAX_RESULTS: int = 500  # Maximum total results to fetch
     JIRA_WORKLOG_MAX_PAGES: int = 2000  # Hard safety cap for worklog pagination loops
+    JIRA_SPRINT_ISSUES_MAX_PAGES: int = 500  # Hard safety cap for sprint issues pagination
 
     # Cache settings for Jira data
     JIRA_CACHE_TTL: int = 300  # Cache TTL in seconds (5 minutes)

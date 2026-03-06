@@ -83,7 +83,7 @@ class _SyncHttpClientRecorder:
     email = "jira@example.com"
     api_token = "token"
 
-    def __init__(self, responses: List[Dict[str, Any]]):
+    def __init__(self, responses: List[Any]):
         self._responses = list(responses)
         self.calls: List[Dict[str, Any]] = []
 
@@ -92,7 +92,10 @@ class _SyncHttpClientRecorder:
 
     def get(self, endpoint: str, **kwargs: Any) -> _SyncFakeResponse:
         self.calls.append({"endpoint": endpoint, **kwargs})
-        payload = self._responses.pop(0) if self._responses else {"values": []}
+        action = self._responses.pop(0) if self._responses else {"values": []}
+        if isinstance(action, Exception):
+            raise action
+        payload = action
         return _SyncFakeResponse(payload=payload)
 
 
@@ -267,5 +270,103 @@ def test_list_sprints_is_fail_fast_without_retries(monkeypatch: pytest.MonkeyPat
     for call in http_client.calls:
         assert call["timeout"] == 10
         assert call["max_retries"] == 0
+    assert circuit_breaker.success_calls == 1
+    assert circuit_breaker.failure_calls == 0
+
+
+def test_list_issues_in_sprint_stops_by_total_and_max_results(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("app.services.jira.board_service.settings.JIRA_SPRINT_ISSUES_MAX_PAGES", 50)
+
+    http_client = _SyncHttpClientRecorder(
+        responses=[
+            {
+                "startAt": 0,
+                "maxResults": 2,
+                "total": 3,
+                "issues": [{"key": "PRJ-1"}, {"key": "PRJ-2"}],
+            },
+            {
+                "startAt": 2,
+                "maxResults": 2,
+                "total": 3,
+                "issues": [{"key": "PRJ-3"}],
+            },
+        ],
+    )
+    circuit_breaker = _DummyCircuitBreaker()
+    service = JiraBoardService(
+        http_client=http_client,  # type: ignore[arg-type]
+        circuit_breaker=circuit_breaker,
+        version_resolver=_DummyVersionResolver(["3"]),
+    )
+
+    issues = service.list_issues_in_sprint(777)
+
+    assert [item["key"] for item in issues] == ["PRJ-1", "PRJ-2", "PRJ-3"]
+    assert len(http_client.calls) == 2
+    assert circuit_breaker.success_calls == 1
+    assert circuit_breaker.failure_calls == 0
+
+
+def test_list_issues_in_sprint_stops_when_page_limit_reached(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("app.services.jira.board_service.settings.JIRA_SPRINT_ISSUES_MAX_PAGES", 2)
+
+    http_client = _SyncHttpClientRecorder(
+        responses=[
+            {
+                "startAt": 0,
+                "maxResults": 2,
+                "total": 10,
+                "issues": [{"key": "PRJ-1"}, {"key": "PRJ-2"}],
+            },
+            {
+                "startAt": 2,
+                "maxResults": 2,
+                "total": 10,
+                "issues": [{"key": "PRJ-3"}, {"key": "PRJ-4"}],
+            },
+            {
+                "startAt": 4,
+                "maxResults": 2,
+                "total": 10,
+                "issues": [{"key": "PRJ-5"}, {"key": "PRJ-6"}],
+            },
+        ],
+    )
+    circuit_breaker = _DummyCircuitBreaker()
+    service = JiraBoardService(
+        http_client=http_client,  # type: ignore[arg-type]
+        circuit_breaker=circuit_breaker,
+        version_resolver=_DummyVersionResolver(["3"]),
+    )
+
+    issues = service.list_issues_in_sprint(778)
+
+    assert [item["key"] for item in issues] == ["PRJ-1", "PRJ-2", "PRJ-3", "PRJ-4"]
+    assert len(http_client.calls) == 2
+    assert circuit_breaker.success_calls == 1
+    assert circuit_breaker.failure_calls == 0
+
+
+def test_list_issues_in_sprint_is_fail_fast_without_retries(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("app.services.jira.board_service.settings.JIRA_HTTP_TIMEOUT", 30)
+    monkeypatch.setattr("app.services.jira.board_service.settings.JIRA_SPRINT_ISSUES_MAX_PAGES", 50)
+
+    http_client = _SyncHttpClientRecorder(
+        responses=[{"startAt": 0, "maxResults": 50, "total": 0, "issues": []}],
+    )
+    circuit_breaker = _DummyCircuitBreaker()
+    service = JiraBoardService(
+        http_client=http_client,  # type: ignore[arg-type]
+        circuit_breaker=circuit_breaker,
+        version_resolver=_DummyVersionResolver(["3"]),
+    )
+
+    issues = service.list_issues_in_sprint(779)
+
+    assert issues == []
+    assert len(http_client.calls) == 1
+    assert http_client.calls[0]["timeout"] == 15
+    assert http_client.calls[0]["max_retries"] == 0
     assert circuit_breaker.success_calls == 1
     assert circuit_breaker.failure_calls == 0

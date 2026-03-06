@@ -192,12 +192,39 @@ class JiraBoardService:
         endpoint = f"/rest/agile/1.0/sprint/{sprint_id}/issue"
         start_at = 0
         all_items: List[Dict[str, Any]] = []
+        max_pages = max(
+            1,
+            int(getattr(settings, "JIRA_SPRINT_ISSUES_MAX_PAGES", 500) or 500),
+        )
+        seen_starts = set()
+        sprint_issues_timeout = min(int(getattr(settings, "JIRA_HTTP_TIMEOUT", 25) or 25), 15)
 
         try:
             while True:
+                if start_at in seen_starts:
+                    logger.warning(
+                        "Detected sprint issues pagination loop for sprint %s, startAt=%s",
+                        sprint_id,
+                        start_at,
+                    )
+                    break
+                if len(seen_starts) >= max_pages:
+                    logger.warning(
+                        "Sprint issues pagination page limit reached for sprint %s: %s pages",
+                        sprint_id,
+                        max_pages,
+                    )
+                    break
+                seen_starts.add(start_at)
+
                 params = {"startAt": start_at, "maxResults": 50, "fields": "key"}
 
-                response = self.http_client.get(endpoint, params=params)
+                response = self.http_client.get(
+                    endpoint,
+                    params=params,
+                    timeout=sprint_issues_timeout,
+                    max_retries=0,
+                )
                 response.raise_for_status()
 
                 # Check content type
@@ -214,9 +241,34 @@ class JiraBoardService:
                 issues = data.get("issues", [])
                 all_items.extend(issues)
 
-                if len(issues) == 0:
+                if not issues:
                     break
-                start_at += len(issues)
+
+                response_start_at = data.get("startAt") if isinstance(data, dict) else None
+                current_start_at = (
+                    int(response_start_at) if isinstance(response_start_at, int) else start_at
+                )
+                response_max_results = data.get("maxResults") if isinstance(data, dict) else None
+                current_max_results = (
+                    int(response_max_results)
+                    if isinstance(response_max_results, int) and response_max_results > 0
+                    else params["maxResults"]
+                )
+                next_start_at = current_start_at + len(issues)
+                total_count = data.get("total") if isinstance(data, dict) else None
+
+                if isinstance(total_count, int) and next_start_at >= total_count:
+                    break
+                if len(issues) < current_max_results:
+                    break
+                if next_start_at <= current_start_at:
+                    logger.warning(
+                        "Non-advancing sprint issues pagination for sprint %s, breaking at %s",
+                        sprint_id,
+                        current_start_at,
+                    )
+                    break
+                start_at = next_start_at
 
             self.circuit_breaker.record_success()
             return all_items
