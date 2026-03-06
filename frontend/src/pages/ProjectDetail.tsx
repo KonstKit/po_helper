@@ -31,6 +31,7 @@ import {
 import type { SelectChangeEvent } from "@mui/material/Select";
 import { GridColDef, GridPaginationModel } from "@mui/x-data-grid";
 import {
+  api,
   getProjectById,
   listTasksByProjectPaginated,
   syncJiraProject,
@@ -92,6 +93,12 @@ const formatHours = (value: unknown): string => {
   return Number(rounded.toFixed(1)).toString();
 };
 
+type SyncTaskStatus = {
+  id?: number;
+  task_type?: string;
+  status?: string;
+};
+
 const ProjectDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -142,6 +149,11 @@ const ProjectDetail = () => {
     step: string;
   }>({ active: false, percent: 0, step: "" });
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncStatusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const syncStatusPollStateRef = useRef<{ startedAt: number; seenRunning: boolean }>({
+    startedAt: 0,
+    seenRunning: false,
+  });
   const purgePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const purgeReqCtrlRef = useRef<AbortController | null>(null);
   useEffect(() => {
@@ -322,6 +334,84 @@ const ProjectDetail = () => {
     const msg = getErrorMessage(e, "").toLowerCase();
     return getErrorCode(e) === "ECONNABORTED" || msg.includes("timeout");
   };
+  const clearSyncStatusPoll = useCallback(() => {
+    if (syncStatusPollRef.current) {
+      clearInterval(syncStatusPollRef.current);
+      syncStatusPollRef.current = null;
+    }
+    syncStatusPollStateRef.current = { startedAt: 0, seenRunning: false };
+  }, []);
+
+  const startSyncStatusPoll = useCallback(
+    (projectId: number) => {
+      clearSyncStatusPoll();
+      syncStatusPollStateRef.current = { startedAt: Date.now(), seenRunning: false };
+
+      let pollInFlight = false;
+      syncStatusPollRef.current = setInterval(async () => {
+        if (pollInFlight) {
+          return;
+        }
+        pollInFlight = true;
+        try {
+          const response = await api.get<SyncTaskStatus[]>("/v1/traceability/sync-tasks", {
+            params: { project_id: projectId },
+            timeout: 8000,
+          });
+
+          const tasks = Array.isArray(response.data) ? response.data : [];
+          const latestJiraSyncTask = tasks.find((task) => task?.task_type === "jira_sync");
+          const hasRunningJiraSync = tasks.some(
+            (task) => task?.task_type === "jira_sync" && task?.status === "running",
+          );
+
+          if (hasRunningJiraSync) {
+            syncStatusPollStateRef.current.seenRunning = true;
+            return;
+          }
+
+          const elapsedMs = Date.now() - syncStatusPollStateRef.current.startedAt;
+          const canFinalize =
+            syncStatusPollStateRef.current.seenRunning || elapsedMs >= 30000;
+
+          if (canFinalize) {
+            clearSyncStatusPoll();
+            if (syncTimerRef.current) {
+              clearInterval(syncTimerRef.current);
+              syncTimerRef.current = null;
+            }
+            setSyncProgress({
+              active: false,
+              percent: 100,
+              step: "Sync complete",
+            });
+            setSyncing(false);
+            await loadTasksPage();
+            await loadProjectDetails(true);
+            if (latestJiraSyncTask?.status === "failed") {
+              setToast({
+                open: true,
+                type: "error",
+                msg: "Sync failed (status poll fallback)",
+              });
+            } else {
+              setToast({
+                open: true,
+                type: "success",
+                msg: "Sync completed (status poll fallback)",
+              });
+            }
+          }
+        } catch (err) {
+          void err;
+        } finally {
+          pollInFlight = false;
+        }
+      }, 5000);
+    },
+    [clearSyncStatusPoll, loadProjectDetails, loadTasksPage],
+  );
+
   const handleManualSync = async () => {
     if (!project?.jira_key) {
       setToast({
@@ -367,7 +457,11 @@ const ProjectDetail = () => {
         type: "info",
         msg: "Sync started in background. Data will refresh automatically when complete.",
       });
+      if (id && !Number.isNaN(Number(id))) {
+        startSyncStatusPoll(Number(id));
+      }
     } catch (e) {
+      clearSyncStatusPoll();
       setSyncing(false);
       setSyncProgress({ active: false, percent: 0, step: "" });
       setToast({ open: true, type: "error", msg: getErrorMessage(e, "Sync failed") });
@@ -1122,6 +1216,7 @@ const ProjectDetail = () => {
       // ensure intervals are cleaned up on unmount/navigation
       if (syncTimerRef.current) clearInterval(syncTimerRef.current);
       syncTimerRef.current = null;
+      clearSyncStatusPoll();
       if (autoSyncTimeoutRef.current !== null) {
         clearTimeout(autoSyncTimeoutRef.current);
         autoSyncTimeoutRef.current = null;
@@ -1131,7 +1226,7 @@ const ProjectDetail = () => {
       if (purgeReqCtrlRef.current) purgeReqCtrlRef.current.abort();
       purgeReqCtrlRef.current = null;
     };
-  }, [id, loadProjectDetails, loadSprintInsights, loadTasksPage]);
+  }, [clearSyncStatusPoll, id, loadProjectDetails, loadSprintInsights, loadTasksPage]);
 
   // WebSocket: listen for backend sync completion and refresh tasks (only if Jira configured and auto-sync not disabled)
   useEffect(() => {
@@ -1154,6 +1249,7 @@ const ProjectDetail = () => {
               typeof id === "string" &&
               Number(id) === Number(msg?.project_id)
             ) {
+              clearSyncStatusPoll();
               if (syncTimerRef.current) {
                 clearInterval(syncTimerRef.current);
                 syncTimerRef.current = null;
@@ -1173,6 +1269,7 @@ const ProjectDetail = () => {
               typeof id === "string" &&
               Number(id) === Number(msg?.project_id)
             ) {
+              clearSyncStatusPoll();
               if (syncTimerRef.current) {
                 clearInterval(syncTimerRef.current);
                 syncTimerRef.current = null;
@@ -1204,12 +1301,13 @@ const ProjectDetail = () => {
     })();
     return () => {
       closed = true;
+      clearSyncStatusPoll();
       try {
         wsRef.current?.close();
       } catch (err) { void err; }
       wsRef.current = null;
     };
-  }, [id, loadProjectDetails, loadTasksPage]);
+  }, [clearSyncStatusPoll, id, loadProjectDetails, loadTasksPage]);
 
   const taskColumns: GridColDef<TaskItem>[] = [
     { field: "key", headerName: "Key", width: 120 },

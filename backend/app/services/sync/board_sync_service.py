@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db_utils import supports_for_update
@@ -117,30 +117,27 @@ class BoardSyncService:
             return result
 
         try:
-            async with db.begin():
-                sprints = self.jira_service.list_sprints(board_id)
+            sprints = await asyncio.to_thread(self.jira_service.list_sprints, board_id)
 
-                for sprint in sprints:
-                    try:
-                        tasks_linked = await self._sync_sprint(
-                            sprint,
-                            project_id,
-                            db,
-                        )
+            for sprint in sprints:
+                try:
+                    tasks_linked = await self._sync_sprint(
+                        sprint,
+                        project_id,
+                        db,
+                    )
 
-                        result.total_sprints_synced += 1
-                        result.total_tasks_linked += tasks_linked
+                    result.total_sprints_synced += 1
+                    result.total_tasks_linked += tasks_linked
 
-                    except Exception as e:
-                        sprint_name = sprint.get("name", "Unknown")
-                        logger.error("Failed to sync sprint %s: %s", sprint_name, e, exc_info=True)
-                        result.errors.append((sprint_name, str(e)))
+                except Exception as e:
+                    sprint_name = sprint.get("name", "Unknown")
+                    logger.error("Failed to sync sprint %s: %s", sprint_name, e, exc_info=True)
+                    result.errors.append((sprint_name, str(e)))
 
-        except IntegrityError:
-            await db.rollback()
-            logger.warning(
-                "Duplicate sprint detected during sync for project %d; continuing", project_id
-            )
+        except Exception as e:
+            logger.error("Failed to fetch sprints for board %s: %s", board_id, e, exc_info=True)
+            result.errors.append((f"board:{board_id}", str(e)))
 
         return result
 
@@ -160,46 +157,55 @@ class BoardSyncService:
         if not sprint_jira_id:
             return 0
 
-        # Find or create sprint
-        sel = select(Sprint).where(Sprint.jira_id == str(sprint_jira_id))
-        if supports_for_update(db):
-            sel = sel.with_for_update()
-
-        db_sprint = (await db.execute(sel)).scalar_one_or_none()
-
-        created_new = False
-        if not db_sprint:
-            db_sprint = Sprint(jira_id=str(sprint_jira_id))
-            db.add(db_sprint)
-            created_new = True
-
-        # Update sprint fields
-        name_val = sprint.get("name")
-        db_sprint.name = str(name_val) if name_val is not None else "Unknown"
-        db_sprint.goal = sprint.get("goal")
-        db_sprint.state = sprint.get("state")
-        db_sprint.project_id = project_id
-        db_sprint.start_date = parse_datetime(sprint.get("startDate"))
-        db_sprint.end_date = parse_datetime(sprint.get("endDate"))
-        db_sprint.complete_date = parse_datetime(sprint.get("completeDate"))
-
-        if created_new:
-            # Ensure PK available for relation updates
-            await db.flush()
-
-        # Link tasks to sprint
-        tasks_linked = await self._link_sprint_tasks(
+        # Fetch sprint issues outside DB transaction to avoid long-lived
+        # open transactions while waiting on Jira network calls.
+        sprint_issues = await asyncio.to_thread(
+            self.jira_service.list_issues_in_sprint,
             sprint_jira_id,
-            project_id,
-            db_sprint.id,
-            db,
         )
+        issue_keys = [item.get("key") for item in sprint_issues if item.get("key")]
+
+        async with db.begin():
+            # Find or create sprint
+            sel = select(Sprint).where(Sprint.jira_id == str(sprint_jira_id))
+            if supports_for_update(db):
+                sel = sel.with_for_update()
+
+            db_sprint = (await db.execute(sel)).scalar_one_or_none()
+
+            created_new = False
+            if not db_sprint:
+                db_sprint = Sprint(jira_id=str(sprint_jira_id))
+                db.add(db_sprint)
+                created_new = True
+
+            # Update sprint fields
+            name_val = sprint.get("name")
+            db_sprint.name = str(name_val) if name_val is not None else "Unknown"
+            db_sprint.goal = sprint.get("goal")
+            db_sprint.state = sprint.get("state")
+            db_sprint.project_id = project_id
+            db_sprint.start_date = parse_datetime(sprint.get("startDate"))
+            db_sprint.end_date = parse_datetime(sprint.get("endDate"))
+            db_sprint.complete_date = parse_datetime(sprint.get("completeDate"))
+
+            if created_new:
+                # Ensure PK available for relation updates
+                await db.flush()
+
+            # Link tasks to sprint
+            tasks_linked = await self._link_sprint_tasks(
+                issue_keys,
+                project_id,
+                db_sprint.id,
+                db,
+            )
 
         return tasks_linked
 
     async def _link_sprint_tasks(
         self,
-        sprint_jira_id: int,
+        issue_keys: List[str],
         project_id: int,
         sprint_db_id: int,
         db: AsyncSession,
@@ -210,14 +216,11 @@ class BoardSyncService:
         Returns:
             Number of tasks linked
         """
-        sprint_issues = self.jira_service.list_issues_in_sprint(sprint_jira_id)
-
-        keys = [item.get("key") for item in sprint_issues if item.get("key")]
-        if not keys:
+        if not issue_keys:
             return 0
 
         # Find tasks by key and link to sprint
-        tasks_query = select(Task).where(Task.key.in_(keys), Task.project_id == project_id)
+        tasks_query = select(Task).where(Task.key.in_(issue_keys), Task.project_id == project_id)
 
         tasks = (await db.execute(tasks_query)).scalars().all()
         tasks_linked = 0

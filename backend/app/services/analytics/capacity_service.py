@@ -36,17 +36,16 @@ async def get_sprint_capacity(
         duration_days = max(1, ((end or start) - start).days) if (start and end) else 7
         weeks = max(1.0, round(duration_days / 7.0, 2))
 
+        assignee_expr = func.coalesce(Task.assignee_email, Task.assignee_name, "unassigned")
         planned_stmt = (
             select(
-                func.coalesce(Task.assignee_email, Task.assignee_name, "unassigned").label(
-                    "assignee"
-                ),
+                assignee_expr.label("assignee"),
                 Task.assignee_email.label("email"),
                 func.coalesce(func.sum(Task.estimate_hours), 0.0).label("planned_hours"),
             )
             .where(Task.sprint_id == sprint_id)
             .group_by(
-                func.coalesce(Task.assignee_email, Task.assignee_name, "unassigned"),
+                assignee_expr,
                 Task.assignee_email,
             )
         )

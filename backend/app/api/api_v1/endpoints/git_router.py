@@ -263,14 +263,23 @@ async def github_project_pull_requests(
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Fetch pull requests from GitHub for the project's linked repository."""
+    def _empty_pulls(reason: str) -> Dict[str, Any]:
+        return {
+            "repository": "",
+            "state": state,
+            "count": 0,
+            "pulls": [],
+            "reason": reason,
+        }
+
     result = await db.execute(select(IntegrationSetting).where(IntegrationSetting.kind == "github"))
     setting = result.scalar_one_or_none()
     if not setting or not setting.api_token:
-        raise HTTPException(status_code=400, detail="GitHub integration is not configured")
+        return _empty_pulls("github_not_configured")
 
     token = decrypt_str(setting.api_token)
     if not token:
-        raise HTTPException(status_code=400, detail="GitHub token is not available")
+        return _empty_pulls("github_token_unavailable")
 
     repo_result = await db.execute(
         select(Repository.repo_slug)
@@ -280,7 +289,7 @@ async def github_project_pull_requests(
     )
     repo_row = repo_result.first()
     if not repo_row:
-        raise HTTPException(status_code=404, detail="No GitHub repository linked to this project")
+        return _empty_pulls("no_github_repository_linked")
 
     repo_slug = repo_row[0]
     base_url = setting.base_url or None

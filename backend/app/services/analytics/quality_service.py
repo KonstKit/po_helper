@@ -31,14 +31,15 @@ async def get_sprint_quality(
         done = counts["done"] or 0
         blockers = counts["blockers"] or 0
 
+        priority_expr = func.coalesce(Task.priority, "Unspecified")
         bugs_stmt = (
             select(
-                func.coalesce(Task.priority, "Unspecified").label("priority"),
+                priority_expr.label("priority"),
                 func.count(Task.id).label("bug_count"),
             )
             .where(Task.sprint_id == sprint_id)
             .where(func.lower(Task.task_type) == "bug")
-            .group_by(func.coalesce(Task.priority, "Unspecified"))
+            .group_by(priority_expr)
         )
         bugs_rows = (await db.execute(bugs_stmt)).mappings().all()
         bugs = {row["priority"]: row["bug_count"] for row in bugs_rows}
