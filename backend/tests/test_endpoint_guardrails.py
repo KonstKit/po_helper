@@ -168,6 +168,30 @@ async def test_health_ready_allows_redis_not_configured_when_optional(
     assert data["dependencies"]["redis"]["required"] is False
 
 
+async def test_health_ready_allows_redis_errors_when_optional(
+    monkeypatch: Any, client: Any
+) -> None:
+    async def _db_ready() -> tuple[bool, str]:
+        return True, "ok"
+
+    async def _redis_error() -> tuple[bool, str]:
+        return False, "error"
+
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._check_database_readiness", _db_ready)
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._check_redis_readiness", _redis_error)
+    monkeypatch.setattr(settings, "CELERY_ENABLED", False)
+    monkeypatch.setattr(settings, "REDIS_URL", "redis://unavailable:6381/0")
+
+    response = await client.get("/api/v1/health/ready")
+    data = response.json()
+
+    assert response.status_code == 200
+    assert data["status"] == "ready"
+    assert data["dependencies"]["redis"]["ok"] is False
+    assert data["dependencies"]["redis"]["status"] == "error"
+    assert data["dependencies"]["redis"]["required"] is False
+
+
 async def test_health_ready_requires_redis_when_celery_enabled(
     monkeypatch: Any, client: Any
 ) -> None:
