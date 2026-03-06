@@ -4,7 +4,7 @@ Provides robust background processing with retry logic and progress tracking.
 """
 
 from typing import Optional, Dict, Any, cast
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import logging
 from celery import Task, states
 from sqlalchemy import select
@@ -17,9 +17,53 @@ from app.models import IntegrationSetting, Project
 from app.core.crypto import decrypt_str
 from app.core.config import settings
 from app.services.jira_service import jira_service
+from app.models.traceability import SyncTask
 import json
 
 logger = logging.getLogger(__name__)
+
+
+async def _load_projects_and_running_syncs() -> tuple[list[Project], set[int]]:
+    async with AsyncSessionLocal() as db:
+        setting = (
+            await db.execute(
+                select(IntegrationSetting).where(IntegrationSetting.kind == "jira")
+            )
+        ).scalar_one_or_none()
+        if not setting or not setting.api_token:
+            return [], set()
+
+        result = await db.execute(
+            select(Project).where(Project.status == "active").order_by(Project.id)
+        )
+        projects = list(result.scalars().all())
+        project_ids = [project.id for project in projects]
+        if not project_ids:
+            return projects, set()
+
+        fresh_after_dt = datetime.now(timezone.utc) - timedelta(
+            seconds=max(
+                1,
+                int(getattr(settings, "SYNC_TASK_ACTIVE_HEARTBEAT_GRACE_SECONDS", 900) or 900),
+            )
+        )
+
+        running_result = await db.execute(
+            select(SyncTask.project_id)
+            .where(
+                SyncTask.task_type == "jira_sync",
+                SyncTask.status == "running",
+                SyncTask.project_id.in_(project_ids),
+                (
+                    (SyncTask.heartbeat_at >= fresh_after_dt)
+                    | ((SyncTask.heartbeat_at.is_(None)) & (SyncTask.started_at >= fresh_after_dt))
+                ),
+            )
+        )
+        running_project_ids = {
+            project_id for project_id in running_result.scalars().all() if project_id is not None
+        }
+        return projects, running_project_ids
 
 
 class JiraSyncTask(Task):
@@ -200,36 +244,33 @@ def scheduled_jira_sync() -> Dict[str, Any]:
     """Scheduled task to sync all active Jira projects."""
     logger.info("Running scheduled Jira sync")
 
-    async def _load_projects() -> list[Project]:
-        async with AsyncSessionLocal() as db:
-            setting = (
-                await db.execute(
-                    select(IntegrationSetting).where(IntegrationSetting.kind == "jira")
-                )
-            ).scalar_one_or_none()
-            if not setting or not setting.api_token:
-                return []
-
-            result = await db.execute(
-                select(Project).where(Project.status == "active").order_by(Project.id)
-            )
-            return list(result.scalars().all())
-
-    projects = run_async(_load_projects())
+    projects, running_project_ids = run_async(_load_projects_and_running_syncs())
 
     if not projects:
         logger.info("No active Jira projects or Jira not configured; skipping scheduled sync")
         return {"status": "skipped", "dispatched": 0}
 
     dispatched = 0
+    skipped_running = 0
     for project in projects:
         if not project.jira_key:
+            continue
+        if project.id in running_project_ids:
+            skipped_running += 1
+            logger.info(
+                "Skipping scheduled Jira sync for project=%s: fresh running sync already exists",
+                project.jira_key,
+            )
             continue
         sync_jira_project.delay(project.jira_key, project.id, None, "schedule")
         dispatched += 1
 
-    logger.info("Scheduled Jira sync dispatched for %d project(s)", dispatched)
-    return {"status": "ok", "dispatched": dispatched}
+    logger.info(
+        "Scheduled Jira sync dispatched for %d project(s), skipped_running=%d",
+        dispatched,
+        skipped_running,
+    )
+    return {"status": "ok", "dispatched": dispatched, "skipped_running": skipped_running}
 
 
 redis_client: Any = cast(Any, _redis_client)

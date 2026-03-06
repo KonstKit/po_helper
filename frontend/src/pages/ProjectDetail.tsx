@@ -82,6 +82,12 @@ import { getErrorMessage, getErrorCode } from "../utils/errorUtils";
 import { normalizeQualityGateProvider } from "../utils/qualityGate";
 import { getCanonicalSprintId, selectActiveSprint } from "../utils/sprintNormalization";
 import ProjectDetailTabs from "./projectDetail/ProjectDetailTabs";
+import {
+  getNextSyncProgress,
+  getSyncProgressFromTask,
+  selectRelevantJiraSyncTask,
+  type JiraSyncTaskStatus,
+} from "./projectDetail/syncProgress";
 
 const cacheKeyForTasks = (projectId: number) =>
   `project_tasks_cache_${projectId}`;
@@ -91,12 +97,6 @@ const formatHours = (value: unknown): string => {
   if (!Number.isFinite(num)) return "0";
   const rounded = Math.round(num * 10) / 10;
   return Number(rounded.toFixed(1)).toString();
-};
-
-type SyncTaskStatus = {
-  id?: number;
-  task_type?: string;
-  status?: string;
 };
 
 const ProjectDetail = () => {
@@ -150,9 +150,14 @@ const ProjectDetail = () => {
   }>({ active: false, percent: 0, step: "" });
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncStatusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const syncStatusPollStateRef = useRef<{ startedAt: number; seenRunning: boolean }>({
+  const syncStatusPollStateRef = useRef<{
+    startedAt: number;
+    seenRunning: boolean;
+    relevantTaskNotBeforeMs: number;
+  }>({
     startedAt: 0,
     seenRunning: false,
+    relevantTaskNotBeforeMs: 0,
   });
   const purgePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const purgeReqCtrlRef = useRef<AbortController | null>(null);
@@ -334,18 +339,49 @@ const ProjectDetail = () => {
     const msg = getErrorMessage(e, "").toLowerCase();
     return getErrorCode(e) === "ECONNABORTED" || msg.includes("timeout");
   };
+  const stopSyncProgressTicker = useCallback(() => {
+    if (syncTimerRef.current) {
+      clearInterval(syncTimerRef.current);
+      syncTimerRef.current = null;
+    }
+  }, []);
+
+  const startSyncProgressTicker = useCallback(
+    (initialPercent = 15, initialStep = "Background sync in progress...") => {
+      stopSyncProgressTicker();
+      setSyncProgress((current) => ({
+        active: true,
+        percent: Math.max(current.percent, initialPercent),
+        step: initialStep,
+      }));
+      syncTimerRef.current = setInterval(() => {
+        setSyncProgress((current) => ({
+          active: true,
+          percent: getNextSyncProgress(current.percent),
+          step: current.step || initialStep,
+        }));
+      }, 4000);
+    },
+    [stopSyncProgressTicker],
+  );
+
   const clearSyncStatusPoll = useCallback(() => {
     if (syncStatusPollRef.current) {
       clearInterval(syncStatusPollRef.current);
       syncStatusPollRef.current = null;
     }
-    syncStatusPollStateRef.current = { startedAt: 0, seenRunning: false };
+    syncStatusPollStateRef.current = { startedAt: 0, seenRunning: false, relevantTaskNotBeforeMs: 0 };
   }, []);
 
   const startSyncStatusPoll = useCallback(
-    (projectId: number) => {
+    (projectId: number, relevantTaskNotBeforeMs?: number) => {
       clearSyncStatusPoll();
-      syncStatusPollStateRef.current = { startedAt: Date.now(), seenRunning: false };
+      const pollStartedAt = Date.now();
+      syncStatusPollStateRef.current = {
+        startedAt: pollStartedAt,
+        seenRunning: false,
+        relevantTaskNotBeforeMs: relevantTaskNotBeforeMs ?? pollStartedAt,
+      };
 
       let pollInFlight = false;
       syncStatusPollRef.current = setInterval(async () => {
@@ -354,16 +390,26 @@ const ProjectDetail = () => {
         }
         pollInFlight = true;
         try {
-          const response = await api.get<SyncTaskStatus[]>("/v1/traceability/sync-tasks", {
+          const response = await api.get<JiraSyncTaskStatus[]>("/v1/traceability/sync-tasks", {
             params: { project_id: projectId },
             timeout: 8000,
           });
 
           const tasks = Array.isArray(response.data) ? response.data : [];
-          const latestJiraSyncTask = tasks.find((task) => task?.task_type === "jira_sync");
-          const hasRunningJiraSync = tasks.some(
-            (task) => task?.task_type === "jira_sync" && task?.status === "running",
+          const latestJiraSyncTask = selectRelevantJiraSyncTask(
+            tasks,
+            syncStatusPollStateRef.current.relevantTaskNotBeforeMs,
           );
+          const derivedProgress = getSyncProgressFromTask(latestJiraSyncTask);
+          if (derivedProgress) {
+            setSyncProgress((current) => ({
+              active: true,
+              percent: Math.max(current.percent, derivedProgress.percent),
+              step: derivedProgress.step,
+            }));
+          }
+
+          const hasRunningJiraSync = latestJiraSyncTask?.status === "running";
 
           if (hasRunningJiraSync) {
             syncStatusPollStateRef.current.seenRunning = true;
@@ -376,10 +422,7 @@ const ProjectDetail = () => {
 
           if (canFinalize) {
             clearSyncStatusPoll();
-            if (syncTimerRef.current) {
-              clearInterval(syncTimerRef.current);
-              syncTimerRef.current = null;
-            }
+            stopSyncProgressTicker();
             setSyncProgress({
               active: false,
               percent: 100,
@@ -409,7 +452,7 @@ const ProjectDetail = () => {
         }
       }, 5000);
     },
-    [clearSyncStatusPoll, loadProjectDetails, loadTasksPage],
+    [clearSyncStatusPoll, loadProjectDetails, loadTasksPage, stopSyncProgressTicker],
   );
 
   const handleManualSync = async () => {
@@ -439,37 +482,40 @@ const ProjectDetail = () => {
         percent: 5,
         step: "Syncing with Jira...",
       });
-      if (syncTimerRef.current) clearInterval(syncTimerRef.current);
-      syncTimerRef.current = setInterval(() => {
-        setSyncProgress((p) => ({
-          ...p,
-          percent: p.percent < 90 ? p.percent + 2 : 90,
-        }));
-      }, 300);
-      await syncJiraProject(project.jira_key, { timeout: 15000 });
+      const syncResponse = await syncJiraProject(project.jira_key, { timeout: 15000 });
+      const existingRunning = syncResponse.method === "existing_running";
       setSyncProgress((p) => ({
         ...p,
         percent: Math.max(p.percent, 15),
-        step: "Background sync in progress...",
+        step: existingRunning
+          ? "Sync already running, waiting for completion..."
+          : "Background sync in progress...",
       }));
+      startSyncProgressTicker(
+        15,
+        existingRunning
+          ? "Sync already running, waiting for completion..."
+          : "Background sync in progress...",
+      );
       setToast({
         open: true,
         type: "info",
-        msg: "Sync started in background. Data will refresh automatically when complete.",
+        msg: existingRunning
+          ? "Jira sync is already running. Data will refresh automatically when complete."
+          : "Sync started in background. Data will refresh automatically when complete.",
       });
       if (id && !Number.isNaN(Number(id))) {
-        startSyncStatusPoll(Number(id));
+        const relevantTaskNotBeforeMs = syncResponse.sync_task_started_at
+          ? Date.parse(syncResponse.sync_task_started_at)
+          : Date.now();
+        startSyncStatusPoll(Number(id), relevantTaskNotBeforeMs);
       }
     } catch (e) {
       clearSyncStatusPoll();
+      stopSyncProgressTicker();
       setSyncing(false);
       setSyncProgress({ active: false, percent: 0, step: "" });
       setToast({ open: true, type: "error", msg: getErrorMessage(e, "Sync failed") });
-    } finally {
-      if (syncTimerRef.current) {
-        clearInterval(syncTimerRef.current);
-        syncTimerRef.current = null;
-      }
     }
   };
 

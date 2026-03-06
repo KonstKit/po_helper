@@ -12,6 +12,7 @@ from app.models.settings import IntegrationSetting
 from app.core.crypto import encrypt_str
 from app.services.jira import JiraAuthError, JiraUnexpectedResponse
 from app.services.jira_service import jira_service
+from app.services.sync_tracking import get_fresh_running_sync_task
 from app.models import Project
 from app.utils import transactional_session, handle_api_error
 from sqlalchemy import select
@@ -224,6 +225,28 @@ async def sync_project_data(
         async with transactional_session(db):
             db.add(db_project)
         await db.refresh(db_project)
+
+    existing_task = await get_fresh_running_sync_task(
+        db,
+        task_type="jira_sync",
+        project_id=db_project.id,
+    )
+    if existing_task is not None:
+        logger.info(
+            "Jira sync already running for project=%s existing_task_id=%s",
+            project_key,
+            existing_task.id,
+        )
+        return {
+            "status": "syncing",
+            "message": f"Jira sync is already running for project {project_key}",
+            "project_id": db_project.id,
+            "task_id": existing_task.id,
+            "sync_task_started_at": existing_task.started_at.isoformat()
+            if existing_task.started_at
+            else None,
+            "method": "existing_running",
+        }
 
     # Dispatch sync via Celery (preferred) or FastAPI background task (fallback)
     task_id = None

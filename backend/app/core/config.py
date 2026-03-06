@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     ENABLE_MATRIX_CACHE: bool = False
     MATRIX_CACHE_TTL_SECONDS: int = 300
     SYNC_TASK_RUNNING_TTL_SECONDS: int = 7200  # Auto-fail running sync tasks without heartbeat
+    SYNC_TASK_ACTIVE_HEARTBEAT_GRACE_SECONDS: int = 900  # Block overlapping sync only when heartbeat is fresh
 
     # Webhook secrets
     GITHUB_WEBHOOK_SECRET: Optional[str] = None

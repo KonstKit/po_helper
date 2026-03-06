@@ -200,6 +200,11 @@ export const setPrimaryRepository = async (projectId: number, repositoryId: numb
 
 export interface JiraProjectSyncResponse {
   message: string;
+  status?: string;
+  project_id?: number;
+  task_id?: string | number;
+  method?: string;
+  sync_task_started_at?: string | null;
   tasks_synced?: number;
   sprints_synced?: number;
 }

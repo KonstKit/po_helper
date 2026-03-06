@@ -174,7 +174,7 @@ class ProjectSyncOrchestrator:
                     ),
                 },
             )
-            result.boards = await self._sync_boards(project_key, project_id)
+            result.boards = await self._sync_boards(project_key, project_id, sync_task_id, result.total_issues)
             await self._heartbeat_sync_task(
                 sync_task_id,
                 {
@@ -421,14 +421,22 @@ class ProjectSyncOrchestrator:
         self,
         project_key: str,
         project_id: int,
+        sync_task_id: Optional[int] = None,
+        issues_total: int = 0,
     ) -> Optional[BoardSyncResult]:
         """Sync boards and sprints with error isolation."""
         try:
             async with AsyncSessionLocal() as db:
+                async def _heartbeat_board_progress(item_counts: Dict[str, Any]) -> None:
+                    payload = {"issues_total": issues_total}
+                    payload.update(item_counts)
+                    await self._heartbeat_sync_task(sync_task_id, payload)
+
                 result = await self.board_sync.sync_boards(
                     project_key,
                     project_id,
                     db,
+                    heartbeat_callback=_heartbeat_board_progress,
                 )
                 return result
         except Exception as e:
