@@ -203,6 +203,7 @@ export interface JiraProjectSyncResponse {
   status?: string;
   project_id?: number;
   task_id?: string | number;
+  sync_task_id?: number;
   method?: string;
   sync_task_started_at?: string | null;
   tasks_synced?: number;

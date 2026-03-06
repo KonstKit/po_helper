@@ -13,6 +13,7 @@ from app.core.database import AsyncSessionLocal
 from app.core.config import settings
 from app.core.crypto import decrypt_str
 from app.models import Project, Sprint, IntegrationSetting
+from app.models.traceability import SyncTask as SyncTaskModel
 from app.services.jira import JiraAuthError, JiraUnexpectedResponse
 from app.services.jira_service import jira_service
 from app.services.integration_config import get_connector_overrides
@@ -79,6 +80,7 @@ class ProjectSyncOrchestrator:
         project_key: str,
         project_id: int,
         trigger: str | None = "manual",
+        sync_task_id: int | None = None,
     ) -> ProjectSyncResult:
         """
         Orchestrate complete project synchronization.
@@ -98,7 +100,6 @@ class ProjectSyncOrchestrator:
             project_key=project_key,
             project_id=project_id,
         )
-        sync_task_id: Optional[int] = None
         sync_source_id: Optional[int] = None
 
         try:
@@ -106,23 +107,42 @@ class ProjectSyncOrchestrator:
                 "sync_project_issues started for %s (project_id=%s)", project_key, project_id
             )
 
-            try:
-                async with AsyncSessionLocal() as tracking_db:
-                    source = await get_or_create_source(
-                        tracking_db, provider="jira", project_id=project_id
-                    )
-                    sync_source_id = source.id
-                    task = await start_sync_task(
-                        tracking_db,
-                        task_type="jira_sync",
-                        project_id=project_id,
-                        source_id=sync_source_id,
-                        trigger=trigger,
-                    )
-                    sync_task_id = task.id
-                    await tracking_db.commit()
-            except Exception as exc:
-                logger.warning("Failed to initialize Jira sync tracking: %s", exc)
+            if sync_task_id is not None:
+                try:
+                    async with AsyncSessionLocal() as tracking_db:
+                        reserved_task = await tracking_db.get(SyncTaskModel, sync_task_id)
+                        if reserved_task is None or reserved_task.status != "running":
+                            logger.warning(
+                                "Reserved Jira sync task id=%s is not running; creating a new sync task",
+                                sync_task_id,
+                            )
+                            sync_task_id = None
+                        else:
+                            sync_source_id = reserved_task.source_id
+                            await touch_sync_task_heartbeat(tracking_db, sync_task_id)
+                            await tracking_db.commit()
+                except Exception as exc:
+                    logger.warning("Failed to initialize reserved Jira sync tracking: %s", exc)
+                    sync_task_id = None
+
+            if sync_task_id is None:
+                try:
+                    async with AsyncSessionLocal() as tracking_db:
+                        source = await get_or_create_source(
+                            tracking_db, provider="jira", project_id=project_id
+                        )
+                        sync_source_id = source.id
+                        task = await start_sync_task(
+                            tracking_db,
+                            task_type="jira_sync",
+                            project_id=project_id,
+                            source_id=sync_source_id,
+                            trigger=trigger,
+                        )
+                        sync_task_id = task.id
+                        await tracking_db.commit()
+                except Exception as exc:
+                    logger.warning("Failed to initialize Jira sync tracking: %s", exc)
 
             # Ensure Jira connection
             await self._ensure_jira_connection(project_id)

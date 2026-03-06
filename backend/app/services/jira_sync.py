@@ -8,7 +8,10 @@ logger = logging.getLogger(__name__)
 
 
 async def perform_project_sync(
-    project_key: str, project_id: int, trigger: str | None = "manual"
+    project_key: str,
+    project_id: int,
+    trigger: str | None = "manual",
+    sync_task_id: int | None = None,
 ) -> None:
     """
     Synchronise Jira data for a single project.
@@ -23,7 +26,12 @@ async def perform_project_sync(
     Each service can fail independently without affecting others.
     """
     orchestrator = ProjectSyncOrchestrator()
-    result = await orchestrator.sync_project(project_key, project_id, trigger=trigger)
+    result = await orchestrator.sync_project(
+        project_key,
+        project_id,
+        trigger=trigger,
+        sync_task_id=sync_task_id,
+    )
 
     # Log comprehensive result
     if result.success:

@@ -4,9 +4,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.db_utils import supports_for_update
+from app.models.project import Project
 from app.models.traceability import Source, SyncState, SyncTask
 from app.services.audit_log import record_audit_event
 
@@ -77,9 +80,11 @@ async def start_sync_task(
     trigger: str | None = None,
     cursor_in: str | None = None,
     item_counts: dict[str, Any] | None = None,
+    run_recovery: bool = True,
 ) -> SyncTask:
     # Keep write-path recovery as a protection when periodic cleanup is unavailable.
-    await recover_stale_running_sync_tasks(db, project_id=project_id)
+    if run_recovery:
+        await recover_stale_running_sync_tasks(db, project_id=project_id)
 
     started_at = _utcnow()
     task = SyncTask(
@@ -110,6 +115,86 @@ async def start_sync_task(
     return task
 
 
+async def reserve_project_sync_task_lease(
+    db: AsyncSession,
+    *,
+    project_id: int,
+    task_type: str,
+    provider: str | None = None,
+    trigger: str | None = None,
+    cursor_in: str | None = None,
+    item_counts: dict[str, Any] | None = None,
+    freshness_seconds: int | None = None,
+) -> tuple[SyncTask, bool]:
+    """
+    Atomically reserve a running sync-task lease for a project.
+
+    Returns:
+        (task, created_new): existing running task if lease is already held,
+        otherwise a newly created running task.
+    """
+    project_lock_stmt = select(Project.id).where(Project.id == project_id)
+    if supports_for_update(db):
+        project_lock_stmt = project_lock_stmt.with_for_update()
+    await db.execute(project_lock_stmt)
+
+    effective_freshness = freshness_seconds
+    if effective_freshness is None:
+        effective_freshness = int(
+            getattr(settings, "SYNC_TASK_ACTIVE_HEARTBEAT_GRACE_SECONDS", 900) or 900
+        )
+    effective_freshness = max(1, int(effective_freshness))
+
+    # For overlap protection we must evict non-fresh running rows for this
+    # project/task_type before creating a new lease, otherwise the DB unique
+    # running-lease index can block legitimate recovery.
+    await recover_stale_running_sync_tasks(
+        db,
+        ttl_seconds=effective_freshness,
+        project_id=project_id,
+        task_type=task_type,
+    )
+
+    existing_task = await get_fresh_running_sync_task(
+        db,
+        task_type=task_type,
+        project_id=project_id,
+        freshness_seconds=effective_freshness,
+    )
+    if existing_task is not None:
+        return existing_task, False
+
+    source_id: int | None = None
+    if provider:
+        source = await get_or_create_source(db, provider=provider, project_id=project_id)
+        source_id = source.id
+
+    try:
+        async with db.begin_nested():
+            task = await start_sync_task(
+                db,
+                task_type=task_type,
+                project_id=project_id,
+                source_id=source_id,
+                trigger=trigger,
+                cursor_in=cursor_in,
+                item_counts=item_counts,
+                run_recovery=False,
+            )
+        return task, True
+    except IntegrityError:
+        # Another concurrent request reserved the running lease first.
+        existing_task = await get_fresh_running_sync_task(
+            db,
+            task_type=task_type,
+            project_id=project_id,
+            freshness_seconds=effective_freshness,
+        )
+        if existing_task is not None:
+            return existing_task, False
+        raise
+
+
 async def touch_sync_task_heartbeat(
     db: AsyncSession,
     task_id: int,
@@ -130,6 +215,7 @@ async def recover_stale_running_sync_tasks(
     ttl_seconds: int | None = None,
     project_id: int | None = None,
     task_id: int | None = None,
+    task_type: str | None = None,
 ) -> int:
     effective_ttl = ttl_seconds
     if effective_ttl is None:
@@ -150,6 +236,8 @@ async def recover_stale_running_sync_tasks(
         filters.append(SyncTask.project_id == project_id)
     if task_id is not None:
         filters.append(SyncTask.id == task_id)
+    if task_type is not None:
+        filters.append(SyncTask.task_type == task_type)
 
     stmt = select(SyncTask).where(*filters)
     stale_tasks = list((await db.execute(stmt)).scalars().all())

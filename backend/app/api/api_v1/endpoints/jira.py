@@ -12,7 +12,7 @@ from app.models.settings import IntegrationSetting
 from app.core.crypto import encrypt_str
 from app.services.jira import JiraAuthError, JiraUnexpectedResponse
 from app.services.jira_service import jira_service
-from app.services.sync_tracking import get_fresh_running_sync_task
+from app.services.sync_tracking import reserve_project_sync_task_lease
 from app.models import Project
 from app.utils import transactional_session, handle_api_error
 from sqlalchemy import select
@@ -226,27 +226,37 @@ async def sync_project_data(
             db.add(db_project)
         await db.refresh(db_project)
 
-    existing_task = await get_fresh_running_sync_task(
-        db,
-        task_type="jira_sync",
-        project_id=db_project.id,
-    )
-    if existing_task is not None:
+    reserved_sync_task = None
+    created_new_lease = False
+    async with transactional_session(db):
+        reserved_sync_task, created_new_lease = await reserve_project_sync_task_lease(
+            db,
+            project_id=db_project.id,
+            task_type="jira_sync",
+            provider="jira",
+            trigger="manual",
+        )
+
+    if not created_new_lease and reserved_sync_task is not None:
         logger.info(
             "Jira sync already running for project=%s existing_task_id=%s",
             project_key,
-            existing_task.id,
+            reserved_sync_task.id,
         )
         return {
             "status": "syncing",
             "message": f"Jira sync is already running for project {project_key}",
             "project_id": db_project.id,
-            "task_id": existing_task.id,
-            "sync_task_started_at": existing_task.started_at.isoformat()
-            if existing_task.started_at
+            "task_id": reserved_sync_task.id,
+            "sync_task_id": reserved_sync_task.id,
+            "sync_task_started_at": reserved_sync_task.started_at.isoformat()
+            if reserved_sync_task.started_at
             else None,
             "method": "existing_running",
         }
+
+    if reserved_sync_task is None:
+        raise RuntimeError("Failed to reserve Jira sync task")
 
     # Dispatch sync via Celery (preferred) or FastAPI background task (fallback)
     task_id = None
@@ -261,16 +271,29 @@ async def sync_project_data(
     if use_celery:
         try:
             # Dispatch to Celery worker - non-blocking, doesn't hold event loop
-            celery_result = sync_jira_project.delay(project_key, db_project.id)
+            celery_result = sync_jira_project.delay(
+                project_key,
+                db_project.id,
+                None,
+                "manual",
+                reserved_sync_task.id,
+            )
             task_id = celery_result.id
             logger.info(
-                "Jira sync dispatched to Celery: project=%s task_id=%s", project_key, task_id
+                "Jira sync dispatched to Celery: project=%s task_id=%s sync_task_id=%s",
+                project_key,
+                task_id,
+                reserved_sync_task.id,
             )
             return {
                 "status": "syncing",
                 "message": f"Started Celery sync for project {project_key}",
                 "project_id": db_project.id,
                 "task_id": task_id,
+                "sync_task_id": reserved_sync_task.id,
+                "sync_task_started_at": reserved_sync_task.started_at.isoformat()
+                if reserved_sync_task.started_at
+                else None,
                 "method": "celery",
             }
         except Exception as exc:
@@ -280,23 +303,27 @@ async def sync_project_data(
     # Fallback: FastAPI background task (still async, but in-process)
     logger.info("Dispatching Jira sync via FastAPI background task for project=%s", project_key)
 
-    async def _async_sync_job(p_key: str, p_id: int) -> None:
+    async def _async_sync_job(p_key: str, p_id: int, sync_task_id: int) -> None:
         """Wrapper to run async sync in FastAPI background task."""
         try:
             logger.info("FastAPI background task started for project=%s", p_key)
-            await perform_project_sync(p_key, p_id)
+            await perform_project_sync(p_key, p_id, trigger="manual", sync_task_id=sync_task_id)
             logger.info("FastAPI background task completed for project=%s", p_key)
         except Exception as exc:
             logger.error(
                 "FastAPI background task failed for project=%s: %s", p_key, exc, exc_info=True
             )
 
-    background_tasks.add_task(_async_sync_job, project_key, db_project.id)
+    background_tasks.add_task(_async_sync_job, project_key, db_project.id, reserved_sync_task.id)
 
     return {
         "status": "syncing",
         "message": f"Started FastAPI sync for project {project_key}",
         "project_id": db_project.id,
+        "sync_task_id": reserved_sync_task.id,
+        "sync_task_started_at": reserved_sync_task.started_at.isoformat()
+        if reserved_sync_task.started_at
+        else None,
         "method": "fastapi_background",
     }
 

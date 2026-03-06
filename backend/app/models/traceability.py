@@ -14,6 +14,7 @@ from sqlalchemy import (
     Boolean,
     UniqueConstraint,
     Index,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -341,6 +342,14 @@ class SyncTask(Base):
 
     __table_args__ = (
         Index("ix_sync_tasks_status_heartbeat", "status", "heartbeat_at", "started_at"),
+        Index(
+            "uq_sync_tasks_project_task_running",
+            "project_id",
+            "task_type",
+            unique=True,
+            sqlite_where=text("status = 'running'"),
+            postgresql_where=text("status = 'running'"),
+        ),
     )
 
 
