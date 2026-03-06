@@ -46,6 +46,13 @@ async def test_sync_project_aborts_when_reserved_lease_is_not_running(
     monkeypatch.setattr(jira_service, "async_get_project_issues", _unexpected_issue_fetch)
 
     orchestrator = ProjectSyncOrchestrator()
+    notified_failures: list[tuple[int, str, str]] = []
+
+    async def _capture_failure(_project_key: str, pid: int, reason: str, detail: str) -> None:
+        notified_failures.append((pid, reason, detail))
+
+    monkeypatch.setattr(orchestrator, "_notify_failure", _capture_failure)
+
     result = await orchestrator.sync_project(
         "LEASE",
         project.id,
@@ -58,6 +65,7 @@ async def test_sync_project_aborts_when_reserved_lease_is_not_running(
     assert result.errors
     assert result.errors[0][0] == "lease"
     assert "no longer valid" in result.errors[0][1]
+    assert notified_failures == []
 
     stale_lease_after = await db_session.get(SyncTask, stale_lease.id)
     assert stale_lease_after is not None

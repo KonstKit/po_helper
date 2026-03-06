@@ -254,7 +254,10 @@ class ProjectSyncOrchestrator:
             logger.warning("Jira sync lease check failed for %s: %s", project_key, exc)
             result.failure_reason = exc.error_code
             result.errors.append(("lease", str(exc)))
-            await self._notify_failure(project_key, project_id, exc.error_code, str(exc))
+            # Lease-loss is an internal coordination race (stale/delayed worker),
+            # not a user-visible sync failure for the project.
+            if exc.error_code != LEASE_LOST_ERROR_CODE:
+                await self._notify_failure(project_key, project_id, exc.error_code, str(exc))
             # Lease is not ours (or does not exist), so this worker must not mutate sync tracking.
             should_finalize_sync_task = False
 
