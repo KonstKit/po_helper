@@ -135,7 +135,7 @@ async def readiness_check() -> JSONResponse:
     db_ok, db_status = await _check_database_readiness()
     redis_ok, redis_status = await _check_redis_readiness()
     redis_required = _is_redis_required_for_runtime()
-    redis_ready = redis_ok or (not redis_required and redis_status == "not_configured")
+    redis_ready = redis_ok if redis_required else True
     is_ready = db_ok and redis_ready
 
     payload = {
