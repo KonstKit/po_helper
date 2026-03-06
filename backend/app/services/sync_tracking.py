@@ -190,6 +190,38 @@ async def recover_stale_running_sync_tasks(
     return len(stale_tasks)
 
 
+async def get_fresh_running_sync_task(
+    db: AsyncSession,
+    task_type: str,
+    project_id: int | None = None,
+    freshness_seconds: int | None = None,
+) -> Optional[SyncTask]:
+    effective_freshness = freshness_seconds
+    if effective_freshness is None:
+        effective_freshness = int(
+            getattr(settings, "SYNC_TASK_ACTIVE_HEARTBEAT_GRACE_SECONDS", 900) or 900
+        )
+    effective_freshness = max(1, int(effective_freshness))
+    fresh_after = _utcnow() - timedelta(seconds=effective_freshness)
+
+    stmt = (
+        select(SyncTask)
+        .where(SyncTask.status == "running", SyncTask.task_type == task_type)
+        .where(
+            or_(
+                SyncTask.heartbeat_at >= fresh_after,
+                (SyncTask.heartbeat_at.is_(None) & (SyncTask.started_at >= fresh_after)),
+            )
+        )
+        .order_by(SyncTask.started_at.desc(), SyncTask.id.desc())
+    )
+    if project_id is not None:
+        stmt = stmt.where(SyncTask.project_id == project_id)
+
+    result = await db.execute(stmt)
+    return result.scalars().first()
+
+
 async def finish_sync_task(
     db: AsyncSession,
     task_id: int,

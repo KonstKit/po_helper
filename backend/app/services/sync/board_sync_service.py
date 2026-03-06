@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,6 +47,7 @@ class BoardSyncService:
         project_key: str,
         project_id: int,
         db: AsyncSession,
+        heartbeat_callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
     ) -> BoardSyncResult:
         """
         Synchronize boards and sprints for a project.
@@ -62,6 +63,7 @@ class BoardSyncService:
         logger.info("Starting boards and sprints sync for project %s", project_key)
 
         result = BoardSyncResult()
+        seen_sprint_ids: Set[str] = set()
 
         try:
             boards = self.jira_service.list_boards_for_project(project_key)
@@ -74,11 +76,20 @@ class BoardSyncService:
                         board,
                         project_id,
                         db,
+                        seen_sprint_ids=seen_sprint_ids,
                     )
 
                     result.total_boards_processed += 1
                     result.total_sprints_synced += board_result.total_sprints_synced
                     result.total_tasks_linked += board_result.total_tasks_linked
+                    if heartbeat_callback is not None:
+                        await heartbeat_callback(
+                            {
+                                "boards_processed": result.total_boards_processed,
+                                "sprints_synced": result.total_sprints_synced,
+                                "tasks_linked": result.total_tasks_linked,
+                            }
+                        )
 
                 except Exception as e:
                     logger.error("Failed to sync board %s: %s", board_name, e, exc_info=True)
@@ -103,6 +114,7 @@ class BoardSyncService:
         board: Dict[str, Any],
         project_id: int,
         db: AsyncSession,
+        seen_sprint_ids: Set[str],
     ) -> BoardSyncResult:
         """
         Sync sprints from a single board.
@@ -120,6 +132,12 @@ class BoardSyncService:
             sprints = await asyncio.to_thread(self.jira_service.list_sprints, board_id)
 
             for sprint in sprints:
+                sprint_jira_id = sprint.get("id")
+                sprint_key = str(sprint_jira_id) if sprint_jira_id is not None else ""
+                if sprint_key and sprint_key in seen_sprint_ids:
+                    continue
+                if sprint_key:
+                    seen_sprint_ids.add(sprint_key)
                 try:
                     tasks_linked = await self._sync_sprint(
                         sprint,
