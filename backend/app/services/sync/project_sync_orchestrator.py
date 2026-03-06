@@ -32,6 +32,18 @@ from app.services.sync_tracking import (
 logger = logging.getLogger(__name__)
 
 
+LEASE_LOST_ERROR_CODE = "sync_lease_lost"
+LEASE_ACQUIRE_ERROR_CODE = "sync_lease_acquire_failed"
+
+
+class SyncLeaseError(RuntimeError):
+    """Raised when Jira sync lease is missing, invalid, or cannot be acquired."""
+
+    def __init__(self, error_code: str, message: str):
+        super().__init__(message)
+        self.error_code = error_code
+
+
 @dataclass
 class ProjectSyncResult:
     """Comprehensive result of project synchronization."""
@@ -101,6 +113,7 @@ class ProjectSyncOrchestrator:
             project_id=project_id,
         )
         sync_source_id: Optional[int] = None
+        should_finalize_sync_task = False
 
         try:
             logger.info(
@@ -108,22 +121,34 @@ class ProjectSyncOrchestrator:
             )
 
             if sync_task_id is not None:
-                try:
-                    async with AsyncSessionLocal() as tracking_db:
-                        reserved_task = await tracking_db.get(SyncTaskModel, sync_task_id)
-                        if reserved_task is None or reserved_task.status != "running":
-                            logger.warning(
-                                "Reserved Jira sync task id=%s is not running; creating a new sync task",
-                                sync_task_id,
-                            )
-                            sync_task_id = None
-                        else:
-                            sync_source_id = reserved_task.source_id
-                            await touch_sync_task_heartbeat(tracking_db, sync_task_id)
-                            await tracking_db.commit()
-                except Exception as exc:
-                    logger.warning("Failed to initialize reserved Jira sync tracking: %s", exc)
-                    sync_task_id = None
+                async with AsyncSessionLocal() as tracking_db:
+                    reserved_task = await tracking_db.get(SyncTaskModel, sync_task_id)
+                    if reserved_task is None:
+                        raise SyncLeaseError(
+                            LEASE_LOST_ERROR_CODE,
+                            (
+                                f"Reserved Jira sync lease id={sync_task_id} "
+                                "is missing; aborting worker execution"
+                            ),
+                        )
+                    if (
+                        reserved_task.status != "running"
+                        or reserved_task.task_type != "jira_sync"
+                        or reserved_task.project_id != project_id
+                    ):
+                        raise SyncLeaseError(
+                            LEASE_LOST_ERROR_CODE,
+                            (
+                                f"Reserved Jira sync lease id={sync_task_id} is no longer valid "
+                                f"(status={reserved_task.status}, task_type={reserved_task.task_type}, "
+                                f"project_id={reserved_task.project_id}); aborting worker execution"
+                            ),
+                        )
+
+                    sync_source_id = reserved_task.source_id
+                    await touch_sync_task_heartbeat(tracking_db, sync_task_id)
+                    await tracking_db.commit()
+                    should_finalize_sync_task = True
 
             if sync_task_id is None:
                 try:
@@ -141,8 +166,12 @@ class ProjectSyncOrchestrator:
                         )
                         sync_task_id = task.id
                         await tracking_db.commit()
+                        should_finalize_sync_task = True
                 except Exception as exc:
-                    logger.warning("Failed to initialize Jira sync tracking: %s", exc)
+                    raise SyncLeaseError(
+                        LEASE_ACQUIRE_ERROR_CODE,
+                        f"Failed to acquire Jira sync lease for project_id={project_id}: {exc}",
+                    ) from exc
 
             # Ensure Jira connection
             await self._ensure_jira_connection(project_id)
@@ -221,6 +250,14 @@ class ProjectSyncOrchestrator:
 
             await self._notify_success(project_key, project_id)
 
+        except SyncLeaseError as exc:
+            logger.warning("Jira sync lease check failed for %s: %s", project_key, exc)
+            result.failure_reason = exc.error_code
+            result.errors.append(("lease", str(exc)))
+            await self._notify_failure(project_key, project_id, exc.error_code, str(exc))
+            # Lease is not ours (or does not exist), so this worker must not mutate sync tracking.
+            should_finalize_sync_task = False
+
         except JiraAuthError as exc:
             logger.error("Jira auth error during sync for %s: %s", project_key, exc)
             result.failure_reason = "auth"
@@ -240,7 +277,7 @@ class ProjectSyncOrchestrator:
             await self._notify_failure(project_key, project_id, "error", str(exc))
 
         finally:
-            if sync_task_id is not None:
+            if should_finalize_sync_task and sync_task_id is not None:
                 item_counts: Dict[str, Any] = {"issues_total": result.total_issues}
                 if result.issues is not None:
                     item_counts.update(
