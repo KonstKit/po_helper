@@ -4,7 +4,7 @@ Provides robust background processing with retry logic and progress tracking.
 """
 
 from typing import Optional, Dict, Any, cast
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 import logging
 from celery import Task, states
 from sqlalchemy import select
@@ -17,13 +17,14 @@ from app.models import IntegrationSetting, Project
 from app.core.crypto import decrypt_str
 from app.core.config import settings
 from app.services.jira_service import jira_service
-from app.models.traceability import SyncTask
+from app.services.sync_tracking import reserve_project_sync_task_lease, finish_sync_task
+from app.utils import transactional_session
 import json
 
 logger = logging.getLogger(__name__)
 
 
-async def _load_projects_and_running_syncs() -> tuple[list[Project], set[int]]:
+async def _load_active_projects() -> list[Project]:
     async with AsyncSessionLocal() as db:
         setting = (
             await db.execute(
@@ -31,39 +32,37 @@ async def _load_projects_and_running_syncs() -> tuple[list[Project], set[int]]:
             )
         ).scalar_one_or_none()
         if not setting or not setting.api_token:
-            return [], set()
+            return []
 
         result = await db.execute(
             select(Project).where(Project.status == "active").order_by(Project.id)
         )
-        projects = list(result.scalars().all())
-        project_ids = [project.id for project in projects]
-        if not project_ids:
-            return projects, set()
+        return list(result.scalars().all())
 
-        fresh_after_dt = datetime.now(timezone.utc) - timedelta(
-            seconds=max(
-                1,
-                int(getattr(settings, "SYNC_TASK_ACTIVE_HEARTBEAT_GRACE_SECONDS", 900) or 900),
-            )
-        )
 
-        running_result = await db.execute(
-            select(SyncTask.project_id)
-            .where(
-                SyncTask.task_type == "jira_sync",
-                SyncTask.status == "running",
-                SyncTask.project_id.in_(project_ids),
-                (
-                    (SyncTask.heartbeat_at >= fresh_after_dt)
-                    | ((SyncTask.heartbeat_at.is_(None)) & (SyncTask.started_at >= fresh_after_dt))
-                ),
+async def _reserve_scheduled_sync_lease(project_id: int) -> tuple[int, bool]:
+    async with AsyncSessionLocal() as db:
+        async with transactional_session(db):
+            task, created = await reserve_project_sync_task_lease(
+                db,
+                project_id=project_id,
+                task_type="jira_sync",
+                provider="jira",
+                trigger="schedule",
             )
+            return task.id, created
+
+
+async def _fail_reserved_sync_task(task_id: int, message: str) -> None:
+    async with AsyncSessionLocal() as db:
+        await finish_sync_task(
+            db,
+            task_id,
+            status="failed",
+            error_code="dispatch_failed",
+            error_message=message,
         )
-        running_project_ids = {
-            project_id for project_id in running_result.scalars().all() if project_id is not None
-        }
-        return projects, running_project_ids
+        await db.commit()
 
 
 class JiraSyncTask(Task):
@@ -135,6 +134,7 @@ def sync_jira_project(
     project_id: int,
     channel_id: Optional[str] = None,
     trigger: str | None = "manual",
+    sync_task_id: int | None = None,
 ) -> Dict[str, Any]:
     """
     Sync Jira project with robust error handling and progress tracking.
@@ -182,7 +182,14 @@ def sync_jira_project(
 
         # Run the actual sync
         self.update_progress(f"Syncing issues for {project_key}...", 10)
-        run_async(perform_project_sync(project_key, project_id, trigger=trigger))
+        run_async(
+            perform_project_sync(
+                project_key,
+                project_id,
+                trigger=trigger,
+                sync_task_id=sync_task_id,
+            )
+        )
 
         # Calculate duration
         duration = (datetime.utcnow() - start_time).total_seconds()
@@ -244,7 +251,7 @@ def scheduled_jira_sync() -> Dict[str, Any]:
     """Scheduled task to sync all active Jira projects."""
     logger.info("Running scheduled Jira sync")
 
-    projects, running_project_ids = run_async(_load_projects_and_running_syncs())
+    projects = run_async(_load_active_projects())
 
     if not projects:
         logger.info("No active Jira projects or Jira not configured; skipping scheduled sync")
@@ -252,25 +259,59 @@ def scheduled_jira_sync() -> Dict[str, Any]:
 
     dispatched = 0
     skipped_running = 0
+    dispatch_failed = 0
     for project in projects:
         if not project.jira_key:
             continue
-        if project.id in running_project_ids:
+
+        try:
+            lease_task_id, created = run_async(_reserve_scheduled_sync_lease(project.id))
+        except Exception as exc:
+            dispatch_failed += 1
+            logger.error(
+                "Failed to reserve scheduled Jira sync lease for project=%s: %s",
+                project.jira_key,
+                exc,
+            )
+            continue
+
+        if not created:
             skipped_running += 1
             logger.info(
                 "Skipping scheduled Jira sync for project=%s: fresh running sync already exists",
                 project.jira_key,
             )
             continue
-        sync_jira_project.delay(project.jira_key, project.id, None, "schedule")
-        dispatched += 1
+
+        try:
+            sync_jira_project.delay(project.jira_key, project.id, None, "schedule", lease_task_id)
+            dispatched += 1
+        except Exception as exc:
+            dispatch_failed += 1
+            logger.error(
+                "Failed to dispatch scheduled Jira sync for project=%s: %s",
+                project.jira_key,
+                exc,
+            )
+            run_async(
+                _fail_reserved_sync_task(
+                    lease_task_id,
+                    f"Scheduled Jira sync dispatch failed: {exc}",
+                )
+            )
 
     logger.info(
-        "Scheduled Jira sync dispatched for %d project(s), skipped_running=%d",
+        "Scheduled Jira sync dispatched for %d project(s), skipped_running=%d, dispatch_failed=%d",
         dispatched,
         skipped_running,
+        dispatch_failed,
     )
-    return {"status": "ok", "dispatched": dispatched, "skipped_running": skipped_running}
+    return {
+        "status": "ok",
+        "dispatched": dispatched,
+        "skipped_running": skipped_running,
+        "dispatch_failed": dispatch_failed,
+    }
 
 
 redis_client: Any = cast(Any, _redis_client)

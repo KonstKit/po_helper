@@ -53,7 +53,7 @@ async def test_recover_stale_running_sync_tasks_marks_task_failed(db_session):
     )
     fresh_task = SyncTask(
         project_id=project.id,
-        task_type="jira_sync",
+        task_type="confluence_sync",
         status="running",
         started_at=stale_at,
         heartbeat_at=now,
