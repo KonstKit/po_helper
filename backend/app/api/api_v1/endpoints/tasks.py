@@ -1,14 +1,22 @@
-from typing import List, Optional, Dict, Any
+import asyncio
+from io import BytesIO
+import logging
+from pathlib import Path
+from time import perf_counter
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from sqlalchemy.exc import IntegrityError
-from time import perf_counter
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.models import Task, BusinessValueAudit, User, Permissions
 from app.schemas.task import Task as TaskSchema, TaskCreate, TaskUpdate, TaskWithRelations
 from app.schemas.pagination import paginated_response
 from app.api.deps import require_permission
+from app.services.task_manager import task_manager
 from app.utils import (
     transactional_session,
     handle_api_error,
@@ -18,10 +26,127 @@ from app.utils import (
 from app.utils.error_handling import async_handle_api_error
 from app.utils.batch_operations import bulk_delete_by_ids, bulk_update_by_ids
 from app.core.cache_enhanced import CacheInvalidator
-import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+TASK_EXPORT_COLUMNS = [
+    "Key",
+    "Summary",
+    "Type",
+    "Status",
+    "Priority",
+    "Assignee",
+    "Estimate (hours)",
+    "Spent (hours)",
+    "Remaining (hours)",
+    "Created",
+    "Due Date",
+]
+TASK_EXPORT_DIR = Path(__file__).resolve().parents[4] / "exports" / "task_exports"
+
+
+async def _load_tasks_for_export(
+    project_id: Optional[int] = None,
+    sprint_id: Optional[int] = None,
+) -> list[Task]:
+    async with AsyncSessionLocal() as session:
+        query = select(Task).order_by(Task.id)
+        if project_id:
+            query = query.where(Task.project_id == project_id)
+        if sprint_id:
+            query = query.where(Task.sprint_id == sprint_id)
+        result = await session.execute(query)
+        return list(result.scalars().all())
+
+
+def _task_export_rows(tasks: list[Task]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for task in tasks:
+        rows.append(
+            {
+                "Key": task.key,
+                "Summary": task.summary,
+                "Type": task.task_type,
+                "Status": task.status,
+                "Priority": task.priority,
+                "Assignee": task.assignee_name,
+                "Estimate (hours)": task.estimate_hours,
+                "Spent (hours)": task.spent_hours,
+                "Remaining (hours)": task.remaining_hours,
+                "Created": task.created_date,
+                "Due Date": task.due_date,
+            }
+        )
+    return rows
+
+
+def _render_tasks_excel(rows: list[dict[str, Any]]) -> BytesIO:
+    df = pd.DataFrame(rows, columns=TASK_EXPORT_COLUMNS)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(writer, sheet_name="Tasks", index=False)
+
+        workbook = writer.book
+        worksheet = writer.sheets["Tasks"]
+        header_format = workbook.add_format(
+            {"bold": True, "bg_color": "#4472C4", "font_color": "white", "border": 1}
+        )
+
+        for col_num, value in enumerate(df.columns.values):
+            worksheet.write(0, col_num, value, header_format)
+
+        for i, col in enumerate(df.columns):
+            series = df[col].astype(str) if not df.empty else pd.Series([col])
+            column_width = max(series.map(len).max(), len(col)) + 2
+            worksheet.set_column(i, i, min(column_width, 50))
+
+    output.seek(0)
+    return output
+
+
+def _task_export_path(task_id: str) -> Path:
+    TASK_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    return TASK_EXPORT_DIR / f"tasks_export_{task_id}.xlsx"
+
+
+def _write_tasks_excel_file(rows: list[dict[str, Any]], export_path: Path) -> None:
+    export_path.write_bytes(_render_tasks_excel(rows).getvalue())
+
+
+async def _build_task_export_result(
+    project_id: Optional[int],
+    sprint_id: Optional[int],
+    task_id: str,
+    task_manager,
+) -> dict[str, Any]:
+    task_manager.update_progress(task_id, 10.0, "Loading tasks")
+    tasks = await _load_tasks_for_export(project_id=project_id, sprint_id=sprint_id)
+    rows = _task_export_rows(tasks)
+    task_manager.update_progress(task_id, 55.0, f"Preparing {len(rows)} tasks for export")
+
+    export_path = _task_export_path(task_id)
+    await asyncio.to_thread(_write_tasks_excel_file, rows, export_path)
+    task_manager.update_progress(task_id, 95.0, "Finalizing export")
+
+    return {
+        "download_url": f"/api/v1/tasks/exports/{task_id}/download",
+        "filename": export_path.name,
+        "task_count": len(rows),
+        "project_id": project_id,
+        "sprint_id": sprint_id,
+    }
+
+
+async def _run_task_export_job(task_id: str, project_id: Optional[int], sprint_id: Optional[int]) -> None:
+    try:
+        await task_manager.run_async(
+            task_id,
+            _build_task_export_result,
+            project_id=project_id,
+            sprint_id=sprint_id,
+        )
+    except Exception:
+        logger.exception("tasks.export.async.error task_id=%s", task_id)
 
 
 @router.get("/")
@@ -93,13 +218,10 @@ async def get_tasks(
             data_query = data_query.where(and_(*filters))
         data_query = data_query.order_by(Task.id).offset(skip).limit(limit)
 
-        # Execute both queries
-        import asyncio
-
         try:
-            count_result, data_result = await asyncio.wait_for(
-                asyncio.gather(db.execute(count_query), db.execute(data_query)), timeout=30.0
-            )
+            # AsyncSession does not support overlapping operations on the same connection.
+            count_result = await asyncio.wait_for(db.execute(count_query), timeout=30.0)
+            data_result = await asyncio.wait_for(db.execute(data_query), timeout=30.0)
 
             total = count_result.scalar() or 0
             tasks = list(data_result.scalars().all())
@@ -256,6 +378,41 @@ async def delete_task(
     return {"message": "Task deleted successfully"}
 
 
+@router.post("/export", status_code=202)
+async def export_tasks_async(
+    project_id: Optional[int] = Query(None),
+    sprint_id: Optional[int] = Query(None),
+):
+    """Start an asynchronous task export and return a polling task ID."""
+    task_id = task_manager.create_task("tasks_export")
+    asyncio.create_task(_run_task_export_job(task_id, project_id, sprint_id))
+    return {
+        "status": "pending",
+        "task_id": task_id,
+        "download_url": f"/api/v1/tasks/exports/{task_id}/download",
+    }
+
+
+@router.get("/exports/{task_id}/download")
+async def download_exported_tasks(task_id: str):
+    """Download a completed asynchronous task export."""
+    task = task_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status.value != "completed":
+        raise HTTPException(status_code=409, detail="Task export is not completed yet")
+
+    export_path = _task_export_path(task_id)
+    if not export_path.exists():
+        raise HTTPException(status_code=404, detail="Export file not found")
+
+    return FileResponse(
+        export_path,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=export_path.name,
+    )
+
+
 @router.post("/export/excel")
 async def export_tasks_to_excel(
     project_id: Optional[int] = None,
@@ -263,65 +420,15 @@ async def export_tasks_to_excel(
     db: AsyncSession = Depends(get_db),
 ):
     """Export tasks to Excel"""
-    import pandas as pd
-    from io import BytesIO
-    from fastapi.responses import StreamingResponse
-
-    # Get tasks
-    query = select(Task)
+    query = select(Task).order_by(Task.id)
     if project_id:
         query = query.where(Task.project_id == project_id)
     if sprint_id:
         query = query.where(Task.sprint_id == sprint_id)
 
     result = await db.execute(query)
-    tasks = result.scalars().all()
-
-    # Convert to DataFrame
-    data = []
-    for task in tasks:
-        data.append(
-            {
-                "Key": task.key,
-                "Summary": task.summary,
-                "Type": task.task_type,
-                "Status": task.status,
-                "Priority": task.priority,
-                "Assignee": task.assignee_name,
-                "Estimate (hours)": task.estimate_hours,
-                "Spent (hours)": task.spent_hours,
-                "Remaining (hours)": task.remaining_hours,
-                "Created": task.created_date,
-                "Due Date": task.due_date,
-            }
-        )
-
-    df = pd.DataFrame(data)
-
-    # Create Excel file
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        df.to_excel(writer, sheet_name="Tasks", index=False)
-
-        # Get workbook and worksheet
-        workbook = writer.book
-        worksheet = writer.sheets["Tasks"]
-
-        # Add formatting
-        header_format = workbook.add_format(
-            {"bold": True, "bg_color": "#4472C4", "font_color": "white", "border": 1}
-        )
-
-        # Write headers with formatting
-        for col_num, value in enumerate(df.columns.values):
-            worksheet.write(0, col_num, value, header_format)
-
-        # Auto-adjust column widths
-        for i, col in enumerate(df.columns):
-            column_width = max(df[col].astype(str).map(len).max(), len(col)) + 2
-            worksheet.set_column(i, i, min(column_width, 50))
-
-    output.seek(0)
+    tasks = list(result.scalars().all())
+    output = _render_tasks_excel(_task_export_rows(tasks))
 
     return StreamingResponse(
         output,
