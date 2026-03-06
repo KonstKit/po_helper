@@ -42,6 +42,28 @@ interface RequirementRow {
   priority: string;
 }
 
+const resolveApiBaseForSse = (): string => {
+  const configured = (import.meta.env.VITE_API_URL || '').trim();
+  if (configured) {
+    return configured.replace(/\/+$/, '');
+  }
+  // In Docker/proxy deployments SSE must use the same origin as the UI.
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return '';
+};
+
+const buildApiV1SseUrl = (endpoint: string, params: URLSearchParams): string => {
+  const base = resolveApiBaseForSse();
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  if (!base) {
+    return `/api/v1${normalizedEndpoint}?${params.toString()}`;
+  }
+  const apiPrefix = base.endsWith('/api') ? '/v1' : '/api/v1';
+  return `${base}${apiPrefix}${normalizedEndpoint}?${params.toString()}`;
+};
+
 
 const Knowledge = () => {
   const [spaceQuery, setSpaceQuery] = useState('');
@@ -199,7 +221,7 @@ const Knowledge = () => {
       params.append('limit', '50');
       params.append('full', 'true');
 
-      const eventSource = new EventSource(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/v1/confluence/sync-sse?${params.toString()}`);
+      const eventSource = new EventSource(buildApiV1SseUrl('/confluence/sync-sse', params));
 
       // Set timeout for SSE connection
       let sseTimeout: ReturnType<typeof setTimeout>;
@@ -262,21 +284,12 @@ const Knowledge = () => {
         console.error('SSE Error:', error);
         clearTimeout(sseTimeout);
         eventSource.close();
-
-        // Fallback to regular sync if SSE fails
-        syncConfluence({ space: spaceKey || undefined, q: pageQuery || undefined, limit: 50, full: true })
-          .then(res => {
-            setLastSync(res);
-            setMessage({ type: 'success', text: `Synced ${res.synced} pages (created ${res.created}, updated ${res.updated}).` });
-          })
-          .catch(e => {
-            const detail = getErrorMessage(e, 'Sync failed');
-            setMessage({ type: 'error', text: detail });
-          })
-          .finally(() => {
-            setLoading(false);
-            setProgress({ loading: false, percent: 100, step: 'Ready' });
-          });
+        setLoading(false);
+        setProgress({ loading: false, percent: 0, step: 'Error' });
+        setMessage({
+          type: 'error',
+          text: 'SSE connection failed. Retry sync. Avoiding fallback to long /sync request to prevent 504 timeout.',
+        });
       };
 
     } catch (e) {
