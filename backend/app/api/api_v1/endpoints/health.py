@@ -88,24 +88,41 @@ async def _check_database_readiness() -> tuple[bool, str]:
         return False, "error"
 
 
-def _check_redis_readiness() -> tuple[bool, str]:
+def _is_redis_required_for_runtime() -> bool:
+    """
+    Redis is a hard readiness dependency only when Celery runtime is enabled.
+    In API-only mode, Redis-backed features degrade gracefully.
+    """
+    return bool(settings.CELERY_ENABLED)
+
+
+def _ping_redis_blocking(redis_url: str) -> None:
+    import redis
+
+    client = redis.from_url(
+        redis_url,
+        decode_responses=True,
+        socket_connect_timeout=READINESS_TIMEOUT_SECONDS,
+        socket_timeout=READINESS_TIMEOUT_SECONDS,
+    )
+    try:
+        client.ping()
+    finally:
+        client.close()
+
+
+async def _check_redis_readiness() -> tuple[bool, str]:
     if not settings.REDIS_URL:
         return False, "not_configured"
 
     try:
-        import redis
-
-        client = redis.from_url(
-            settings.REDIS_URL,
-            decode_responses=True,
-            socket_connect_timeout=READINESS_TIMEOUT_SECONDS,
-            socket_timeout=READINESS_TIMEOUT_SECONDS,
+        await asyncio.wait_for(
+            asyncio.to_thread(_ping_redis_blocking, settings.REDIS_URL),
+            timeout=READINESS_TIMEOUT_SECONDS,
         )
-        try:
-            client.ping()
-        finally:
-            client.close()
         return True, "ok"
+    except asyncio.TimeoutError:
+        return False, "timeout"
     except ImportError:
         return False, "client_unavailable"
     except Exception:
@@ -116,15 +133,17 @@ def _check_redis_readiness() -> tuple[bool, str]:
 @router.get("/ready")
 async def readiness_check() -> JSONResponse:
     db_ok, db_status = await _check_database_readiness()
-    redis_ok, redis_status = _check_redis_readiness()
-    is_ready = db_ok and redis_ok
+    redis_ok, redis_status = await _check_redis_readiness()
+    redis_required = _is_redis_required_for_runtime()
+    redis_ready = redis_ok or (not redis_required and redis_status == "not_configured")
+    is_ready = db_ok and redis_ready
 
     payload = {
         "status": "ready" if is_ready else "degraded",
         "service": "po_helper",
         "dependencies": {
             "database": {"ok": db_ok, "status": db_status},
-            "redis": {"ok": redis_ok, "status": redis_status},
+            "redis": {"ok": redis_ok, "status": redis_status, "required": redis_required},
         },
     }
     return JSONResponse(status_code=200 if is_ready else 503, content=payload)

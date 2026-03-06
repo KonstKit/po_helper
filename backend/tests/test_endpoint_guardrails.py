@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Tuple
 
 from app.api.api_v1.endpoints.health import _record_integrations_guardrail
 from app.api.api_v1.endpoints.jira import _record_boards_guardrail
+from app.core.config import settings
 
 
 class _DummyMetrics:
@@ -106,10 +107,13 @@ async def test_health_ready_returns_200_when_dependencies_are_available(
     async def _db_ready() -> tuple[bool, str]:
         return True, "ok"
 
+    async def _redis_ready() -> tuple[bool, str]:
+        return True, "ok"
+
     monkeypatch.setattr("app.api.api_v1.endpoints.health._check_database_readiness", _db_ready)
     monkeypatch.setattr(
         "app.api.api_v1.endpoints.health._check_redis_readiness",
-        lambda: (True, "ok"),
+        _redis_ready,
     )
 
     response = await client.get("/api/v1/health/ready")
@@ -124,13 +128,16 @@ async def test_health_ready_returns_503_when_dependencies_are_degraded(
     async def _db_degraded() -> tuple[bool, str]:
         return False, "timeout"
 
+    async def _redis_degraded() -> tuple[bool, str]:
+        return False, "error"
+
     monkeypatch.setattr(
         "app.api.api_v1.endpoints.health._check_database_readiness",
         _db_degraded,
     )
     monkeypatch.setattr(
         "app.api.api_v1.endpoints.health._check_redis_readiness",
-        lambda: (False, "error"),
+        _redis_degraded,
     )
 
     response = await client.get("/api/v1/health/ready")
@@ -140,3 +147,61 @@ async def test_health_ready_returns_503_when_dependencies_are_degraded(
     assert data["status"] == "degraded"
     assert data["dependencies"]["database"]["status"] == "timeout"
     assert data["dependencies"]["redis"]["status"] == "error"
+
+
+async def test_health_ready_allows_redis_not_configured_when_optional(
+    monkeypatch: Any, client: Any
+) -> None:
+    async def _db_ready() -> tuple[bool, str]:
+        return True, "ok"
+
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._check_database_readiness", _db_ready)
+    monkeypatch.setattr(settings, "CELERY_ENABLED", False)
+    monkeypatch.setattr(settings, "REDIS_URL", "")
+
+    response = await client.get("/api/v1/health/ready")
+    data = response.json()
+
+    assert response.status_code == 200
+    assert data["status"] == "ready"
+    assert data["dependencies"]["redis"]["status"] == "not_configured"
+    assert data["dependencies"]["redis"]["required"] is False
+
+
+async def test_health_ready_requires_redis_when_celery_enabled(
+    monkeypatch: Any, client: Any
+) -> None:
+    async def _db_ready() -> tuple[bool, str]:
+        return True, "ok"
+
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._check_database_readiness", _db_ready)
+    monkeypatch.setattr(settings, "CELERY_ENABLED", True)
+    monkeypatch.setattr(settings, "REDIS_URL", "")
+
+    response = await client.get("/api/v1/health/ready")
+    data = response.json()
+
+    assert response.status_code == 503
+    assert data["status"] == "degraded"
+    assert data["dependencies"]["redis"]["status"] == "not_configured"
+    assert data["dependencies"]["redis"]["required"] is True
+
+
+async def test_check_redis_readiness_uses_to_thread(monkeypatch: Any) -> None:
+    from app.api.api_v1.endpoints import health as health_endpoint
+
+    calls: dict[str, bool] = {"to_thread": False}
+
+    async def _fake_to_thread(func, *args, **kwargs):
+        calls["to_thread"] = True
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(settings, "REDIS_URL", "redis://example:6379/0")
+    monkeypatch.setattr(health_endpoint, "_ping_redis_blocking", lambda _url: None)
+    monkeypatch.setattr(health_endpoint.asyncio, "to_thread", _fake_to_thread)
+
+    redis_ok, redis_status = await health_endpoint._check_redis_readiness()
+
+    assert calls["to_thread"] is True
+    assert redis_ok is True
+    assert redis_status == "ok"
