@@ -197,90 +197,90 @@ async def _async_sync_space(
     task: ConfluenceSyncTask, space_key: str, query: Optional[str], full_sync: bool
 ) -> Dict[str, Any]:
     """Async implementation of space sync."""
+    page_start = 0
+    limit = 50
+    total_synced = 0
+    total_created = 0
+    total_updated = 0
 
-    async with AsyncSessionLocal() as db:
-        page_start = 0
-        limit = 50
-        total_synced = 0
-        total_created = 0
-        total_updated = 0
+    # Get first batch to estimate total
+    pages = confluence_service.list_pages(
+        space=space_key, q=query, limit=limit, start=page_start
+    )
 
-        # Get first batch to estimate total
+    if pages:
+        # Estimate total
+        if len(pages) == limit:
+            task.total_pages = limit * 10  # Rough estimate
+        else:
+            task.total_pages = len(pages)
+
+        task.update_progress(f"Found approximately {task.total_pages} pages to sync", 10)
+
+    batch_number = 0
+
+    while pages:
+        batch_number += 1
+        batch_created = 0
+        batch_updated = 0
+
+        task.update_progress(f"Processing batch {batch_number} ({len(pages)} pages)...")
+
+        full_pages: list[Dict[str, Any]] = []
+        for idx, page_summary in enumerate(pages, 1):
+            page_id = page_summary.get("id")
+            if not page_id:
+                continue
+
+            # Fetch network payloads before opening a DB transaction.
+            full_page = confluence_service.get_page_by_id(
+                page_id, expand="body.storage,version,history,metadata.labels,space"
+            )
+            full_pages.append(full_page)
+
+            if idx % 5 == 0:
+                task.update_progress(f"Fetched: {full_page.get('title', 'Untitled')}")
+
+        if full_pages:
+            async with AsyncSessionLocal() as db:
+                for full_page in full_pages:
+                    created = await _process_page(db, full_page)
+                    if created:
+                        batch_created += 1
+                    else:
+                        batch_updated += 1
+
+                    task.processed_pages += 1
+                    task.created_count = total_created + batch_created
+                    task.updated_count = total_updated + batch_updated
+
+                if batch_created or batch_updated:
+                    await db.commit()
+
+        total_synced += len(full_pages)
+        total_created += batch_created
+        total_updated += batch_updated
+
+        # Adjust estimate if needed
+        if total_synced > task.total_pages:
+            task.total_pages = total_synced + limit
+
+        # Check if should continue
+        if not full_sync or len(pages) < limit:
+            break
+
+        # Fetch next batch
+        page_start += len(pages)
         pages = confluence_service.list_pages(
             space=space_key, q=query, limit=limit, start=page_start
         )
 
-        if pages:
-            # Estimate total
-            if len(pages) == limit:
-                task.total_pages = limit * 10  # Rough estimate
-            else:
-                task.total_pages = len(pages)
+    logger.info(
+        f"Sync complete: synced={total_synced}, "
+        f"created={total_created}, updated={total_updated}"
+    )
 
-            task.update_progress(f"Found approximately {task.total_pages} pages to sync", 10)
-
-        batch_number = 0
-
-        while pages:
-            batch_number += 1
-            batch_created = 0
-            batch_updated = 0
-
-            task.update_progress(f"Processing batch {batch_number} ({len(pages)} pages)...")
-
-            for idx, page_summary in enumerate(pages, 1):
-                page_id = page_summary.get("id")
-                if not page_id:
-                    continue
-
-                # Fetch full page details
-                full_page = confluence_service.get_page_by_id(
-                    page_id, expand="body.storage,version,history,metadata.labels,space"
-                )
-
-                # Process page (create or update in DB)
-                created = await _process_page(db, full_page)
-                if created:
-                    batch_created += 1
-                else:
-                    batch_updated += 1
-
-                task.processed_pages += 1
-                task.created_count = total_created + batch_created
-                task.updated_count = total_updated + batch_updated
-
-                # Update progress every 5 pages
-                if idx % 5 == 0:
-                    task.update_progress(f"Processing: {full_page.get('title', 'Untitled')}")
-
-            # Commit batch
-            if batch_created or batch_updated:
-                await db.commit()
-
-            total_synced += len(pages)
-            total_created += batch_created
-            total_updated += batch_updated
-
-            # Adjust estimate if needed
-            if total_synced > task.total_pages:
-                task.total_pages = total_synced + limit
-
-            # Check if should continue
-            if not full_sync or len(pages) < limit:
-                break
-
-            # Fetch next batch
-            page_start += len(pages)
-            pages = confluence_service.list_pages(
-                space=space_key, q=query, limit=limit, start=page_start
-            )
-
-        logger.info(
-            f"Sync complete: synced={total_synced}, "
-            f"created={total_created}, updated={total_updated}"
-        )
-
-        return {"synced": total_synced, "created": total_created, "updated": total_updated}
+    return {"synced": total_synced, "created": total_created, "updated": total_updated}
 
 
 async def _process_page(db, page_data: Dict[str, Any]) -> bool:

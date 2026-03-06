@@ -14,3 +14,15 @@ def test_traceability_scheduler_registered_in_beat():
     assert "recover-stale-sync-tasks-every-5-min" in schedule
     recovery_entry = schedule["recover-stale-sync-tasks-every-5-min"]
     assert recovery_entry.get("task") == "maintenance.recover_stale_sync_tasks"
+
+
+def test_celery_worker_defaults_are_bounded():
+    from app.core.celery_app import celery_app
+    from app.core.config import settings
+
+    assert celery_app.conf.worker_concurrency == settings.CELERY_WORKER_CONCURRENCY == 4
+    assert (
+        celery_app.conf.worker_prefetch_multiplier
+        == settings.CELERY_WORKER_PREFETCH_MULTIPLIER
+        == 1
+    )
