@@ -69,13 +69,6 @@ def _normalize_scopes(scopes: list[str]) -> list[str]:
     return normalized
 
 
-def _normalize_tenant_id(tenant_id: Any) -> Optional[str]:
-    if tenant_id is None:
-        return None
-    normalized = str(tenant_id).strip()
-    return normalized or None
-
-
 def _project_meta(meta: Any) -> dict[str, Any]:
     if isinstance(meta, dict):
         return meta
@@ -104,19 +97,30 @@ async def _user_has_access_to_tenant(
     user_id: int,
     tenant_id: str,
 ) -> bool:
-    # Fast path: owner projects for this user.
-    owned_result = await db.execute(select(Project.meta).where(Project.owner_id == user_id))
-    for (project_meta,) in owned_result.all():
-        meta = _project_meta(project_meta)
-        if _normalize_tenant_id(meta.get("tenant_id")) == tenant_id:
-            return True
+    tenant_filter = Project.meta["tenant_id"].as_string() == tenant_id
 
-    # Membership path (meta-based, compatible with SQLite test DB and Postgres).
-    member_result = await db.execute(select(Project.meta).where(Project.meta.is_not(None)))
+    # Fast path: owner projects for this user.
+    owned_result = await db.execute(
+        select(Project.id)
+        .where(
+            Project.owner_id == user_id,
+            Project.meta.is_not(None),
+            tenant_filter,
+        )
+        .limit(1)
+    )
+    if owned_result.scalar_one_or_none() is not None:
+        return True
+
+    # Membership path: DB narrows to tenant, Python validates member_ids payload.
+    member_result = await db.execute(
+        select(Project.meta).where(
+            Project.meta.is_not(None),
+            tenant_filter,
+        )
+    )
     for (project_meta,) in member_result.all():
         meta = _project_meta(project_meta)
-        if _normalize_tenant_id(meta.get("tenant_id")) != tenant_id:
-            continue
         if user_id in _project_member_ids(meta):
             return True
 
