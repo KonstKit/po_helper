@@ -17,7 +17,7 @@ from app.schemas.project import (
 )
 from app.api.deps import can_access_project, ensure_project_access, has_admin_access, require_permission
 from app.core.request_context import get_token_tenant_id
-from app.utils import transactional_session, execute_with_lock
+from app.utils import paginate_query, transactional_session, execute_with_lock
 
 
 router = APIRouter()
@@ -37,10 +37,24 @@ async def get_projects(
     logger.info("projects.list.start skip=%s limit=%s", skip, limit)
     try:
         query = select(Project).order_by(Project.id.asc())
-        result = await db.execute(query)
-        all_projects = list(result.scalars().all())
-        visible_projects = [project for project in all_projects if can_access_project(project, current_user)]
-        projects = visible_projects[skip : skip + limit]
+        if has_admin_access(current_user) and get_token_tenant_id() is None:
+            projects = await paginate_query(db, query, skip, limit)
+        else:
+            projects: list[Project] = []
+            skipped_visible = 0
+            stream = await db.stream_scalars(query)
+            try:
+                async for project in stream:
+                    if not can_access_project(project, current_user):
+                        continue
+                    if skipped_visible < skip:
+                        skipped_visible += 1
+                        continue
+                    projects.append(project)
+                    if len(projects) >= limit:
+                        break
+            finally:
+                await stream.close()
         logger.info(
             "projects.list.success count=%s duration=%.3f",
             len(projects),
