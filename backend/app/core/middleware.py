@@ -40,6 +40,22 @@ def _normalize_http_path(path: str) -> str:
     return normalized or "/"
 
 
+def _route_template_path(scope: Scope) -> str | None:
+    route = scope.get("route")
+    if route is None:
+        return None
+
+    path_format = getattr(route, "path_format", None)
+    if isinstance(path_format, str) and path_format:
+        return path_format
+
+    route_path = getattr(route, "path", None)
+    if isinstance(route_path, str) and route_path:
+        return route_path
+
+    return None
+
+
 class QueryContextMiddleware:
     """Middleware to set query context for database metrics.
 
@@ -112,7 +128,7 @@ class ObservabilityMiddleware:
             await self.app(scope, receive, send)
             return
 
-        request_path = _normalize_http_path(scope.get("path") or "")
+        fallback_path = _normalize_http_path(scope.get("path") or "")
         method = (scope.get("method") or "UNKNOWN").upper()
         started_at = perf_counter()
         status_code: int | None = None
@@ -134,11 +150,14 @@ class ObservabilityMiddleware:
         finally:
             status_code = status_code or 200
             duration = perf_counter() - started_at
+            request_path = _route_template_path(scope) or fallback_path
             labels = {"path": request_path, "method": method, "status": str(status_code)}
             try:
                 metrics.inc("http_requests", labels=labels)
                 metrics.observe("http_request_latency_seconds", duration, labels=labels)
-                if status_code >= 400:
+                if 400 <= status_code < 500:
+                    metrics.inc("http_request_client_errors", labels=labels)
+                if status_code >= 500:
                     metrics.inc("http_request_errors", labels=labels)
             except Exception:
                 pass

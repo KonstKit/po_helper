@@ -26,6 +26,10 @@ def _monkeypatch_metrics(monkeypatch: Any, module_path: str) -> _DummyMetrics:
     return dummy
 
 
+async def _async_return(value: Any) -> Any:
+    return value
+
+
 def test_health_integrations_guardrail_marks_slow_requests(monkeypatch: Any, caplog: Any) -> None:
     caplog.set_level(logging.WARNING)
     dummy = _monkeypatch_metrics(monkeypatch, "app.api.api_v1.endpoints.health.metrics")
@@ -114,6 +118,12 @@ async def test_health_ready_returns_200_when_dependencies_are_available(
     monkeypatch.setattr(
         "app.api.api_v1.endpoints.health._check_redis_readiness",
         _redis_ready,
+    )
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health._check_celery_queue_readiness",
+        lambda: _async_return(
+            (True, "ok", {"required": False, "queue_name": "celery", "backlog": 0})
+        ),
     )
 
     response = await client.get("/api/v1/health/ready")
@@ -211,6 +221,97 @@ async def test_health_ready_requires_redis_when_celery_enabled(
     assert data["dependencies"]["redis"]["required"] is True
 
 
+async def test_health_ready_stays_200_when_queue_backlog_is_high(
+    monkeypatch: Any, client: Any
+) -> None:
+    async def _db_ready() -> tuple[bool, str]:
+        return True, "ok"
+
+    async def _redis_ready() -> tuple[bool, str]:
+        return True, "ok"
+
+    async def _queue_backlog_high() -> tuple[bool, str, dict[str, Any]]:
+        return True, "backlog_high", {"required": True, "queue_name": "celery", "backlog": 500}
+
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._check_database_readiness", _db_ready)
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._check_redis_readiness", _redis_ready)
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health._check_celery_queue_readiness",
+        _queue_backlog_high,
+    )
+
+    response = await client.get("/api/v1/health/ready")
+    data = response.json()
+
+    assert response.status_code == 200
+    assert data["status"] == "ready"
+    assert data["dependencies"]["queue"]["status"] == "backlog_high"
+    assert data["dependencies"]["queue"]["ok"] is True
+
+
+async def test_health_alerts_use_server_error_counter_only(
+    monkeypatch: Any, client: Any
+) -> None:
+    from app.api.api_v1.endpoints import health as health_endpoint
+
+    async def _queue_ok() -> tuple[bool, str, dict[str, Any]]:
+        return True, "ok", {"required": False, "queue_name": "celery", "backlog": 0}
+
+    async def _no_sync_failures(_db) -> dict[str, Any]:
+        return {
+            "triggered": False,
+            "window_seconds": 300,
+            "threshold": 5,
+            "total_failures": 0,
+            "by_type": {},
+        }
+
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._check_celery_queue_readiness", _queue_ok)
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._recent_sync_failure_alerts", _no_sync_failures)
+    monkeypatch.setattr(health_endpoint.settings, "ALERT_API_ERROR_THRESHOLD", 2)
+    monkeypatch.setattr(
+        health_endpoint.metrics,
+        "recent_counter_sum",
+        lambda name, *_args, **_kwargs: {"http_request_errors": 1, "http_requests": 100}.get(name, 0),
+    )
+
+    response = await client.get("/api/v1/health/alerts")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["status"] == "ok"
+    assert payload["alerts"] == []
+
+
+async def test_health_alerts_include_backlog_high_signal(
+    monkeypatch: Any, client: Any
+) -> None:
+    async def _queue_backlog_high() -> tuple[bool, str, dict[str, Any]]:
+        return True, "backlog_high", {"required": True, "queue_name": "celery", "backlog": 101}
+
+    async def _no_sync_failures(_db) -> dict[str, Any]:
+        return {
+            "triggered": False,
+            "window_seconds": 300,
+            "threshold": 5,
+            "total_failures": 0,
+            "by_type": {},
+        }
+
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health._check_celery_queue_readiness",
+        _queue_backlog_high,
+    )
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._recent_sync_failure_alerts", _no_sync_failures)
+
+    response = await client.get("/api/v1/health/alerts")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["status"] == "degraded"
+    assert any(alert["name"] == "queue_backlog_threshold" for alert in payload["alerts"])
+
+
 async def test_check_redis_readiness_uses_to_thread(monkeypatch: Any) -> None:
     from app.api.api_v1.endpoints import health as health_endpoint
 
@@ -229,3 +330,230 @@ async def test_check_redis_readiness_uses_to_thread(monkeypatch: Any) -> None:
     assert calls["to_thread"] is True
     assert redis_ok is True
     assert redis_status == "ok"
+
+
+async def test_health_ready_keeps_service_ready_on_queue_backlog_high(
+    monkeypatch: Any, client: Any
+) -> None:
+    async def _db_ready() -> tuple[bool, str]:
+        return True, "ok"
+
+    async def _redis_ready() -> tuple[bool, str]:
+        return True, "ok"
+
+    async def _queue_backlog() -> tuple[bool, str, dict[str, Any]]:
+        return True, "backlog_high", {"queue_name": "celery", "backlog": 123, "required": True}
+
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._check_database_readiness", _db_ready)
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._check_redis_readiness", _redis_ready)
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health._check_celery_queue_readiness",
+        _queue_backlog,
+    )
+
+    response = await client.get("/api/v1/health/ready")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["status"] == "ready"
+    assert payload["dependencies"]["queue"]["status"] == "backlog_high"
+
+
+async def test_health_alerts_include_queue_backlog_even_when_queue_check_is_ok(
+    monkeypatch: Any, client: Any
+) -> None:
+    async def _queue_backlog() -> tuple[bool, str, dict[str, Any]]:
+        return True, "backlog_high", {"queue_name": "celery", "backlog": 500, "required": True}
+
+    async def _no_sync_failures(_db: Any) -> dict[str, Any]:
+        return {
+            "triggered": False,
+            "window_seconds": 60,
+            "threshold": 1,
+            "total_failures": 0,
+            "by_type": {},
+        }
+
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health._check_celery_queue_readiness",
+        _queue_backlog,
+    )
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health._recent_sync_failure_alerts",
+        _no_sync_failures,
+    )
+    monkeypatch.setattr(settings, "CELERY_ENABLED", True)
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health.metrics.recent_counter_sum",
+        lambda *_args, **_kwargs: 0,
+    )
+
+    response = await client.get("/api/v1/health/alerts")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["status"] == "degraded"
+    names = {alert["name"] for alert in payload["alerts"]}
+    assert "queue_backlog_threshold" in names
+
+
+def test_recent_api_error_alert_uses_server_error_counter_only(monkeypatch: Any) -> None:
+    from app.api.api_v1.endpoints import health as health_endpoint
+
+    monkeypatch.setattr(settings, "ALERT_API_ERROR_WINDOW_SECONDS", 300)
+    monkeypatch.setattr(settings, "ALERT_API_ERROR_THRESHOLD", 10)
+
+    def _recent_counter_sum(name: str, _window: int, labels: Dict[str, str] | None = None) -> int:
+        del labels
+        if name == "http_request_errors":
+            return 6
+        if name == "http_request_client_errors":
+            return 40
+        if name == "http_requests":
+            return 46
+        return 0
+
+    monkeypatch.setattr(health_endpoint.metrics, "recent_counter_sum", _recent_counter_sum)
+
+    payload = health_endpoint._recent_api_error_alert()
+
+    assert payload["triggered"] is False
+    assert payload["server_error_count"] == 6
+    assert payload["request_count"] == 46
+
+
+async def test_health_ready_stays_ready_when_queue_backlog_is_high(
+    monkeypatch: Any, client: Any
+) -> None:
+    async def _db_ready() -> tuple[bool, str]:
+        return True, "ok"
+
+    async def _redis_ready() -> tuple[bool, str]:
+        return True, "ok"
+
+    async def _queue_backlog_high() -> tuple[bool, str, dict[str, Any]]:
+        return (
+            True,
+            "backlog_high",
+            {
+                "required": True,
+                "queue_name": "celery",
+                "backlog": 500,
+                "backlog_threshold": 100,
+                "status": "backlog_high",
+            },
+        )
+
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._check_database_readiness", _db_ready)
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._check_redis_readiness", _redis_ready)
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health._check_celery_queue_readiness", _queue_backlog_high
+    )
+
+    response = await client.get("/api/v1/health/ready")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["status"] == "ready"
+    assert payload["dependencies"]["queue"]["status"] == "backlog_high"
+
+
+async def test_health_alerts_do_not_trigger_on_client_error_noise(
+    monkeypatch: Any, client: Any
+) -> None:
+    class _FakeMetrics:
+        def recent_counter_sum(self, name: str, _window_seconds: int) -> float:
+            if name == "http_request_errors":
+                return 0.0  # server-side errors only
+            if name == "http_requests":
+                return 250.0
+            return 0.0
+
+    async def _queue_ok() -> tuple[bool, str, dict[str, Any]]:
+        return (
+            True,
+            "ok",
+            {"required": True, "queue_name": "celery", "backlog": 0, "backlog_threshold": 100},
+        )
+
+    async def _sync_ok(_db: Any) -> dict[str, Any]:
+        return {
+            "triggered": False,
+            "window_seconds": 3600,
+            "threshold": 5,
+            "total_failures": 0,
+            "by_type": {},
+        }
+
+    monkeypatch.setattr("app.api.api_v1.endpoints.health.metrics", _FakeMetrics())
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._check_celery_queue_readiness", _queue_ok)
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._recent_sync_failure_alerts", _sync_ok)
+
+    response = await client.get("/api/v1/health/alerts")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["status"] == "ok"
+    assert payload["alerts"] == []
+
+
+async def test_health_ready_degrades_when_queue_probe_fails(
+    monkeypatch: Any, client: Any
+) -> None:
+    async def _db_ready() -> tuple[bool, str]:
+        return True, "ok"
+
+    async def _redis_ready() -> tuple[bool, str]:
+        return True, "ok"
+
+    async def _queue_probe_error() -> tuple[bool, str, dict[str, Any]]:
+        return False, "probe_error", {"required": True, "queue_name": "celery", "backlog": 0}
+
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._check_database_readiness", _db_ready)
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._check_redis_readiness", _redis_ready)
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health._check_celery_queue_readiness",
+        _queue_probe_error,
+    )
+
+    response = await client.get("/api/v1/health/ready")
+    payload = response.json()
+
+    assert response.status_code == 503
+    assert payload["status"] == "degraded"
+    assert payload["dependencies"]["queue"]["status"] == "probe_error"
+
+
+async def test_health_alerts_include_queue_probe_unavailable_signal(
+    monkeypatch: Any, client: Any
+) -> None:
+    async def _queue_probe_error() -> tuple[bool, str, dict[str, Any]]:
+        return False, "probe_error", {"required": True, "queue_name": "celery", "backlog": 0}
+
+    async def _no_sync_failures(_db: Any) -> dict[str, Any]:
+        return {
+            "triggered": False,
+            "window_seconds": 3600,
+            "threshold": 5,
+            "total_failures": 0,
+            "by_type": {},
+        }
+
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health._check_celery_queue_readiness",
+        _queue_probe_error,
+    )
+    monkeypatch.setattr("app.api.api_v1.endpoints.health._recent_sync_failure_alerts", _no_sync_failures)
+    monkeypatch.setattr(settings, "CELERY_ENABLED", True)
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health.metrics.recent_counter_sum",
+        lambda *_args, **_kwargs: 0,
+    )
+
+    response = await client.get("/api/v1/health/alerts")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["status"] == "degraded"
+    names = {alert["name"] for alert in payload["alerts"]}
+    assert "queue_probe_unavailable" in names

@@ -8,9 +8,10 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.api.deps import get_current_user
+from app.core.request_context import set_token_scopes, set_token_tenant_id
 from app.core.crypto import decrypt_str
 from app.main import app
-from app.models import IntegrationSetting
+from app.models import IntegrationSetting, Permissions, Project
 
 
 @pytest.fixture
@@ -59,6 +60,40 @@ class _LimitedUser:
     @property
     def remaining_backup_codes(self) -> int:
         return 0
+
+
+class _PermissionUser(_LimitedUser):
+    def __init__(
+        self,
+        *,
+        user_id: int,
+        permissions: set[str],
+        is_active: bool = True,
+        is_superuser: bool = False,
+    ) -> None:
+        self.id = user_id
+        self.email = f"user{user_id}@example.com"
+        self.username = f"user{user_id}"
+        self.full_name = f"User {user_id}"
+        self.is_active = is_active
+        self.is_superuser = is_superuser
+        self._permissions = permissions
+
+    def has_permission(self, permission: str) -> bool:
+        return self.is_superuser or permission in self._permissions
+
+
+def _user_dep(
+    user: _PermissionUser,
+    tenant_id: Optional[str] = None,
+    token_scopes: Optional[list[str]] = None,
+):
+    async def _factory():
+        set_token_scopes(tuple(token_scopes) if token_scopes is not None else None)
+        set_token_tenant_id(tenant_id)
+        return user
+
+    return _factory
 
 
 @pytest.mark.asyncio
@@ -126,3 +161,281 @@ async def test_github_put_masks_and_encrypts(client, db_session):
     bundle = json.loads(decrypted)
     assert bundle["api_token"] == payload["api_token"]
     assert bundle["webhook_secret"] == payload["webhook_secret"]
+
+
+@pytest.mark.asyncio
+async def test_scoped_token_rejects_inactive_user(client, override_user_dep):
+    user = _PermissionUser(user_id=20, permissions={Permissions.ADMIN}, is_active=False)
+    override_user_dep(_user_dep(user, tenant_id="tenant-a"))
+
+    response = await client.post(
+        "/api/v1/auth/scoped-token",
+        json={"scopes": [], "expires_minutes": 5, "tenant_id": "tenant-a"},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Inactive user"
+
+
+@pytest.mark.asyncio
+async def test_scoped_token_rejects_ttl_above_access_policy(
+    client, override_user_dep, monkeypatch
+):
+    from app.api.api_v1.endpoints.auth import settings as auth_settings
+
+    user = _PermissionUser(user_id=21, permissions={Permissions.ADMIN}, is_active=True)
+    override_user_dep(_user_dep(user, tenant_id="tenant-a"))
+    monkeypatch.setattr(auth_settings, "ACCESS_TOKEN_EXPIRE_MINUTES", 10)
+
+    response = await client.post(
+        "/api/v1/auth/scoped-token",
+        json={"scopes": [], "expires_minutes": 11, "tenant_id": "tenant-a"},
+    )
+    assert response.status_code == 400
+    assert "cannot exceed 10" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_scoped_token_cannot_escalate_beyond_caller_scopes(client, override_user_dep):
+    user = _PermissionUser(
+        user_id=22,
+        permissions={Permissions.PROJECT_VIEW, Permissions.PROJECT_CREATE},
+        is_active=True,
+    )
+    override_user_dep(
+        _user_dep(
+            user,
+            tenant_id=None,
+            token_scopes=[Permissions.PROJECT_VIEW],
+        )
+    )
+
+    response = await client.post(
+        "/api/v1/auth/scoped-token",
+        json={"scopes": [Permissions.PROJECT_CREATE], "expires_minutes": 5},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Requested scopes exceed your effective permissions"
+
+
+@pytest.mark.asyncio
+async def test_scoped_token_rejects_tenant_mismatch_with_caller_token(
+    client, override_user_dep
+):
+    user = _PermissionUser(user_id=23, permissions={Permissions.PROJECT_VIEW}, is_active=True)
+    override_user_dep(_user_dep(user, tenant_id="tenant-a", token_scopes=[Permissions.PROJECT_VIEW]))
+
+    response = await client.post(
+        "/api/v1/auth/scoped-token",
+        json={"scopes": [Permissions.PROJECT_VIEW], "expires_minutes": 5, "tenant_id": "tenant-b"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Requested tenant_id does not match caller token tenant"
+
+
+@pytest.mark.asyncio
+async def test_scoped_token_rejects_arbitrary_tenant_for_non_admin_without_tenant_token(
+    client, override_user_dep
+):
+    user = _PermissionUser(user_id=24, permissions={Permissions.PROJECT_VIEW}, is_active=True)
+    override_user_dep(_user_dep(user, tenant_id=None, token_scopes=[Permissions.PROJECT_VIEW]))
+
+    response = await client.post(
+        "/api/v1/auth/scoped-token",
+        json={"scopes": [Permissions.PROJECT_VIEW], "expires_minutes": 5, "tenant_id": "tenant-a"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "tenant_id can be set only by admin or tenant-scoped token"
+
+
+@pytest.mark.asyncio
+async def test_projects_list_filters_by_tenant_and_membership(client, db_session, override_user_dep):
+    viewer = _PermissionUser(user_id=30, permissions={Permissions.PROJECT_VIEW}, is_active=True)
+    override_user_dep(_user_dep(viewer, tenant_id="tenant-a"))
+
+    p_owned = Project(jira_key="TEN-A-OWN", name="Owned", owner_id=viewer.id, meta={"tenant_id": "tenant-a"})
+    p_member = Project(
+        jira_key="TEN-A-MEMBER",
+        name="Member",
+        owner_id=999,
+        meta={"tenant_id": "tenant-a", "member_ids": [viewer.id]},
+    )
+    p_hidden_same_tenant = Project(
+        jira_key="TEN-A-HIDDEN",
+        name="Hidden",
+        owner_id=999,
+        meta={"tenant_id": "tenant-a", "member_ids": []},
+    )
+    p_mismatch_tenant = Project(
+        jira_key="TEN-B-OWN",
+        name="TenantMismatch",
+        owner_id=viewer.id,
+        meta={"tenant_id": "tenant-b"},
+    )
+    db_session.add_all([p_owned, p_member, p_hidden_same_tenant, p_mismatch_tenant])
+    await db_session.commit()
+
+    response = await client.get("/api/v1/projects/?skip=0&limit=100")
+    assert response.status_code == 200, response.text
+    returned_ids = {item["id"] for item in response.json()}
+    assert p_owned.id in returned_ids
+    assert p_member.id in returned_ids
+    assert p_hidden_same_tenant.id not in returned_ids
+    assert p_mismatch_tenant.id not in returned_ids
+
+
+@pytest.mark.asyncio
+async def test_project_detail_denies_tenant_mismatch(client, db_session, override_user_dep):
+    viewer = _PermissionUser(user_id=31, permissions={Permissions.PROJECT_VIEW}, is_active=True)
+    override_user_dep(_user_dep(viewer, tenant_id="tenant-a"))
+
+    project = Project(
+        jira_key="TEN-B-DETAIL",
+        name="Tenant B",
+        owner_id=viewer.id,
+        meta={"tenant_id": "tenant-b"},
+    )
+    db_session.add(project)
+    await db_session.commit()
+    await db_session.refresh(project)
+
+    response = await client.get(f"/api/v1/projects/{project.id}")
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_project_create_enforces_owner_and_sets_membership(
+    client, override_user_dep
+):
+    creator = _PermissionUser(user_id=32, permissions={Permissions.PROJECT_CREATE}, is_active=True)
+    override_user_dep(_user_dep(creator, tenant_id="tenant-a"))
+
+    forbidden = await client.post(
+        "/api/v1/projects/",
+        json={"jira_key": "TEN-A-403", "name": "Denied", "owner_id": 999, "meta": {"tenant_id": "tenant-a"}},
+    )
+    assert forbidden.status_code == 403
+
+    created = await client.post(
+        "/api/v1/projects/",
+        json={"jira_key": "TEN-A-OK", "name": "Created", "owner_id": creator.id},
+    )
+    assert created.status_code == 200, created.text
+    payload = created.json()
+    assert payload["owner_id"] == creator.id
+    assert payload["meta"]["tenant_id"] == "tenant-a"
+    assert creator.id in payload["meta"]["member_ids"]
+
+
+@pytest.mark.asyncio
+async def test_scoped_token_admin_role_cannot_set_tenant_without_admin_scope(
+    client, override_user_dep
+):
+    admin_user = _PermissionUser(user_id=33, permissions={Permissions.ADMIN}, is_active=True)
+    override_user_dep(
+        _user_dep(
+            admin_user,
+            tenant_id=None,
+            token_scopes=[Permissions.PROJECT_VIEW],
+        )
+    )
+
+    response = await client.post(
+        "/api/v1/auth/scoped-token",
+        json={"scopes": [Permissions.PROJECT_VIEW], "expires_minutes": 5, "tenant_id": "tenant-z"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "tenant_id can be set only by admin or tenant-scoped token"
+
+
+@pytest.mark.asyncio
+async def test_projects_list_admin_token_is_limited_by_tenant_claim(
+    client, db_session, override_user_dep
+):
+    admin_user = _PermissionUser(
+        user_id=34,
+        permissions={Permissions.ADMIN, Permissions.PROJECT_VIEW},
+        is_active=True,
+    )
+    override_user_dep(
+        _user_dep(
+            admin_user,
+            tenant_id="tenant-a",
+            token_scopes=[Permissions.ADMIN, Permissions.PROJECT_VIEW],
+        )
+    )
+
+    tenant_a = Project(
+        jira_key="TEN-A-ADMIN",
+        name="Tenant A",
+        owner_id=999,
+        meta={"tenant_id": "tenant-a"},
+    )
+    tenant_b = Project(
+        jira_key="TEN-B-ADMIN",
+        name="Tenant B",
+        owner_id=999,
+        meta={"tenant_id": "tenant-b"},
+    )
+    no_tenant = Project(
+        jira_key="TEN-NONE-ADMIN",
+        name="No Tenant",
+        owner_id=999,
+        meta=None,
+    )
+    db_session.add_all([tenant_a, tenant_b, no_tenant])
+    await db_session.commit()
+
+    response = await client.get("/api/v1/projects/?skip=0&limit=100")
+    assert response.status_code == 200, response.text
+
+    returned_ids = {item["id"] for item in response.json()}
+    assert tenant_a.id in returned_ids
+    assert tenant_b.id not in returned_ids
+    assert no_tenant.id not in returned_ids
+
+
+@pytest.mark.asyncio
+async def test_baselines_list_requires_project_for_admin_role_with_non_admin_scope(
+    client, override_user_dep
+):
+    admin_user = _PermissionUser(
+        user_id=35,
+        permissions={Permissions.ADMIN, Permissions.TRACEABILITY_VIEW},
+        is_active=True,
+    )
+    override_user_dep(
+        _user_dep(
+            admin_user,
+            tenant_id=None,
+            token_scopes=[Permissions.TRACEABILITY_VIEW],
+        )
+    )
+
+    response = await client.get("/api/v1/traceability/baselines")
+    assert response.status_code == 403
+    assert response.json()["detail"] == "project_id is required"
+
+
+@pytest.mark.asyncio
+async def test_baselines_list_requires_project_for_tenant_scoped_admin_token(
+    client, override_user_dep
+):
+    admin_user = _PermissionUser(
+        user_id=36,
+        permissions={Permissions.ADMIN, Permissions.TRACEABILITY_VIEW},
+        is_active=True,
+    )
+    override_user_dep(
+        _user_dep(
+            admin_user,
+            tenant_id="tenant-a",
+            token_scopes=[Permissions.ADMIN, Permissions.TRACEABILITY_VIEW],
+        )
+    )
+
+    response = await client.get("/api/v1/traceability/baselines")
+    assert response.status_code == 403
+    assert response.json()["detail"] == "project_id is required"

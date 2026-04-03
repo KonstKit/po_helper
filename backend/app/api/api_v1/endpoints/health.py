@@ -198,19 +198,19 @@ async def _check_celery_queue_readiness() -> tuple[bool, str, dict[str, Any]]:
             pass
         if backlog >= threshold:
             base_payload["status"] = "backlog_high"
-            return False, "backlog_high", base_payload
+            return True, "backlog_high", base_payload
         base_payload["status"] = "ok"
         return True, "ok", base_payload
     except asyncio.TimeoutError:
         base_payload["status"] = "probe_timeout"
-        return True, "probe_timeout", base_payload
+        return False, "probe_timeout", base_payload
     except ImportError:
         base_payload["status"] = "client_unavailable"
-        return True, "client_unavailable", base_payload
+        return False, "client_unavailable", base_payload
     except Exception:
         logger.warning("health.ready.queue_failed", exc_info=True)
         base_payload["status"] = "probe_error"
-        return True, "probe_error", base_payload
+        return False, "probe_error", base_payload
 
 
 async def _recent_sync_failure_alerts(db: AsyncSession) -> dict[str, Any]:
@@ -254,6 +254,7 @@ def _recent_api_error_alert() -> dict[str, Any]:
         "triggered": triggered,
         "window_seconds": window_seconds,
         "threshold": threshold,
+        "server_error_count": error_count,
         "error_count": error_count,
         "request_count": request_count,
     }
@@ -407,13 +408,30 @@ async def alerts(db: AsyncSession = Depends(get_db)) -> JSONResponse:
         )
 
     queue_ok, queue_status, queue_details = await _check_celery_queue_readiness()
-    if settings.CELERY_ENABLED and not queue_ok and queue_status == "backlog_high":
+    if settings.CELERY_ENABLED and queue_status == "backlog_high":
         alerts_payload.append(
             {
                 "name": "queue_backlog_threshold",
                 "severity": "warning",
                 "triggered": True,
                 "details": queue_details,
+            }
+        )
+    elif settings.CELERY_ENABLED and queue_status in {
+        "probe_timeout",
+        "client_unavailable",
+        "probe_error",
+        "not_configured",
+    }:
+        alerts_payload.append(
+            {
+                "name": "queue_probe_unavailable",
+                "severity": "critical",
+                "triggered": True,
+                "details": {
+                    "status": queue_status,
+                    **queue_details,
+                },
             }
         )
 

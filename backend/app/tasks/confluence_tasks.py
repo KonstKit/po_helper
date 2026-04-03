@@ -178,7 +178,6 @@ async def _start_confluence_tracking(
                         run_key,
                         existing.id,
                     )
-                    await touch_sync_task_heartbeat(db, existing.id, item_counts=initial_counts)
                     return source.id, existing.id, run_key, False
 
                 recovered = await recover_stale_running_sync_tasks(db, task_id=existing.id)
@@ -408,10 +407,8 @@ async def _async_sync_space(
             trigger=trigger,
         )
     except Exception as exc:
-        logger.warning("Failed to start Confluence sync tracking: %s", exc)
-        sync_source_id = None
-        sync_task_id = None
-        created_new_tracking = False
+        logger.error("Failed to start Confluence sync tracking: %s", exc)
+        raise RuntimeError("Confluence sync tracking initialization failed") from exc
 
     if sync_task_id is not None and not created_new_tracking:
         logger.info(
