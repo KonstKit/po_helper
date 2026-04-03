@@ -67,6 +67,14 @@ class Token(BaseModel):
     token_type: str
 
 
+class ScopedTokenRequest(BaseModel):
+    """Request body for issuing a scoped access token."""
+
+    scopes: List[str] = Field(default_factory=list)
+    expires_minutes: int = Field(..., gt=0)
+    tenant_id: Optional[str] = None
+
+
 class TokenData(BaseModel):
     username: Optional[str] = None
 

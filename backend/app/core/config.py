@@ -64,6 +64,13 @@ class Settings(BaseSettings):
     # Redis cache / broker
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Health / alerting thresholds
+    ALERT_API_ERROR_WINDOW_SECONDS: int = 300
+    ALERT_API_ERROR_THRESHOLD: int = 20
+    ALERT_QUEUE_BACKLOG_THRESHOLD: int = 100
+    ALERT_SYNC_FAILURE_WINDOW_SECONDS: int = 86400
+    ALERT_SYNC_FAILURE_THRESHOLD: int = 5
+
     # Traceability caching (in-memory, optional)
     ENABLE_MATRIX_CACHE: bool = False
     MATRIX_CACHE_TTL_SECONDS: int = 300

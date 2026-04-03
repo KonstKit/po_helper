@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 from time import perf_counter
+from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Response, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
+from sqlalchemy import func, or_, select, text
 
 from app.services.jira_service import jira_service
 from app.services.confluence_service import confluence_service
@@ -15,6 +18,7 @@ from app.core.metrics import metrics
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, get_db
 from app.models.settings import IntegrationSetting
+from app.models.traceability import SyncTask as SyncTaskModel
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -130,13 +134,139 @@ async def _check_redis_readiness() -> tuple[bool, str]:
         return False, "error"
 
 
+def _get_celery_queue_name() -> str:
+    try:
+        from app.core.celery_app import celery_app
+
+        queue_name = getattr(celery_app.conf, "task_default_queue", None) or "celery"
+        return str(queue_name)
+    except Exception:
+        return "celery"
+
+
+async def _check_celery_queue_readiness() -> tuple[bool, str, dict[str, Any]]:
+    queue_name = _get_celery_queue_name()
+    threshold = int(getattr(settings, "ALERT_QUEUE_BACKLOG_THRESHOLD", 100) or 100)
+    base_payload: dict[str, Any] = {
+        "required": bool(settings.CELERY_ENABLED),
+        "queue_name": queue_name,
+        "backlog": 0,
+        "backlog_threshold": threshold,
+    }
+
+    if not settings.CELERY_ENABLED:
+        return True, "disabled", base_payload
+
+    broker_url = settings.CELERY_BROKER_URL or settings.REDIS_URL
+    if not broker_url:
+        return False, "not_configured", base_payload
+
+    broker_scheme = (urlparse(broker_url).scheme or "").lower()
+    if broker_scheme not in {"redis", "rediss"}:
+        base_payload["status"] = "probe_not_supported"
+        return True, "probe_not_supported", base_payload
+
+    try:
+        import redis
+
+        def _probe_backlog() -> int:
+            client = redis.from_url(
+                broker_url,
+                decode_responses=True,
+                socket_connect_timeout=READINESS_TIMEOUT_SECONDS,
+                socket_timeout=READINESS_TIMEOUT_SECONDS,
+            )
+            try:
+                client.ping()
+                return int(client.llen(queue_name))
+            finally:
+                client.close()
+
+        backlog = await asyncio.wait_for(
+            asyncio.to_thread(_probe_backlog),
+            timeout=READINESS_TIMEOUT_SECONDS,
+        )
+        base_payload["backlog"] = backlog
+        try:
+            metrics.set_gauge("celery_queue_backlog", backlog, labels={"queue": queue_name})
+            metrics.set_gauge(
+                "celery_queue_backlog_threshold",
+                threshold,
+                labels={"queue": queue_name},
+            )
+        except Exception:
+            pass
+        if backlog >= threshold:
+            base_payload["status"] = "backlog_high"
+            return False, "backlog_high", base_payload
+        base_payload["status"] = "ok"
+        return True, "ok", base_payload
+    except asyncio.TimeoutError:
+        base_payload["status"] = "probe_timeout"
+        return True, "probe_timeout", base_payload
+    except ImportError:
+        base_payload["status"] = "client_unavailable"
+        return True, "client_unavailable", base_payload
+    except Exception:
+        logger.warning("health.ready.queue_failed", exc_info=True)
+        base_payload["status"] = "probe_error"
+        return True, "probe_error", base_payload
+
+
+async def _recent_sync_failure_alerts(db: AsyncSession) -> dict[str, Any]:
+    window_seconds = int(getattr(settings, "ALERT_SYNC_FAILURE_WINDOW_SECONDS", 86400) or 86400)
+    threshold = int(getattr(settings, "ALERT_SYNC_FAILURE_THRESHOLD", 5) or 5)
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=window_seconds)
+
+    stmt = (
+        select(SyncTaskModel.task_type, func.count(SyncTaskModel.id))
+        .where(SyncTaskModel.status == "failed")
+        .where(
+            or_(
+                SyncTaskModel.finished_at >= cutoff,
+                SyncTaskModel.created_at >= cutoff,
+            )
+        )
+        .group_by(SyncTaskModel.task_type)
+        .order_by(SyncTaskModel.task_type)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+    by_type = {task_type: int(count) for task_type, count in rows}
+    total_failures = sum(by_type.values())
+    triggered = total_failures >= threshold
+    return {
+        "triggered": triggered,
+        "window_seconds": window_seconds,
+        "threshold": threshold,
+        "total_failures": total_failures,
+        "by_type": by_type,
+    }
+
+
+def _recent_api_error_alert() -> dict[str, Any]:
+    window_seconds = int(getattr(settings, "ALERT_API_ERROR_WINDOW_SECONDS", 300) or 300)
+    threshold = int(getattr(settings, "ALERT_API_ERROR_THRESHOLD", 20) or 20)
+    error_count = int(metrics.recent_counter_sum("http_request_errors", window_seconds))
+    request_count = int(metrics.recent_counter_sum("http_requests", window_seconds))
+    triggered = error_count >= threshold
+    return {
+        "triggered": triggered,
+        "window_seconds": window_seconds,
+        "threshold": threshold,
+        "error_count": error_count,
+        "request_count": request_count,
+    }
+
+
 @router.get("/ready")
 async def readiness_check() -> JSONResponse:
     db_ok, db_status = await _check_database_readiness()
     redis_ok, redis_status = await _check_redis_readiness()
     redis_required = _is_redis_required_for_runtime()
     redis_ready = redis_ok if redis_required else True
-    is_ready = db_ok and redis_ready
+    queue_ok, queue_status, queue_details = await _check_celery_queue_readiness()
+    is_ready = db_ok and redis_ready and queue_ok
 
     payload = {
         "status": "ready" if is_ready else "degraded",
@@ -144,6 +274,7 @@ async def readiness_check() -> JSONResponse:
         "dependencies": {
             "database": {"ok": db_ok, "status": db_status},
             "redis": {"ok": redis_ok, "status": redis_status, "required": redis_required},
+            "queue": {"ok": queue_ok, **queue_details, "status": queue_status},
         },
     }
     return JSONResponse(status_code=200 if is_ready else 503, content=payload)
@@ -258,3 +389,50 @@ async def integration_status(name: str, db: AsyncSession = Depends(get_db)):
 async def metrics_export() -> Response:
     data = metrics.export_prometheus()
     return Response(content=data, media_type="text/plain; version=0.0.4")
+
+
+@router.get("/alerts")
+async def alerts(db: AsyncSession = Depends(get_db)) -> JSONResponse:
+    alerts_payload: list[dict[str, Any]] = []
+
+    api_errors = _recent_api_error_alert()
+    if api_errors["triggered"]:
+        alerts_payload.append(
+            {
+                "name": "sustained_api_errors",
+                "severity": "warning",
+                "triggered": True,
+                "details": api_errors,
+            }
+        )
+
+    queue_ok, queue_status, queue_details = await _check_celery_queue_readiness()
+    if settings.CELERY_ENABLED and not queue_ok and queue_status == "backlog_high":
+        alerts_payload.append(
+            {
+                "name": "queue_backlog_threshold",
+                "severity": "warning",
+                "triggered": True,
+                "details": queue_details,
+            }
+        )
+
+    sync_failures = await _recent_sync_failure_alerts(db)
+    if sync_failures["triggered"]:
+        alerts_payload.append(
+            {
+                "name": "repeated_sync_failures",
+                "severity": "warning",
+                "triggered": True,
+                "details": sync_failures,
+            }
+        )
+
+    return JSONResponse(
+        content={
+            "status": "degraded" if alerts_payload else "ok",
+            "service": "po_helper",
+            "alerts": alerts_payload,
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
