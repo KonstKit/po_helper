@@ -246,7 +246,7 @@ async def test_scoped_token_rejects_arbitrary_tenant_for_non_admin_without_tenan
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "tenant_id can be set only by admin or tenant-scoped token"
+    assert response.json()["detail"] == "Requested tenant_id is not accessible for current user"
 
 
 @pytest.mark.asyncio
@@ -347,7 +347,7 @@ async def test_scoped_token_admin_role_cannot_set_tenant_without_admin_scope(
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "tenant_id can be set only by admin or tenant-scoped token"
+    assert response.json()["detail"] == "Requested tenant_id is not accessible for current user"
 
 
 @pytest.mark.asyncio

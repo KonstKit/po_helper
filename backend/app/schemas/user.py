@@ -1,6 +1,6 @@
-from typing import Optional, List
+from typing import Annotated, Optional, List
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, ConfigDict, Field
+from pydantic import BaseModel, EmailStr, ConfigDict, Field, StringConstraints
 
 
 # Role schemas
@@ -67,12 +67,22 @@ class Token(BaseModel):
     token_type: str
 
 
+ScopedTokenScope = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=64),
+]
+ScopedTokenTenant = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=128),
+]
+
+
 class ScopedTokenRequest(BaseModel):
     """Request body for issuing a scoped access token."""
 
-    scopes: List[str] = Field(default_factory=list)
+    scopes: List[ScopedTokenScope] = Field(default_factory=list, max_length=32)
     expires_minutes: int = Field(..., gt=0)
-    tenant_id: Optional[str] = None
+    tenant_id: Optional[ScopedTokenTenant] = None
 
 
 class TokenData(BaseModel):

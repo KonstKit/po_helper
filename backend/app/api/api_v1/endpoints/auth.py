@@ -29,7 +29,7 @@ from app.core.mfa import (
     hash_backup_codes,
 )
 from app.core.request_context import get_token_scopes, get_token_tenant_id
-from app.models import User, Role
+from app.models import User, Role, Project
 from app.models.rbac import Permissions
 from app.schemas.user import (
     ScopedTokenRequest,
@@ -67,6 +67,60 @@ def _normalize_scopes(scopes: list[str]) -> list[str]:
         if cleaned and cleaned not in normalized:
             normalized.append(cleaned)
     return normalized
+
+
+def _normalize_tenant_id(tenant_id: Any) -> Optional[str]:
+    if tenant_id is None:
+        return None
+    normalized = str(tenant_id).strip()
+    return normalized or None
+
+
+def _project_meta(meta: Any) -> dict[str, Any]:
+    if isinstance(meta, dict):
+        return meta
+    return {}
+
+
+def _project_member_ids(meta: dict[str, Any]) -> set[int]:
+    member_ids: set[int] = set()
+    raw_member_ids = meta.get("member_ids")
+    if not isinstance(raw_member_ids, list):
+        return member_ids
+
+    for member_id in raw_member_ids:
+        if isinstance(member_id, bool):
+            continue
+        try:
+            member_ids.add(int(member_id))
+        except (TypeError, ValueError):
+            continue
+    return member_ids
+
+
+async def _user_has_access_to_tenant(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    tenant_id: str,
+) -> bool:
+    # Fast path: owner projects for this user.
+    owned_result = await db.execute(select(Project.meta).where(Project.owner_id == user_id))
+    for (project_meta,) in owned_result.all():
+        meta = _project_meta(project_meta)
+        if _normalize_tenant_id(meta.get("tenant_id")) == tenant_id:
+            return True
+
+    # Membership path (meta-based, compatible with SQLite test DB and Postgres).
+    member_result = await db.execute(select(Project.meta).where(Project.meta.is_not(None)))
+    for (project_meta,) in member_result.all():
+        meta = _project_meta(project_meta)
+        if _normalize_tenant_id(meta.get("tenant_id")) != tenant_id:
+            continue
+        if user_id in _project_member_ids(meta):
+            return True
+
+    return False
 
 
 def _effective_permissions(user: User) -> set[str]:
@@ -143,6 +197,7 @@ async def login(
 @router.post("/scoped-token", response_model=Token)
 async def issue_scoped_token(
     body: ScopedTokenRequest,
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Token:
     """Issue a JWT restricted to the requested scopes for the current user."""
@@ -171,10 +226,16 @@ async def issue_scoped_token(
             )
         tenant_id = caller_token_tenant_id
     elif tenant_id is not None and not caller_has_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="tenant_id can be set only by admin or tenant-scoped token",
+        tenant_access = await _user_has_access_to_tenant(
+            db,
+            user_id=current_user.id,
+            tenant_id=tenant_id,
         )
+        if not tenant_access:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Requested tenant_id is not accessible for current user",
+            )
 
     max_scoped_ttl = max(1, int(settings.ACCESS_TOKEN_EXPIRE_MINUTES))
     if body.expires_minutes > max_scoped_ttl:
