@@ -15,8 +15,9 @@ from app.schemas.project import (
     ProjectUpdate,
     ProjectWithStats,
 )
-from app.api.deps import require_permission
-from app.utils import transactional_session, paginate_query, get_or_404, execute_with_lock
+from app.api.deps import can_access_project, ensure_project_access, has_admin_access, require_permission
+from app.core.request_context import get_token_tenant_id
+from app.utils import transactional_session, execute_with_lock
 
 
 router = APIRouter()
@@ -35,8 +36,11 @@ async def get_projects(
     start = perf_counter()
     logger.info("projects.list.start skip=%s limit=%s", skip, limit)
     try:
-        query = select(Project)
-        projects = await paginate_query(db, query, skip, limit)
+        query = select(Project).order_by(Project.id.asc())
+        result = await db.execute(query)
+        all_projects = list(result.scalars().all())
+        visible_projects = [project for project in all_projects if can_access_project(project, current_user)]
+        projects = visible_projects[skip : skip + limit]
         logger.info(
             "projects.list.success count=%s duration=%.3f",
             len(projects),
@@ -63,7 +67,7 @@ async def get_project(
     start = perf_counter()
     logger.info("projects.detail.start project_id=%s", project_id)
     try:
-        project = await get_or_404(db, select(Project).where(Project.id == project_id), "Project")
+        project = await ensure_project_access(project_id, db, current_user)
 
         result = await db.execute(
             select(
@@ -125,6 +129,43 @@ async def create_project(
         project.name,
     )
     try:
+        if not current_user.is_active:
+            raise HTTPException(status_code=403, detail="Inactive user")
+
+        payload = project.model_dump()
+        token_tenant_id = get_token_tenant_id()
+        project_meta = payload.get("meta")
+        if project_meta is None:
+            project_meta = {}
+        if not isinstance(project_meta, dict):
+            raise HTTPException(status_code=400, detail="meta must be an object")
+
+        project_tenant_id = project_meta.get("tenant_id")
+        if token_tenant_id is not None:
+            if project_tenant_id is None:
+                project_meta["tenant_id"] = token_tenant_id
+            elif str(project_tenant_id).strip() != str(token_tenant_id):
+                raise HTTPException(status_code=403, detail="Project tenant mismatch")
+        elif project_tenant_id is not None:
+            raise HTTPException(status_code=403, detail="Tenant-scoped token is required")
+
+        payload["meta"] = project_meta or None
+
+        if not has_admin_access(current_user):
+            owner_id = payload.get("owner_id")
+            if owner_id is not None and owner_id != current_user.id:
+                raise HTTPException(status_code=403, detail="owner_id must match current user")
+            payload["owner_id"] = current_user.id
+
+            enforced_meta = dict(payload.get("meta") or {})
+            member_ids = enforced_meta.get("member_ids")
+            if not isinstance(member_ids, list):
+                member_ids = []
+            if current_user.id not in member_ids:
+                member_ids.append(current_user.id)
+            enforced_meta["member_ids"] = member_ids
+            payload["meta"] = enforced_meta or None
+
         sel = select(Project).where(Project.jira_key == project.jira_key)
         result = await execute_with_lock(db, sel)
         if result.scalar_one_or_none():
@@ -135,7 +176,7 @@ async def create_project(
             )
             raise HTTPException(status_code=400, detail="Project with this key already exists")
 
-        db_project = Project(**project.dict())
+        db_project = Project(**payload)
         async with transactional_session(db):
             db.add(db_project)
         await db.refresh(db_project)
@@ -168,9 +209,26 @@ async def update_project(
     start = perf_counter()
     logger.info("projects.update.start project_id=%s", project_id)
     try:
-        project = await get_or_404(db, select(Project).where(Project.id == project_id), "Project")
+        project = await ensure_project_access(project_id, db, current_user)
 
-        update_data = project_update.dict(exclude_unset=True)
+        update_data = project_update.model_dump(exclude_unset=True)
+        if "meta" in update_data:
+            meta_value = update_data["meta"]
+            if meta_value is not None and not isinstance(meta_value, dict):
+                raise HTTPException(status_code=400, detail="meta must be an object")
+
+            token_tenant_id = get_token_tenant_id()
+            target_meta = dict(meta_value or {})
+            target_tenant_id = target_meta.get("tenant_id")
+            if token_tenant_id is not None:
+                if target_tenant_id is None:
+                    target_meta["tenant_id"] = token_tenant_id
+                elif str(target_tenant_id).strip() != str(token_tenant_id):
+                    raise HTTPException(status_code=403, detail="Project tenant mismatch")
+            elif target_tenant_id is not None and not has_admin_access(current_user):
+                raise HTTPException(status_code=403, detail="Tenant-scoped token is required")
+            update_data["meta"] = target_meta or None
+
         try:
             async with db.begin():
                 if "jira_key" in update_data and update_data["jira_key"] is not None:
@@ -228,7 +286,7 @@ async def delete_project(
     start = perf_counter()
     logger.info("projects.delete.start project_id=%s", project_id)
     try:
-        project = await get_or_404(db, select(Project).where(Project.id == project_id), "Project")
+        project = await ensure_project_access(project_id, db, current_user)
 
         async with transactional_session(db):
             await db.delete(project)
@@ -260,6 +318,7 @@ async def purge_project_data(
     start = perf_counter()
     logger.info("projects.purge.start project_id=%s", project_id)
     try:
+        await ensure_project_access(project_id, db, current_user)
         async with transactional_session(db):
             # Bulk delete tasks - O(1) instead of O(n) queries
             tasks_result = await db.execute(

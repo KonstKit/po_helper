@@ -28,6 +28,7 @@ from app.core.mfa import (
     generate_backup_codes,
     hash_backup_codes,
 )
+from app.core.request_context import get_token_scopes, get_token_tenant_id
 from app.models import User, Role
 from app.models.rbac import Permissions
 from app.schemas.user import (
@@ -70,8 +71,18 @@ def _normalize_scopes(scopes: list[str]) -> list[str]:
 
 def _effective_permissions(user: User) -> set[str]:
     permissions: set[str] = set()
-    for role in user.roles:
-        permissions.update(role.permissions)
+    user_roles = getattr(user, "roles", None) or []
+    for role in user_roles:
+        permissions.update(getattr(role, "permissions", []) or [])
+
+    if not permissions:
+        # Keep compatibility with lightweight test doubles that expose only has_permission().
+        for attr in dir(Permissions):
+            if not attr.isupper():
+                continue
+            value = getattr(Permissions, attr, None)
+            if isinstance(value, str) and user.has_permission(value):
+                permissions.add(value)
     return permissions
 
 
@@ -135,14 +146,47 @@ async def issue_scoped_token(
     current_user: User = Depends(get_current_user),
 ) -> Token:
     """Issue a JWT restricted to the requested scopes for the current user."""
+    if not current_user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
+
     requested_scopes = _normalize_scopes(body.scopes)
+    caller_token_scopes = get_token_scopes()
+    caller_token_tenant_id = get_token_tenant_id()
     tenant_id = body.tenant_id.strip() if body.tenant_id else None
+    caller_has_admin = (
+        current_user.has_permission(Permissions.ADMIN)
+        if caller_token_scopes is None
+        else (Permissions.ADMIN in caller_token_scopes)
+    )
 
     if body.tenant_id is not None and not tenant_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid tenant_id")
 
-    if not current_user.has_permission(Permissions.ADMIN):
+    # Never allow a scoped token to mint a different tenant context than the caller token.
+    if caller_token_tenant_id is not None:
+        if tenant_id is not None and tenant_id != caller_token_tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Requested tenant_id does not match caller token tenant",
+            )
+        tenant_id = caller_token_tenant_id
+    elif tenant_id is not None and not caller_has_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="tenant_id can be set only by admin or tenant-scoped token",
+        )
+
+    max_scoped_ttl = max(1, int(settings.ACCESS_TOKEN_EXPIRE_MINUTES))
+    if body.expires_minutes > max_scoped_ttl:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"expires_minutes cannot exceed {max_scoped_ttl}",
+        )
+
+    if not caller_has_admin:
         effective_permissions = _effective_permissions(current_user)
+        if caller_token_scopes is not None:
+            effective_permissions &= set(caller_token_scopes)
         invalid_scopes = [
             scope for scope in requested_scopes if scope not in effective_permissions
         ]

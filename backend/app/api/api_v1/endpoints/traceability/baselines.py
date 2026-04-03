@@ -1,15 +1,16 @@
 import csv
 from datetime import datetime, timezone
 from io import StringIO
-from typing import Any, Dict, List, Optional, Literal
+from typing import Any, AsyncIterator, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.api.deps import ensure_project_access, require_permission
+from app.api.deps import ensure_project_access, has_admin_access, require_permission
+from app.core.request_context import get_token_tenant_id
 from app.models import User, Permissions
 from app.models.traceability import Baseline as BaselineModel
 from app.models.traceability import BaselineItem as BaselineItemModel
@@ -22,7 +23,7 @@ from app.schemas.traceability import (
     BaselineExportItem,
     BaselineExportResponse,
     BaselineItem,
-    BaselineItemBase,
+    BaselineItemCreate,
 )
 from app.services.audit_log import record_audit_event
 from app.utils import get_by_id_or_404, transactional_session
@@ -50,9 +51,15 @@ def _baseline_item_kind(item: BaselineItemModel) -> str:
 
 
 def _baseline_item_ids(items: List[BaselineItemModel]) -> Dict[str, List[int]]:
-    artifact_ids = sorted({item.artifact_id for item in items if item.artifact_id is not None})
-    link_ids = sorted({item.link_id for item in items if item.link_id is not None})
-    return {"artifact_ids": artifact_ids, "link_ids": link_ids}
+    artifact_ids: set[int] = set()
+    link_ids: set[int] = set()
+    for item in items:
+        item_type = _baseline_item_kind(item)
+        if item_type == "artifact" and item.artifact_id is not None:
+            artifact_ids.add(item.artifact_id)
+        elif item_type == "link" and item.link_id is not None:
+            link_ids.add(item.link_id)
+    return {"artifact_ids": sorted(artifact_ids), "link_ids": sorted(link_ids)}
 
 
 def _baseline_export_response(
@@ -79,9 +86,10 @@ def _baseline_export_response(
     )
 
 
-def _render_baseline_csv(
-    baseline: BaselineModel, items: List[BaselineItemModel]
-) -> StringIO:
+async def _iter_baseline_csv(
+    db: AsyncSession,
+    baseline: BaselineModel,
+) -> AsyncIterator[str]:
     output = StringIO()
     writer = csv.DictWriter(
         output,
@@ -97,7 +105,16 @@ def _render_baseline_csv(
         ],
     )
     writer.writeheader()
-    for item in items:
+    yield output.getvalue()
+    output.seek(0)
+    output.truncate(0)
+
+    stream = await db.stream(
+        select(BaselineItemModel)
+        .where(BaselineItemModel.baseline_id == baseline.id)
+        .order_by(BaselineItemModel.id.asc())
+    )
+    async for item in stream.scalars():
         writer.writerow(
             {
                 "baseline_id": baseline.id,
@@ -110,8 +127,27 @@ def _render_baseline_csv(
                 "included_at": item.included_at.isoformat(),
             }
         )
-    output.seek(0)
-    return output
+        yield output.getvalue()
+        output.seek(0)
+        output.truncate(0)
+
+
+async def _baseline_export_counts(
+    db: AsyncSession,
+    baseline_id: int,
+) -> Dict[str, int]:
+    stmt = select(
+        func.count(BaselineItemModel.id),
+        func.count(BaselineItemModel.artifact_id),
+        func.count(BaselineItemModel.link_id),
+    ).where(BaselineItemModel.baseline_id == baseline_id)
+    result = await db.execute(stmt)
+    row = result.one()
+    return {
+        "item_count": int(row[0] or 0),
+        "artifact_count": int(row[1] or 0),
+        "link_count": int(row[2] or 0),
+    }
 
 
 def _compare_baseline_items(
@@ -154,8 +190,11 @@ async def list_baselines(
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
         stmt = stmt.where(BaselineModel.project_id == project_id)
-    elif not current_user.has_permission(Permissions.ADMIN):
-        raise HTTPException(status_code=403, detail="project_id is required")
+    else:
+        if not has_admin_access(current_user):
+            raise HTTPException(status_code=403, detail="project_id is required")
+        if get_token_tenant_id() is not None:
+            raise HTTPException(status_code=403, detail="project_id is required")
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
@@ -247,7 +286,19 @@ async def get_baseline(
     return baseline
 
 
-@router.get("/baselines/{baseline_id}/export", response_model=BaselineExportResponse)
+@router.get(
+    "/baselines/{baseline_id}/export",
+    response_model=BaselineExportResponse,
+    responses={
+        200: {
+            "description": "Baseline export payload in JSON or CSV format",
+            "content": {
+                "application/json": {},
+                "text/csv": {"schema": {"type": "string", "format": "binary"}},
+            },
+        }
+    },
+)
 async def export_baseline(
     baseline_id: int,
     format: Literal["json", "csv"] = Query(default="json"),
@@ -258,9 +309,27 @@ async def export_baseline(
     if baseline.project_id is not None:
         await ensure_project_access(baseline.project_id, db, current_user)
 
-    items = await _load_baseline_items(db, baseline.id)
-    export_payload = _baseline_export_response(baseline, items)
+    if format == "json":
+        items = await _load_baseline_items(db, baseline.id)
+        export_payload = _baseline_export_response(baseline, items)
+        async with transactional_session(db):
+            await record_audit_event(
+                db,
+                action="export",
+                entity_type="baseline",
+                entity_id=baseline.id,
+                actor_id=current_user.id,
+                project_id=baseline.project_id,
+                payload={
+                    "format": format,
+                    "item_count": len(items),
+                    "artifact_count": len(export_payload.artifact_ids),
+                    "link_count": len(export_payload.link_ids),
+                },
+            )
+        return export_payload
 
+    counts = await _baseline_export_counts(db, baseline.id)
     async with transactional_session(db):
         await record_audit_event(
             db,
@@ -269,20 +338,10 @@ async def export_baseline(
             entity_id=baseline.id,
             actor_id=current_user.id,
             project_id=baseline.project_id,
-            payload={
-                "format": format,
-                "item_count": len(items),
-                "artifact_count": len(export_payload.artifact_ids),
-                "link_count": len(export_payload.link_ids),
-            },
+            payload={"format": format, **counts},
         )
-
-    if format == "json":
-        return export_payload
-
-    csv_output = _render_baseline_csv(baseline, items)
     return StreamingResponse(
-        iter([csv_output.getvalue()]),
+        _iter_baseline_csv(db, baseline),
         media_type="text/csv; charset=utf-8",
         headers={
             "Content-Disposition": f'attachment; filename="baseline_{baseline.id}_export.csv"'
@@ -331,7 +390,7 @@ async def list_baseline_items(
 @router.post("/baselines/{baseline_id}/items", response_model=BaselineItem)
 async def add_baseline_item(
     baseline_id: int,
-    payload: BaselineItemBase,
+    payload: BaselineItemCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
@@ -340,8 +399,6 @@ async def add_baseline_item(
         await ensure_project_access(baseline.project_id, db, current_user)
     if payload.baseline_id != baseline_id:
         raise HTTPException(status_code=400, detail="baseline_id mismatch")
-    if payload.artifact_id is None and payload.link_id is None:
-        raise HTTPException(status_code=400, detail="artifact_id or link_id is required")
     item = BaselineItemModel(**payload.model_dump())
     async with transactional_session(db):
         db.add(item)

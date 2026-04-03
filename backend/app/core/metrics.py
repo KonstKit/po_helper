@@ -12,7 +12,11 @@ class MetricsRegistry:
         self._lock = threading.Lock()
         self.counters: Dict[Tuple[str, Tuple[Tuple[str, str], ...]], float] = defaultdict(float)
         self.gauges: Dict[Tuple[str, Tuple[Tuple[str, str], ...]], float] = defaultdict(float)
-        self.histograms: Dict[Tuple[str, Tuple[Tuple[str, str], ...]], list] = defaultdict(list)
+        self._histogram_max_samples = 2_048
+        self.histograms: Dict[
+            Tuple[str, Tuple[Tuple[str, str], ...]],
+            deque[float],
+        ] = defaultdict(lambda: deque(maxlen=self._histogram_max_samples))
         self._recent_events: deque[tuple[float, str, Tuple[str, Tuple[Tuple[str, str], ...]], float]] = deque(
             maxlen=100_000
         )
@@ -103,15 +107,16 @@ class MetricsRegistry:
                 # Export quantiles plus sum/count for summary-style consumers.
                 lbl = self._format_labels(labels)
                 if values:
+                    sample_values = list(values)
                     for quantile in (0.5, 0.95, 0.99):
-                        q_value = self._quantile(values, quantile)
+                        q_value = self._quantile(sample_values, quantile)
                         if q_value is None:
                             continue
                         quantile_labels = tuple(sorted((*labels, ("quantile", f"{quantile:g}"))))
                         q_lbl = self._format_labels(quantile_labels)
                         lines.append(f"{name}{q_lbl} {q_value}")
-                    lines.append(f"{name}_sum{lbl} {sum(values)}")
-                    lines.append(f"{name}_count{lbl} {len(values)}")
+                    lines.append(f"{name}_sum{lbl} {sum(sample_values)}")
+                    lines.append(f"{name}_count{lbl} {len(sample_values)}")
         return "\n".join(lines) + "\n"
 
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.utils.confidence import normalize_confidence as _normalize_confidence
 
@@ -126,6 +126,16 @@ class BaselineItemBase(BaseModel):
     baseline_id: int
     artifact_id: Optional[int] = None
     link_id: Optional[int] = None
+
+
+class BaselineItemCreate(BaselineItemBase):
+    @model_validator(mode="after")
+    def validate_exactly_one_target(self):
+        has_artifact = self.artifact_id is not None
+        has_link = self.link_id is not None
+        if has_artifact == has_link:
+            raise ValueError("Exactly one of artifact_id or link_id must be provided")
+        return self
 
 
 class BaselineItemInDB(BaselineItemBase):

@@ -60,6 +60,10 @@ def _project_meta(project: Project) -> dict[str, Any]:
     return {}
 
 
+def _project_tenant_id(project: Project) -> Optional[str]:
+    return _normalize_tenant_id(_project_meta(project).get("tenant_id"))
+
+
 def _project_member_ids(project: Project) -> set[int]:
     member_ids: set[int] = set()
     raw_member_ids = _project_meta(project).get("member_ids")
@@ -78,11 +82,47 @@ def _project_member_ids(project: Project) -> set[int]:
 
 def _is_admin_access(current_user: User) -> bool:
     token_scopes = get_token_scopes()
-    return bool(
-        current_user.is_superuser
-        or current_user.has_permission(Permissions.ADMIN)
-        or (token_scopes is not None and Permissions.ADMIN in token_scopes)
-    )
+    if token_scopes is not None:
+        return Permissions.ADMIN in token_scopes
+    return bool(current_user.is_superuser or current_user.has_permission(Permissions.ADMIN))
+
+
+def has_admin_access(current_user: User) -> bool:
+    """Public helper for scope-aware admin checks."""
+    return _is_admin_access(current_user)
+
+
+def can_access_project(project: Project, current_user: User) -> bool:
+    """In-memory project access check aligned with ensure_project_access."""
+    if not current_user.is_active:
+        return False
+
+    if _is_admin_access(current_user):
+        token_tenant_id = get_token_tenant_id()
+        project_tenant_id = _project_tenant_id(project)
+        if token_tenant_id is not None:
+            if project_tenant_id is None:
+                return False
+            return str(token_tenant_id) == str(project_tenant_id)
+        return True
+
+    token_tenant_id = get_token_tenant_id()
+    project_tenant_id = _project_tenant_id(project)
+
+    # Enforce strict tenant consistency when either side carries tenant context.
+    if project_tenant_id is not None or token_tenant_id is not None:
+        if token_tenant_id is None or project_tenant_id is None:
+            return False
+        if str(token_tenant_id) != str(project_tenant_id):
+            return False
+
+    if project.owner_id == current_user.id:
+        return True
+
+    if current_user.id in _project_member_ids(project):
+        return True
+
+    return False
 
 
 async def _get_or_create_demo_user(db: AsyncSession) -> User:
@@ -207,24 +247,27 @@ async def ensure_project_access(
     if not current_user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
 
-    if _is_admin_access(current_user):
+    if can_access_project(project, current_user):
         return project
 
-    project_meta = _project_meta(project)
     token_tenant_id = get_token_tenant_id()
-    project_tenant_id = project_meta.get("tenant_id")
-    if token_tenant_id is not None and project_tenant_id is not None:
+    project_tenant_id = _project_tenant_id(project)
+    if project_tenant_id is not None or token_tenant_id is not None:
+        if token_tenant_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tenant-scoped token is required",
+            )
+        if project_tenant_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Project tenant mismatch",
+            )
         if str(token_tenant_id) != str(project_tenant_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Project tenant mismatch",
             )
-
-    if project.owner_id == current_user.id:
-        return project
-
-    if current_user.id in _project_member_ids(project):
-        return project
 
     # Deny by default unless the caller is the owner or an explicit member.
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Project access denied")
