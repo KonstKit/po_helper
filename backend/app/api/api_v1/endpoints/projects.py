@@ -36,6 +36,13 @@ async def get_projects(
     start = perf_counter()
     logger.info("projects.list.start skip=%s limit=%s", skip, limit)
     try:
+        if limit <= 0:
+            logger.info(
+                "projects.list.success count=0 duration=%.3f",
+                perf_counter() - start,
+            )
+            return []
+
         query = select(Project).order_by(Project.id.asc())
         if has_admin_access(current_user) and get_token_tenant_id() is None:
             projects = await paginate_query(db, query, skip, limit)

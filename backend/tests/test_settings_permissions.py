@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.api.deps import get_current_user
 from app.core.request_context import set_token_scopes, set_token_tenant_id
 from app.core.crypto import decrypt_str
+from app.core.security import decode_token
 from app.main import app
 from app.models import IntegrationSetting, Permissions, Project
 
@@ -250,6 +251,32 @@ async def test_scoped_token_rejects_arbitrary_tenant_for_non_admin_without_tenan
 
 
 @pytest.mark.asyncio
+async def test_scoped_token_allows_member_accessible_tenant(
+    client, db_session, override_user_dep
+):
+    user = _PermissionUser(user_id=25, permissions={Permissions.PROJECT_VIEW}, is_active=True)
+    override_user_dep(_user_dep(user, tenant_id=None, token_scopes=[Permissions.PROJECT_VIEW]))
+
+    tenant_project = Project(
+        jira_key="TEN-A-MEMBER-TOKEN",
+        name="Tenant Member Token",
+        owner_id=999,
+        meta={"tenant_id": "tenant-a", "member_ids": [user.id]},
+    )
+    db_session.add(tenant_project)
+    await db_session.commit()
+
+    response = await client.post(
+        "/api/v1/auth/scoped-token",
+        json={"scopes": [Permissions.PROJECT_VIEW], "expires_minutes": 5, "tenant_id": "tenant-a"},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = decode_token(response.json()["access_token"])
+    assert payload["tenant_id"] == "tenant-a"
+
+
+@pytest.mark.asyncio
 async def test_projects_list_filters_by_tenant_and_membership(client, db_session, override_user_dep):
     viewer = _PermissionUser(user_id=30, permissions={Permissions.PROJECT_VIEW}, is_active=True)
     override_user_dep(_user_dep(viewer, tenant_id="tenant-a"))
@@ -283,6 +310,27 @@ async def test_projects_list_filters_by_tenant_and_membership(client, db_session
     assert p_member.id in returned_ids
     assert p_hidden_same_tenant.id not in returned_ids
     assert p_mismatch_tenant.id not in returned_ids
+
+
+@pytest.mark.asyncio
+async def test_projects_list_returns_empty_for_zero_limit(
+    client, db_session, override_user_dep
+):
+    viewer = _PermissionUser(user_id=37, permissions={Permissions.PROJECT_VIEW}, is_active=True)
+    override_user_dep(_user_dep(viewer, tenant_id="tenant-a"))
+
+    project = Project(
+        jira_key="TEN-A-LIMIT-0",
+        name="Limit Zero",
+        owner_id=viewer.id,
+        meta={"tenant_id": "tenant-a"},
+    )
+    db_session.add(project)
+    await db_session.commit()
+
+    response = await client.get("/api/v1/projects/?skip=0&limit=0")
+    assert response.status_code == 200, response.text
+    assert response.json() == []
 
 
 @pytest.mark.asyncio
