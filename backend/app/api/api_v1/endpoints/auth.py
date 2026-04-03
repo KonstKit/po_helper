@@ -29,7 +29,13 @@ from app.core.mfa import (
     hash_backup_codes,
 )
 from app.models import User, Role
-from app.schemas.user import Token, UserCreate, User as UserSchema
+from app.models.rbac import Permissions
+from app.schemas.user import (
+    ScopedTokenRequest,
+    Token,
+    UserCreate,
+    User as UserSchema,
+)
 from app.utils import execute_with_lock
 from app.api.deps import get_current_user
 
@@ -49,6 +55,24 @@ async def _get_default_role(db: AsyncSession, is_first_user: bool) -> Role | Non
         role = fallback.scalar_one_or_none()
 
     return role
+
+
+def _normalize_scopes(scopes: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for scope in scopes:
+        if not isinstance(scope, str):
+            continue
+        cleaned = scope.strip()
+        if cleaned and cleaned not in normalized:
+            normalized.append(cleaned)
+    return normalized
+
+
+def _effective_permissions(user: User) -> set[str]:
+    permissions: set[str] = set()
+    for role in user.roles:
+        permissions.update(role.permissions)
+    return permissions
 
 
 @router.post("/login")
@@ -103,6 +127,40 @@ async def login(
     # Validate via response model, then return as Response for SlowAPI headers
     token_payload = Token(access_token=access_token, token_type="bearer").model_dump()
     return JSONResponse(content=token_payload)
+
+
+@router.post("/scoped-token", response_model=Token)
+async def issue_scoped_token(
+    body: ScopedTokenRequest,
+    current_user: User = Depends(get_current_user),
+) -> Token:
+    """Issue a JWT restricted to the requested scopes for the current user."""
+    requested_scopes = _normalize_scopes(body.scopes)
+    tenant_id = body.tenant_id.strip() if body.tenant_id else None
+
+    if body.tenant_id is not None and not tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid tenant_id")
+
+    if not current_user.has_permission(Permissions.ADMIN):
+        effective_permissions = _effective_permissions(current_user)
+        invalid_scopes = [
+            scope for scope in requested_scopes if scope not in effective_permissions
+        ]
+        if invalid_scopes:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Requested scopes exceed your effective permissions",
+            )
+
+    access_token = create_access_token(
+        data={
+            "sub": current_user.email,
+            "scopes": requested_scopes,
+            "tenant_id": tenant_id,
+        },
+        expires_delta=timedelta(minutes=body.expires_minutes),
+    )
+    return Token(access_token=access_token, token_type="bearer")
 
 
 @router.post("/register", response_model=UserSchema)

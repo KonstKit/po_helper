@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import ensure_project_access, require_permission
+from app.core.metrics import metrics
 from app.core.rate_limit import limiter
 from app.core.cache_enhanced import (
     CacheInvalidator,
@@ -133,7 +134,9 @@ async def get_rtm_matrix_endpoint(
     if getattr(settings, "ENABLE_MATRIX_CACHE", True):
         cached = await cache_service.get(cache_key, CacheTier.WARM)
         if cached is not None:
+            metrics.inc("rtm_matrix_cache_hit", labels={"tier": CacheTier.WARM.value})
             return cached
+        metrics.inc("rtm_matrix_cache_miss", labels={"tier": CacheTier.WARM.value})
 
     # Get matrix from service
     result = await get_rtm_matrix(

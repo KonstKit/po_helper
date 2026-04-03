@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
+from time import perf_counter
 from fastapi import FastAPI, Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 from app.core.metrics import metrics
@@ -9,6 +11,33 @@ from app.core.query_metrics import set_query_context
 from app.core.request_context import set_request_id, reset_request_id
 from slowapi.middleware import SlowAPIMiddleware
 from app.core.rate_limit import limiter, RateLimitExceeded, _rate_limit_exceeded_handler
+
+
+_UUID_PATTERN = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+
+
+def _normalize_http_path(path: str) -> str:
+    if not path:
+        return "unknown"
+
+    parts = path.split("/")
+    normalized_parts: list[str] = []
+    for part in parts:
+        if not part:
+            normalized_parts.append(part)
+            continue
+        if part.isdigit():
+            normalized_parts.append("{id}")
+        elif _UUID_PATTERN.fullmatch(part):
+            normalized_parts.append("{uuid}")
+        elif len(part) > 24 and all(ch.isalnum() or ch in "-_" for ch in part):
+            normalized_parts.append("{token}")
+        else:
+            normalized_parts.append(part)
+    normalized = "/".join(normalized_parts)
+    return normalized or "/"
 
 
 class QueryContextMiddleware:
@@ -42,7 +71,7 @@ class CancelMetricsMiddleware:
             await self.app(scope, receive, send)
             return
 
-        request_path = scope.get("path") or ""
+        request_path = _normalize_http_path(scope.get("path") or "")
         method = scope.get("method") or ""
 
         headers_sent = False
@@ -70,6 +99,49 @@ class CancelMetricsMiddleware:
         except Exception:
             # Non-cancel exceptions are handled upstream
             raise
+
+
+class ObservabilityMiddleware:
+    """Record request volume, latency, and errors with normalized labels."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request_path = _normalize_http_path(scope.get("path") or "")
+        method = (scope.get("method") or "UNKNOWN").upper()
+        started_at = perf_counter()
+        status_code: int | None = None
+
+        async def _send(message):
+            nonlocal status_code
+            if message.get("type") == "http.response.start":
+                status_code = int(message.get("status") or 200)
+            await send(message)
+
+        try:
+            await self.app(scope, receive, _send)
+        except asyncio.CancelledError:
+            status_code = status_code or 499
+            raise
+        except Exception:
+            status_code = status_code or 500
+            raise
+        finally:
+            status_code = status_code or 200
+            duration = perf_counter() - started_at
+            labels = {"path": request_path, "method": method, "status": str(status_code)}
+            try:
+                metrics.inc("http_requests", labels=labels)
+                metrics.observe("http_request_latency_seconds", duration, labels=labels)
+                if status_code >= 400:
+                    metrics.inc("http_request_errors", labels=labels)
+            except Exception:
+                pass
 
 
 class RequestIdMiddleware:
@@ -115,3 +187,4 @@ def register_middlewares(app: FastAPI) -> None:
     app.add_middleware(RequestIdMiddleware)
     # QueryContextMiddleware should run early to set context for all queries
     app.add_middleware(QueryContextMiddleware)
+    app.add_middleware(ObservabilityMiddleware)

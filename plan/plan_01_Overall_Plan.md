@@ -11,7 +11,7 @@ children:
   - plan_07
   - plan_08
   - plan_09
-status: draft
+status: in_progress
 created: 2024-05-26
 ---
 
@@ -83,12 +83,12 @@ plan_01 Overall Plan
 
 | Plan | Status (Completion) |
 | --- | --- |
-| plan_01_Overall_Plan | draft (0%) |
+| plan_01_Overall_Plan | in_progress (70%) |
 | plan_02_Architecture_and_Data_Model | completed (100%) |
 | plan_03_Integrations_and_Sync | in_progress (20%) |
-| plan_04_Trace_Links_and_Rule_Engine | draft (0%) |
-| plan_05_Analytics_and_RTM_Matrix_API | draft (0%) |
-| plan_06_UI_UX_Matrix_Graph_and_Exports | draft (0%) |
+| plan_04_Trace_Links_and_Rule_Engine | completed (100%) |
+| plan_05_Analytics_and_RTM_Matrix_API | completed (100%) |
+| plan_06_UI_UX_Matrix_Graph_and_Exports | completed (100%) |
 | plan_07_Security_Governance_and_Audit | draft (0%) |
 | plan_08_Ops_Performance_and_Observability | draft (0%) |
 | plan_09_Type_System_Compliance | completed (100%) |

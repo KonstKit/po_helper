@@ -18,10 +18,29 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.metrics import metrics
 from app.models.traceability import Artifact, ArtifactLink
 from app.utils.confidence import confidence_filter, normalize_confidence
 
 logger = logging.getLogger(__name__)
+
+
+def _record_matrix_metrics(
+    *,
+    duration_seconds: float,
+    rows_returned: int,
+    columns_returned: int,
+    links_returned: int,
+    outcome: str,
+) -> None:
+    try:
+        labels = {"outcome": outcome}
+        metrics.observe("rtm_matrix_query_duration_seconds", duration_seconds, labels=labels)
+        metrics.observe("rtm_matrix_rows_returned", float(rows_returned), labels=labels)
+        metrics.observe("rtm_matrix_columns_returned", float(columns_returned), labels=labels)
+        metrics.observe("rtm_matrix_links_returned", float(links_returned), labels=labels)
+    except Exception:
+        pass
 
 
 async def get_rtm_matrix(
@@ -67,6 +86,10 @@ async def get_rtm_matrix(
         RTM matrix with rows, columns, cells, and coverage stats
     """
     start = perf_counter()
+    rows_returned = 0
+    columns_returned = 0
+    links_returned = 0
+    outcome = "error"
     logger.info(
         "rtm_matrix.start project_id=%s row_types=%s col_types=%s",
         project_id,
@@ -100,6 +123,10 @@ async def get_rtm_matrix(
         )
 
         if not row_artifacts or not col_artifacts:
+            rows_returned = 0
+            columns_returned = 0
+            links_returned = 0
+            outcome = "success"
             return _empty_matrix_response(
                 total_rows=total_rows,
                 total_cols=total_cols,
@@ -164,25 +191,38 @@ async def get_rtm_matrix(
             "filters_applied": filters_applied,
         }
 
+        rows_returned = len(rows)
+        columns_returned = len(columns)
+        links_returned = int(link_stats.get("total_links", 0))
+        outcome = "success"
         duration = perf_counter() - start
         logger.info(
             "rtm_matrix.success project_id=%s rows=%s cols=%s links=%s duration=%.3f",
             project_id,
-            len(rows),
-            len(columns),
-            link_stats.get("total_links", 0),
+            rows_returned,
+            columns_returned,
+            links_returned,
             duration,
         )
 
         return response
 
     except Exception:
+        outcome = "error"
         logger.exception(
             "rtm_matrix.error project_id=%s duration=%.3f",
             project_id,
             perf_counter() - start,
         )
         raise
+    finally:
+        _record_matrix_metrics(
+            duration_seconds=perf_counter() - start,
+            rows_returned=rows_returned,
+            columns_returned=columns_returned,
+            links_returned=links_returned,
+            outcome=outcome,
+        )
 
 
 async def _query_artifacts(

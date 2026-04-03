@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
@@ -11,12 +11,78 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.request_context import set_actor_id
+from app.core.request_context import (
+    get_token_scopes,
+    get_token_tenant_id,
+    set_actor_id,
+    set_token_scopes,
+    set_token_tenant_id,
+)
 from app.core.security import decode_token, get_password_hash
+from app.models.rbac import Permissions
 from app.models import Project, Role, User
 from app.utils import handle_api_error
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_token_scopes(scopes: Any) -> Optional[tuple[str, ...]]:
+    if scopes is None:
+        return None
+    if isinstance(scopes, str):
+        return (scopes,)
+
+    try:
+        normalized = tuple(
+            dict.fromkeys(
+                scope.strip()
+                for scope in scopes
+                if isinstance(scope, str) and scope.strip()
+            )
+        )
+    except TypeError:
+        return None
+
+    return normalized
+
+
+def _normalize_tenant_id(tenant_id: Any) -> Optional[str]:
+    if tenant_id is None:
+        return None
+    normalized = str(tenant_id).strip()
+    return normalized or None
+
+
+def _project_meta(project: Project) -> dict[str, Any]:
+    meta = project.meta
+    if isinstance(meta, dict):
+        return meta
+    return {}
+
+
+def _project_member_ids(project: Project) -> set[int]:
+    member_ids: set[int] = set()
+    raw_member_ids = _project_meta(project).get("member_ids")
+    if not isinstance(raw_member_ids, list):
+        return member_ids
+
+    for member_id in raw_member_ids:
+        if isinstance(member_id, bool):
+            continue
+        try:
+            member_ids.add(int(member_id))
+        except (TypeError, ValueError):
+            continue
+    return member_ids
+
+
+def _is_admin_access(current_user: User) -> bool:
+    token_scopes = get_token_scopes()
+    return bool(
+        current_user.is_superuser
+        or current_user.has_permission(Permissions.ADMIN)
+        or (token_scopes is not None and Permissions.ADMIN in token_scopes)
+    )
 
 
 async def _get_or_create_demo_user(db: AsyncSession) -> User:
@@ -107,6 +173,8 @@ async def get_current_user(
         user = result.scalar_one_or_none()
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        set_token_scopes(_normalize_token_scopes(payload.get("scopes")))
+        set_token_tenant_id(_normalize_tenant_id(payload.get("tenant_id")))
         set_actor_id(user.id)
         return user
     # In non-debug environments, require a valid token; do not auto-create demo users.
@@ -117,6 +185,9 @@ async def get_current_user(
             select(User).options(selectinload(User.roles)).where(User.id == user.id)
         )
         user = result.scalar_one()
+        set_token_scopes(None)
+        set_token_tenant_id(None)
+        set_actor_id(user.id)
         return user
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
@@ -136,7 +207,27 @@ async def ensure_project_access(
     if not current_user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
 
-    return project
+    if _is_admin_access(current_user):
+        return project
+
+    project_meta = _project_meta(project)
+    token_tenant_id = get_token_tenant_id()
+    project_tenant_id = project_meta.get("tenant_id")
+    if token_tenant_id is not None and project_tenant_id is not None:
+        if str(token_tenant_id) != str(project_tenant_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Project tenant mismatch",
+            )
+
+    if project.owner_id == current_user.id:
+        return project
+
+    if current_user.id in _project_member_ids(project):
+        return project
+
+    # Deny by default unless the caller is the owner or an explicit member.
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Project access denied")
 
 
 def require_permission(permission: str):
@@ -161,7 +252,25 @@ def require_permission(permission: str):
     """
 
     async def _check_permission(current_user: User = Depends(get_current_user)) -> User:
-        if not current_user.has_permission(permission):
+        token_scopes = get_token_scopes()
+        if (
+            token_scopes is not None
+            and permission not in token_scopes
+            and Permissions.ADMIN not in token_scopes
+        ):
+            logger.warning(
+                "Scoped permission denied: user=%s (id=%s) attempted %s with scopes=%s",
+                current_user.email,
+                current_user.id,
+                permission,
+                ",".join(token_scopes),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied. Required: {permission}",
+            )
+
+        if token_scopes is None and not current_user.has_permission(permission):
             logger.warning(
                 "Permission denied: user=%s (id=%s) attempted %s",
                 current_user.email,

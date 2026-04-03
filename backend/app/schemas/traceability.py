@@ -139,6 +139,55 @@ class BaselineItem(BaselineItemInDB):
     pass
 
 
+class BaselineCompareRequest(BaseModel):
+    baseline_id: int = Field(description="Baseline to compare from")
+    against_baseline_id: int = Field(description="Baseline to compare against")
+
+
+class BaselineCompareSummary(BaseModel):
+    added_artifacts: int = 0
+    removed_artifacts: int = 0
+    added_links: int = 0
+    removed_links: int = 0
+    total_added: int = 0
+    total_removed: int = 0
+
+
+class BaselineCompareResponse(BaseModel):
+    baseline_id: int
+    against_baseline_id: int
+    baseline_name: str
+    against_baseline_name: str
+    project_id: Optional[int] = None
+    against_project_id: Optional[int] = None
+    summary: BaselineCompareSummary
+    added_artifact_ids: List[int] = Field(default_factory=list)
+    removed_artifact_ids: List[int] = Field(default_factory=list)
+    added_link_ids: List[int] = Field(default_factory=list)
+    removed_link_ids: List[int] = Field(default_factory=list)
+
+
+class BaselineExportItem(BaseModel):
+    item_id: int
+    item_type: Literal["artifact", "link", "empty"]
+    artifact_id: Optional[int] = None
+    link_id: Optional[int] = None
+    included_at: datetime
+
+
+BaselineExportFormat = Literal["json", "csv"]
+
+
+class BaselineExportResponse(BaseModel):
+    format: BaselineExportFormat = Field(default="json")
+    baseline: Baseline
+    exported_at: datetime
+    item_count: int = 0
+    artifact_ids: List[int] = Field(default_factory=list)
+    link_ids: List[int] = Field(default_factory=list)
+    items: List[BaselineExportItem] = Field(default_factory=list)
+
+
 class ProjectionBase(BaseModel):
     project_id: Optional[int] = None
     name: str

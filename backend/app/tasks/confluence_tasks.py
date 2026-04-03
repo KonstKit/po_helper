@@ -4,23 +4,34 @@ Provides robust background processing with retry logic and progress tracking.
 """
 
 from typing import Optional, Dict, Any, cast
-import logging
 import json
-from datetime import datetime, timezone
+import logging
+from datetime import datetime, timedelta, timezone
 
 import requests
 from celery import Task
 from sqlalchemy import select
 
+from app.core.cache import redis_client as _redis_client
 from app.core.celery_async_runner import run_async
 from app.core.celery_app import celery_app
-from app.core.database import AsyncSessionLocal
 from app.core.config import settings
 from app.core.crypto import decrypt_str
-from app.services.confluence_service import confluence_service
+from app.core.database import AsyncSessionLocal
+from app.core.db_utils import supports_for_update
 from app.models.confluence import ConfluencePage
 from app.models.settings import IntegrationSetting
-from app.core.cache import redis_client as _redis_client
+from app.models.traceability import Source, SyncTask as SyncTaskModel
+from app.services.confluence_service import confluence_service
+from app.services.sync_tracking import (
+    finish_sync_task,
+    get_or_create_source,
+    recover_stale_running_sync_tasks,
+    start_sync_task,
+    touch_sync_task_heartbeat,
+    upsert_sync_state,
+)
+from app.utils import transactional_session
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +71,179 @@ def _ensure_confluence_connection() -> bool:
         return False
 
     return True
+
+
+def _build_run_key(space_key: str, query: Optional[str], full_sync: bool) -> str:
+    """Build a stable run-path key for durable Confluence sync tracking."""
+    return json.dumps(
+        {"space_key": space_key, "query": query, "full_sync": full_sync},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _build_item_counts(
+    *,
+    space_key: str,
+    query: Optional[str],
+    full_sync: bool,
+    synced: int,
+    created: int,
+    updated: int,
+    total_pages: int,
+    batches: int,
+    last_event_id: Optional[str],
+) -> Dict[str, Any]:
+    return {
+        "space_key": space_key,
+        "query": query,
+        "full_sync": full_sync,
+        "synced": synced,
+        "created": created,
+        "updated": updated,
+        "total_pages": total_pages,
+        "batches": batches,
+        "last_event_id": last_event_id,
+    }
+
+
+async def _find_running_confluence_task(
+    db,
+    source_id: int,
+    run_key: str,
+) -> Optional[SyncTaskModel]:
+    stmt = (
+        select(SyncTaskModel)
+        .where(
+            SyncTaskModel.source_id == source_id,
+            SyncTaskModel.task_type == "confluence_sync",
+            SyncTaskModel.cursor_in == run_key,
+            SyncTaskModel.status == "running",
+        )
+        .order_by(SyncTaskModel.started_at.desc(), SyncTaskModel.id.desc())
+    )
+    result = await db.execute(stmt)
+    return result.scalars().first()
+
+
+async def _start_confluence_tracking(
+    space_key: str,
+    query: Optional[str],
+    full_sync: bool,
+    trigger: str,
+) -> tuple[Optional[int], Optional[int], str, bool]:
+    """
+    Start durable tracking for a Confluence sync run.
+
+    Returns:
+        (source_id, task_id, run_key, created_new)
+    """
+    run_key = _build_run_key(space_key, query, full_sync)
+    initial_counts = _build_item_counts(
+        space_key=space_key,
+        query=query,
+        full_sync=full_sync,
+        synced=0,
+        created=0,
+        updated=0,
+        total_pages=0,
+        batches=0,
+        last_event_id=None,
+    )
+
+    async with AsyncSessionLocal() as db:
+        async with transactional_session(db):
+            source = await get_or_create_source(
+                db,
+                provider="confluence",
+                base_url=confluence_service.base_url,
+            )
+
+            if supports_for_update(db):
+                lock_stmt = select(Source.id).where(Source.id == source.id).with_for_update()
+                await db.execute(lock_stmt)
+
+            existing = await _find_running_confluence_task(db, source.id, run_key)
+            if existing is not None:
+                freshness_seconds = int(
+                    getattr(settings, "SYNC_TASK_ACTIVE_HEARTBEAT_GRACE_SECONDS", 900) or 900
+                )
+                freshness_seconds = max(1, freshness_seconds)
+                fresh_after = datetime.now(timezone.utc) - timedelta(seconds=freshness_seconds)
+                last_heartbeat = existing.heartbeat_at or existing.started_at
+                is_fresh = bool(last_heartbeat and last_heartbeat >= fresh_after)
+                if is_fresh:
+                    logger.info(
+                        "Confluence sync already running for run key %s (task %s); skipping duplicate start",
+                        run_key,
+                        existing.id,
+                    )
+                    await touch_sync_task_heartbeat(db, existing.id, item_counts=initial_counts)
+                    return source.id, existing.id, run_key, False
+
+                recovered = await recover_stale_running_sync_tasks(db, task_id=existing.id)
+                if recovered:
+                    logger.info(
+                        "Recovered stale Confluence sync task %s for run key %s",
+                        existing.id,
+                        run_key,
+                    )
+
+            # Create a fresh durable task row for this run path.
+            task = await start_sync_task(
+                db,
+                task_type="confluence_sync",
+                source_id=source.id,
+                trigger=trigger,
+                cursor_in=run_key,
+                item_counts=initial_counts,
+                run_recovery=False,
+            )
+            logger.info(
+                "Started Confluence sync task %s for space=%s trigger=%s",
+                task.id,
+                space_key,
+                trigger,
+            )
+            return source.id, task.id, run_key, True
+
+
+async def _finalize_confluence_tracking(
+    *,
+    source_id: Optional[int],
+    task_id: Optional[int],
+    run_key: str,
+    status: str,
+    item_counts: Dict[str, Any],
+    last_event_id: Optional[str],
+    error_message: Optional[str] = None,
+) -> None:
+    if source_id is None and task_id is None:
+        return
+
+    async with AsyncSessionLocal() as db:
+        try:
+            async with transactional_session(db):
+                if task_id is not None:
+                    await finish_sync_task(
+                        db,
+                        task_id,
+                        status=status,
+                        item_counts=item_counts,
+                        error_code="error" if status == "failed" else None,
+                        error_message=error_message,
+                        cursor_out=last_event_id or run_key,
+                    )
+                if source_id is not None:
+                    await upsert_sync_state(
+                        db,
+                        source_id=source_id,
+                        project_id=None,
+                        last_cursor=run_key,
+                        last_event_id=last_event_id or run_key,
+                    )
+        except Exception as exc:
+            logger.warning("Failed to finalize Confluence sync tracking: %s", exc)
 
 
 class ConfluenceSyncTask(Task):
@@ -131,6 +315,7 @@ def sync_confluence_space(
     query: Optional[str] = None,
     channel_id: Optional[str] = None,
     full_sync: bool = True,
+    trigger: str = "manual",
 ) -> Dict[str, Any]:
     """
     Sync Confluence space with robust error handling and progress tracking.
@@ -155,7 +340,7 @@ def sync_confluence_space(
         self.update_progress("Starting Confluence sync...", 5)
 
         # Run async sync in sync context (Celery doesn't natively support async)
-        result = run_async(_async_sync_space(self, space_key, query, full_sync))
+        result = run_async(_async_sync_space(self, space_key, query, full_sync, trigger))
 
         # Send completion
         if channel_id and redis_client:
@@ -194,14 +379,48 @@ def sync_confluence_space(
 
 
 async def _async_sync_space(
-    task: ConfluenceSyncTask, space_key: str, query: Optional[str], full_sync: bool
+    task: ConfluenceSyncTask,
+    space_key: str,
+    query: Optional[str],
+    full_sync: bool,
+    trigger: str = "manual",
 ) -> Dict[str, Any]:
     """Async implementation of space sync."""
+    sync_source_id: Optional[int] = None
+    sync_task_id: Optional[int] = None
+    created_new_tracking = False
+    run_key = _build_run_key(space_key, query, full_sync)
     page_start = 0
     limit = 50
     total_synced = 0
     total_created = 0
     total_updated = 0
+    total_batches = 0
+    last_event_id: Optional[str] = None
+    sync_status = "success"
+    error_message: Optional[str] = None
+
+    try:
+        sync_source_id, sync_task_id, _, created_new_tracking = await _start_confluence_tracking(
+            space_key=space_key,
+            query=query,
+            full_sync=full_sync,
+            trigger=trigger,
+        )
+    except Exception as exc:
+        logger.warning("Failed to start Confluence sync tracking: %s", exc)
+        sync_source_id = None
+        sync_task_id = None
+        created_new_tracking = False
+
+    if sync_task_id is not None and not created_new_tracking:
+        logger.info(
+            "Skipping duplicate Confluence sync for space %s (run key %s, task %s)",
+            space_key,
+            run_key,
+            sync_task_id,
+        )
+        return {"synced": 0, "created": 0, "updated": 0, "skipped": True, "duplicate": True}
 
     # Get first batch to estimate total
     pages = confluence_service.list_pages(
@@ -219,68 +438,115 @@ async def _async_sync_space(
 
     batch_number = 0
 
-    while pages:
-        batch_number += 1
-        batch_created = 0
-        batch_updated = 0
+    try:
+        while pages:
+            batch_number += 1
+            batch_created = 0
+            batch_updated = 0
 
-        task.update_progress(f"Processing batch {batch_number} ({len(pages)} pages)...")
+            task.update_progress(f"Processing batch {batch_number} ({len(pages)} pages)...")
 
-        full_pages: list[Dict[str, Any]] = []
-        for idx, page_summary in enumerate(pages, 1):
-            page_id = page_summary.get("id")
-            if not page_id:
-                continue
+            full_pages: list[Dict[str, Any]] = []
+            for idx, page_summary in enumerate(pages, 1):
+                page_id = page_summary.get("id")
+                if not page_id:
+                    continue
 
-            # Fetch network payloads before opening a DB transaction.
-            full_page = confluence_service.get_page_by_id(
-                page_id, expand="body.storage,version,history,metadata.labels,space"
+                # Fetch network payloads before opening a DB transaction.
+                full_page = confluence_service.get_page_by_id(
+                    page_id, expand="body.storage,version,history,metadata.labels,space"
+                )
+                full_pages.append(full_page)
+                last_event_id = str(page_id)
+
+                if idx % 5 == 0:
+                    task.update_progress(f"Fetched: {full_page.get('title', 'Untitled')}")
+
+            if full_pages:
+                async with AsyncSessionLocal() as db:
+                    for full_page in full_pages:
+                        created = await _process_page(db, full_page)
+                        if created:
+                            batch_created += 1
+                        else:
+                            batch_updated += 1
+
+                        task.processed_pages += 1
+                        task.created_count = total_created + batch_created
+                        task.updated_count = total_updated + batch_updated
+
+                    if sync_task_id is not None:
+                        await touch_sync_task_heartbeat(
+                            db,
+                            sync_task_id,
+                            item_counts=_build_item_counts(
+                                space_key=space_key,
+                                query=query,
+                                full_sync=full_sync,
+                                synced=total_synced + len(full_pages),
+                                created=total_created + batch_created,
+                                updated=total_updated + batch_updated,
+                                total_pages=task.total_pages,
+                                batches=total_batches + 1,
+                                last_event_id=last_event_id,
+                            ),
+                        )
+
+                    if batch_created or batch_updated:
+                        await db.commit()
+
+            total_batches += 1
+            total_synced += len(full_pages)
+            total_created += batch_created
+            total_updated += batch_updated
+
+            # Adjust estimate if needed
+            if total_synced > task.total_pages:
+                task.total_pages = total_synced + limit
+
+            # Check if should continue
+            if not full_sync or len(pages) < limit:
+                break
+
+            # Fetch next batch
+            page_start += len(pages)
+            pages = confluence_service.list_pages(
+                space=space_key, q=query, limit=limit, start=page_start
             )
-            full_pages.append(full_page)
 
-            if idx % 5 == 0:
-                task.update_progress(f"Fetched: {full_page.get('title', 'Untitled')}")
-
-        if full_pages:
-            async with AsyncSessionLocal() as db:
-                for full_page in full_pages:
-                    created = await _process_page(db, full_page)
-                    if created:
-                        batch_created += 1
-                    else:
-                        batch_updated += 1
-
-                    task.processed_pages += 1
-                    task.created_count = total_created + batch_created
-                    task.updated_count = total_updated + batch_updated
-
-                if batch_created or batch_updated:
-                    await db.commit()
-
-        total_synced += len(full_pages)
-        total_created += batch_created
-        total_updated += batch_updated
-
-        # Adjust estimate if needed
-        if total_synced > task.total_pages:
-            task.total_pages = total_synced + limit
-
-        # Check if should continue
-        if not full_sync or len(pages) < limit:
-            break
-
-        # Fetch next batch
-        page_start += len(pages)
-        pages = confluence_service.list_pages(
-            space=space_key, q=query, limit=limit, start=page_start
+        logger.info(
+            f"Sync complete: synced={total_synced}, "
+            f"created={total_created}, updated={total_updated}"
         )
 
-    logger.info(
-        f"Sync complete: synced={total_synced}, "
-        f"created={total_created}, updated={total_updated}"
-    )
+        return {"synced": total_synced, "created": total_created, "updated": total_updated}
 
-    return {"synced": total_synced, "created": total_created, "updated": total_updated}
+    except Exception as exc:
+        sync_status = "failed"
+        error_message = str(exc)
+        logger.error("Confluence sync failed for space %s: %s", space_key, error_message)
+        raise
+
+    finally:
+        await _finalize_confluence_tracking(
+            source_id=sync_source_id,
+            task_id=sync_task_id,
+            run_key=run_key,
+            status=sync_status,
+            item_counts=_build_item_counts(
+                space_key=space_key,
+                query=query,
+                full_sync=full_sync,
+                synced=total_synced,
+                created=total_created,
+                updated=total_updated,
+                total_pages=task.total_pages,
+                batches=total_batches,
+                last_event_id=last_event_id,
+            ),
+            last_event_id=last_event_id,
+            error_message=error_message,
+        )
 
 
 async def _process_page(db, page_data: Dict[str, Any]) -> bool:
@@ -371,7 +637,7 @@ def scheduled_confluence_sync():
         space_key = space.get("key")
         if not space_key:
             continue
-        sync_confluence_space.delay(space_key, None, None, True)
+        sync_confluence_space.delay(space_key, None, None, True, "schedule")
         dispatched += 1
 
     logger.info("Scheduled Confluence sync dispatched for %d space(s)", dispatched)
