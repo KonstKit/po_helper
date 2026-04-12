@@ -209,8 +209,19 @@ const buildFlowData = (nodes: TraceabilityNode[], edges: TraceabilityEdge[]): Fl
   version: '1.0',
 });
 
-const buildSnapshot = (name: string, flow: FlowJSON): string =>
+const buildRuleSnapshot = (name: string, flow: FlowJSON): string =>
   JSON.stringify({ name: name.trim(), flow });
+
+const buildAutomationSnapshot = (
+  executeOnSyncComplete = false,
+  scheduleEnabled = false,
+  scheduleCron = ''
+): string =>
+  JSON.stringify({
+    execute_on_sync_complete: executeOnSyncComplete,
+    schedule_enabled: scheduleEnabled,
+    schedule_cron: scheduleCron.trim(),
+  });
 
 const TraceabilityFlowBuilder: React.FC = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState<TraceabilityNodeData>([]);
@@ -229,7 +240,12 @@ const TraceabilityFlowBuilder: React.FC = () => {
   const [rules, setRules] = useState<TraceabilityRule[]>([]);
   const [currentRuleId, setCurrentRuleId] = useState<number | null>(null);
   const [ruleName, setRuleName] = useState(DEFAULT_RULE_NAME);
-  const [lastSavedSnapshot, setLastSavedSnapshot] = useState(buildSnapshot(DEFAULT_RULE_NAME, EMPTY_FLOW));
+  const [lastSavedRuleSnapshot, setLastSavedRuleSnapshot] = useState(
+    buildRuleSnapshot(DEFAULT_RULE_NAME, EMPTY_FLOW)
+  );
+  const [lastSavedAutomationSnapshot, setLastSavedAutomationSnapshot] = useState(
+    buildAutomationSnapshot()
+  );
 
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [scheduleCron, setScheduleCron] = useState('');
@@ -238,6 +254,9 @@ const TraceabilityFlowBuilder: React.FC = () => {
   const [webhookEnabled, setWebhookEnabled] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState<string | null>(null);
   const [generatedWebhookToken, setGeneratedWebhookToken] = useState<string | null>(null);
+  const [executeOnSyncComplete, setExecuteOnSyncComplete] = useState(false);
+  const [automationStateReady, setAutomationStateReady] = useState(false);
+  const [automationLoadError, setAutomationLoadError] = useState<string | null>(null);
 
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -258,8 +277,18 @@ const TraceabilityFlowBuilder: React.FC = () => {
 
   const activeValidation = serverValidation || localValidation;
   const currentFlow = useMemo(() => buildFlowData(nodes, edges), [nodes, edges]);
-  const currentSnapshot = useMemo(() => buildSnapshot(ruleName, currentFlow), [ruleName, currentFlow]);
-  const hasUnsavedChanges = currentSnapshot !== lastSavedSnapshot;
+  const currentRuleSnapshot = useMemo(
+    () => buildRuleSnapshot(ruleName, currentFlow),
+    [ruleName, currentFlow]
+  );
+  const currentAutomationSnapshot = useMemo(
+    () => buildAutomationSnapshot(executeOnSyncComplete, scheduleEnabled, scheduleCron),
+    [executeOnSyncComplete, scheduleEnabled, scheduleCron]
+  );
+  const hasUnsavedRuleChanges = currentRuleSnapshot !== lastSavedRuleSnapshot;
+  const hasUnsavedAutomationChanges = currentAutomationSnapshot !== lastSavedAutomationSnapshot;
+  const hasUnsavedChanges = hasUnsavedRuleChanges || hasUnsavedAutomationChanges;
+  const automationControlsDisabled = automationBusy || !automationStateReady;
 
   const notify = useCallback(
     (severity: 'success' | 'error' | 'warning' | 'info', message: string) =>
@@ -286,10 +315,15 @@ const TraceabilityFlowBuilder: React.FC = () => {
     setWebhookEnabled(false);
     setWebhookUrl(null);
     setGeneratedWebhookToken(null);
+    setExecuteOnSyncComplete(false);
+    setAutomationStateReady(false);
+    setAutomationLoadError(null);
   }, []);
 
   const loadAutomationState = useCallback(
-    async (ruleId: number) => {
+    async (ruleId: number, syncCompleteEnabled: boolean) => {
+      setAutomationStateReady(false);
+      setAutomationLoadError(null);
       try {
         const [schedule, webhook] = await Promise.all([
           getRuleSchedule(ruleId),
@@ -301,13 +335,41 @@ const TraceabilityFlowBuilder: React.FC = () => {
         setWebhookEnabled(Boolean(webhook.trigger_on_webhook));
         setWebhookUrl(webhook.webhook_url || null);
         setGeneratedWebhookToken(null);
+        setLastSavedAutomationSnapshot(
+          buildAutomationSnapshot(
+            syncCompleteEnabled,
+            Boolean(schedule.schedule_enabled),
+            schedule.schedule_cron || ''
+          )
+        );
+        setAutomationStateReady(true);
       } catch (error: unknown) {
-        resetAutomationState();
+        setScheduleEnabled(false);
+        setScheduleCron('');
+        setNextScheduledRun(null);
+        setWebhookEnabled(false);
+        setWebhookUrl(null);
+        setGeneratedWebhookToken(null);
+        setAutomationLoadError(getErrorMessage(error, 'Failed to load automation settings'));
         notify('error', getErrorMessage(error, 'Failed to load automation settings'));
       }
     },
-    [notify, resetAutomationState]
+    [notify]
   );
+
+  const handleReloadAutomationState = useCallback(async () => {
+    if (!currentRuleId) {
+      return;
+    }
+
+    try {
+      const rule = await getRule(currentRuleId);
+      setExecuteOnSyncComplete(Boolean(rule.execute_on_sync_complete));
+      await loadAutomationState(rule.id, Boolean(rule.execute_on_sync_complete));
+    } catch (error: unknown) {
+      notify('error', getErrorMessage(error, 'Failed to reload automation settings'));
+    }
+  }, [currentRuleId, loadAutomationState, notify]);
 
   const applyRuleToCanvas = useCallback(
     (rule: TraceabilityRule) => {
@@ -323,9 +385,20 @@ const TraceabilityFlowBuilder: React.FC = () => {
       setServerValidation(null);
       setCurrentRuleId(rule.id);
       setRuleName(rule.name || DEFAULT_RULE_NAME);
+      setScheduleEnabled(false);
+      setScheduleCron('');
+      setNextScheduledRun(null);
+      setWebhookEnabled(false);
+      setWebhookUrl(null);
+      setGeneratedWebhookToken(null);
+      setAutomationStateReady(false);
+      setAutomationLoadError(null);
+      setExecuteOnSyncComplete(Boolean(rule.execute_on_sync_complete));
 
-      const snapshot = buildSnapshot(rule.name || DEFAULT_RULE_NAME, buildFlowData(loadedNodes, loadedEdges));
-      setLastSavedSnapshot(snapshot);
+      setLastSavedRuleSnapshot(buildRuleSnapshot(rule.name || DEFAULT_RULE_NAME, buildFlowData(loadedNodes, loadedEdges)));
+      setLastSavedAutomationSnapshot(
+        buildAutomationSnapshot(Boolean(rule.execute_on_sync_complete))
+      );
     },
     [setEdges, setNodes]
   );
@@ -351,7 +424,7 @@ const TraceabilityFlowBuilder: React.FC = () => {
       try {
         const rule = await getRule(ruleId);
         applyRuleToCanvas(rule);
-        await loadAutomationState(rule.id);
+        await loadAutomationState(rule.id, Boolean(rule.execute_on_sync_complete));
       } catch (error: unknown) {
         notify('error', getErrorMessage(error, 'Failed to load selected rule'));
       } finally {
@@ -372,7 +445,8 @@ const TraceabilityFlowBuilder: React.FC = () => {
     setServerValidation(null);
     setCurrentRuleId(null);
     setRuleName(DEFAULT_RULE_NAME);
-    setLastSavedSnapshot(buildSnapshot(DEFAULT_RULE_NAME, EMPTY_FLOW));
+    setLastSavedRuleSnapshot(buildRuleSnapshot(DEFAULT_RULE_NAME, EMPTY_FLOW));
+    setLastSavedAutomationSnapshot(buildAutomationSnapshot());
     resetAutomationState();
   }, [canDiscardChanges, resetAutomationState, setEdges, setNodes]);
 
@@ -401,7 +475,7 @@ const TraceabilityFlowBuilder: React.FC = () => {
         throw new Error('Server validation failed. Fix errors before saving.');
       }
 
-      if (currentRuleId && !hasUnsavedChanges) {
+      if (currentRuleId && !hasUnsavedRuleChanges) {
         if (opts?.showSuccessToast !== false) {
           notify('success', 'Rule is up to date');
         }
@@ -420,7 +494,7 @@ const TraceabilityFlowBuilder: React.FC = () => {
           };
           await updateRule(currentRuleId, updateData);
           setRuleName(normalizedRuleName);
-          setLastSavedSnapshot(buildSnapshot(normalizedRuleName, flowData));
+          setLastSavedRuleSnapshot(buildRuleSnapshot(normalizedRuleName, flowData));
           if (opts?.showSuccessToast !== false) {
             notify('success', 'Rule updated');
           }
@@ -438,9 +512,9 @@ const TraceabilityFlowBuilder: React.FC = () => {
         const savedRule = await createRule(createData);
         setCurrentRuleId(savedRule.id);
         setRuleName(normalizedRuleName);
-        setLastSavedSnapshot(buildSnapshot(normalizedRuleName, flowData));
+        setLastSavedRuleSnapshot(buildRuleSnapshot(normalizedRuleName, flowData));
         await loadRules();
-        await loadAutomationState(savedRule.id);
+        await loadAutomationState(savedRule.id, Boolean(savedRule.execute_on_sync_complete));
         if (opts?.showSuccessToast !== false) {
           notify('success', 'Rule saved');
         }
@@ -459,13 +533,14 @@ const TraceabilityFlowBuilder: React.FC = () => {
     [
       currentRuleId,
       edges,
-      hasUnsavedChanges,
+      hasUnsavedRuleChanges,
       loadAutomationState,
       loadRules,
       nodes,
       notify,
       ruleName,
       runServerValidation,
+      executeOnSyncComplete,
     ]
   );
 
@@ -531,20 +606,43 @@ const TraceabilityFlowBuilder: React.FC = () => {
 
     setAutomationBusy(true);
     try {
+      if (!automationStateReady) {
+        notify('warning', 'Reload automation settings before saving changes');
+        return;
+      }
+      await updateRule(currentRuleId, {
+        execute_on_sync_complete: executeOnSyncComplete,
+      });
       const schedule = await updateRuleSchedule(currentRuleId, {
         schedule_enabled: scheduleEnabled,
         schedule_cron: scheduleCron.trim() || null,
       });
-      setScheduleEnabled(Boolean(schedule.schedule_enabled));
-      setScheduleCron(schedule.schedule_cron || '');
+      const normalizedScheduleEnabled = Boolean(schedule.schedule_enabled);
+      const normalizedScheduleCron = schedule.schedule_cron || '';
+      setScheduleEnabled(normalizedScheduleEnabled);
+      setScheduleCron(normalizedScheduleCron);
       setNextScheduledRun(schedule.next_scheduled_run || null);
-      notify('success', 'Schedule updated');
+      setLastSavedAutomationSnapshot(
+        buildAutomationSnapshot(
+          executeOnSyncComplete,
+          normalizedScheduleEnabled,
+          normalizedScheduleCron
+        )
+      );
+      notify('success', 'Automation updated');
     } catch (error: unknown) {
-      notify('error', getErrorMessage(error, 'Failed to update schedule'));
+      notify('error', getErrorMessage(error, 'Failed to update automation settings'));
     } finally {
       setAutomationBusy(false);
     }
-  }, [currentRuleId, notify, scheduleCron, scheduleEnabled]);
+  }, [
+    currentRuleId,
+    automationStateReady,
+    executeOnSyncComplete,
+    notify,
+    scheduleCron,
+    scheduleEnabled,
+  ]);
 
   const handleEnableWebhook = useCallback(async () => {
     if (!currentRuleId) {
@@ -650,7 +748,7 @@ const TraceabilityFlowBuilder: React.FC = () => {
 
   useEffect(() => {
     setServerValidation(null);
-  }, [currentSnapshot]);
+  }, [currentRuleSnapshot]);
 
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
@@ -753,13 +851,38 @@ const TraceabilityFlowBuilder: React.FC = () => {
                   <Typography variant="subtitle2">Automation</Typography>
                 </Stack>
 
+                {automationLoadError && (
+                  <Alert
+                    severity="warning"
+                    action={
+                      <Button color="inherit" size="small" onClick={() => void handleReloadAutomationState()}>
+                        Retry
+                      </Button>
+                    }
+                  >
+                    {automationLoadError}. Automation controls are disabled until the current backend
+                    state is loaded.
+                  </Alert>
+                )}
+
                 <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems={{ lg: 'center' }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={executeOnSyncComplete}
+                        onChange={(event) => setExecuteOnSyncComplete(event.target.checked)}
+                        disabled={automationControlsDisabled}
+                      />
+                    }
+                    label="Run After Sync"
+                  />
+
                   <FormControlLabel
                     control={
                       <Switch
                         checked={scheduleEnabled}
                         onChange={(event) => setScheduleEnabled(event.target.checked)}
-                        disabled={automationBusy}
+                        disabled={automationControlsDisabled}
                       />
                     }
                     label="Schedule Enabled"
@@ -772,7 +895,7 @@ const TraceabilityFlowBuilder: React.FC = () => {
                     value={scheduleCron}
                     onChange={(event) => setScheduleCron(event.target.value)}
                     sx={{ minWidth: 200 }}
-                    disabled={automationBusy}
+                    disabled={automationControlsDisabled}
                   />
 
                   <TextField
@@ -786,9 +909,9 @@ const TraceabilityFlowBuilder: React.FC = () => {
                   <Button
                     variant="outlined"
                     onClick={handleSaveAutomation}
-                    disabled={automationBusy}
+                    disabled={automationControlsDisabled}
                   >
-                    {automationBusy ? 'Applying...' : 'Apply Schedule'}
+                    {automationBusy ? 'Applying...' : 'Save Automation'}
                   </Button>
 
                   <Divider flexItem orientation="vertical" sx={{ display: { xs: 'none', lg: 'block' } }} />
@@ -798,12 +921,12 @@ const TraceabilityFlowBuilder: React.FC = () => {
                       variant="outlined"
                       color="warning"
                       onClick={handleDisableWebhook}
-                      disabled={automationBusy}
+                      disabled={automationControlsDisabled}
                     >
                       Disable Webhook
                     </Button>
                   ) : (
-                    <Button variant="outlined" onClick={handleEnableWebhook} disabled={automationBusy}>
+                    <Button variant="outlined" onClick={handleEnableWebhook} disabled={automationControlsDisabled}>
                       Enable Webhook
                     </Button>
                   )}
@@ -824,6 +947,11 @@ const TraceabilityFlowBuilder: React.FC = () => {
                     One-time webhook token: <code>{generatedWebhookToken}</code>
                   </Alert>
                 )}
+
+                <Typography variant="caption" color="text.secondary">
+                  Run After Sync executes this rule automatically after Jira, Confluence, or Git sync
+                  batches that changed traceability artifacts.
+                </Typography>
               </Stack>
             </Paper>
           )}
