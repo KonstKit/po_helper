@@ -108,7 +108,7 @@ async def get_orphaned_artifacts(
         "items": items,
         "by_type": type_summary,
         "recommendations": [
-            "Run backfill to ensure all artifacts are imported",
+            "Run source sync or traceability repair to ensure all artifacts are imported",
             "Execute auto-linking rules to create missing connections",
             "Review orphaned requirements for test coverage gaps",
         ]
@@ -278,11 +278,15 @@ async def get_confidence_distribution(
 
     if not links:
         return {
-            "total": 0,
-            "with_confidence": 0,
-            "histogram": {},
+            "histogram": [],
+            "stats": {
+                "total_links": 0,
+                "avg_confidence": 0.0,
+                "median_confidence": 0.0,
+                "min_confidence": 0.0,
+                "max_confidence": 0.0,
+            },
             "by_link_type": {},
-            "low_confidence_links": [],
         }
 
     histogram = {
@@ -295,7 +299,7 @@ async def get_confidence_distribution(
     }
 
     by_link_type: Dict[str, Dict[str, Any]] = {}
-    low_confidence_links: List[Dict[str, float | int | str | None]] = []
+    scored_confidences: List[float] = []
 
     for link in links:
         lt = link.link_type
@@ -311,6 +315,7 @@ async def get_confidence_distribution(
             by_link_type[lt]["no_score"] += 1
         else:
             by_link_type[lt]["sum"] += conf
+            scored_confidences.append(conf)
 
             if conf < 0.2:
                 histogram["0.0-0.2"] += 1
@@ -323,28 +328,38 @@ async def get_confidence_distribution(
             else:
                 histogram["0.8-1.0"] += 1
 
-            if conf < 0.5:
-                low_confidence_links.append(
-                    {
-                        "link_id": link.id,
-                        "from_artifact_id": link.from_artifact_id,
-                        "to_artifact_id": link.to_artifact_id,
-                        "link_type": lt,
-                        "confidence": conf,
-                    }
-                )
-
     for lt, stats in by_link_type.items():
         scored = stats["count"] - stats["no_score"]
-        stats["avg"] = stats["sum"] / scored if scored > 0 else None
+        stats["avg_confidence"] = stats["sum"] / scored if scored > 0 else 0.0
         del stats["sum"]
+        del stats["no_score"]
+
+    scored_confidences.sort()
+    median_confidence = 0.0
+    if scored_confidences:
+        midpoint = len(scored_confidences) // 2
+        if len(scored_confidences) % 2 == 0:
+            median_confidence = (
+                scored_confidences[midpoint - 1] + scored_confidences[midpoint]
+            ) / 2
+        else:
+            median_confidence = scored_confidences[midpoint]
 
     return {
-        "total": len(links),
-        "with_confidence": len(links) - histogram["no_score"],
-        "histogram": histogram,
+        "histogram": [
+            {"range": range_key, "count": histogram[range_key]}
+            for range_key in ("0.0-0.2", "0.2-0.4", "0.4-0.6", "0.6-0.8", "0.8-1.0")
+        ],
+        "stats": {
+            "total_links": len(links),
+            "avg_confidence": (
+                sum(scored_confidences) / len(scored_confidences)
+                if scored_confidences
+                else 0.0
+            ),
+            "median_confidence": median_confidence,
+            "min_confidence": scored_confidences[0] if scored_confidences else 0.0,
+            "max_confidence": scored_confidences[-1] if scored_confidences else 0.0,
+        },
         "by_link_type": by_link_type,
-        "low_confidence_links": sorted(
-            low_confidence_links, key=lambda x: float(x.get("confidence") or 0.0)
-        )[:20],
     }

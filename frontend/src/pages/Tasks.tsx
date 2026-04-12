@@ -25,7 +25,7 @@ import {
 } from '@mui/icons-material';
 import { DataGrid, GridColDef, GridToolbar, GridPaginationModel } from '@mui/x-data-grid';
 import { listTasksPaginated, listProjects, setTaskBusinessValue, withRetry, type Project, type TaskItem } from '../services/api';
-import { getErrorMessage } from '../utils/errorUtils';
+import { getErrorMessage, logError } from '../utils/errorUtils';
 
 /** Extended task row with computed display fields */
 interface TaskRow extends TaskItem {
@@ -112,7 +112,7 @@ const Tasks = () => {
       );
       setRowCount(response.meta.total);
     } catch (err) {
-      console.error('Failed to load tasks', err);
+      logError('Failed to load tasks', err);
       setToast({ open: true, severity: 'error', message: 'Failed to load tasks' });
     } finally {
       setLoading(false);
@@ -128,7 +128,7 @@ const Tasks = () => {
         );
         setProjects(psResp.data);
       } catch (err) {
-        console.error('Failed to load projects', err);
+        logError('Failed to load projects', err);
         setToast({ open: true, severity: 'error', message: 'Failed to load projects list' });
       }
     })();
@@ -165,7 +165,7 @@ const Tasks = () => {
       setToast({ open: true, severity: 'success', message: 'Business value updated' });
       closeBusinessValueDialog();
     } catch (err) {
-      console.error(err);
+      logError('Failed to update business value', err);
       const detail = getErrorMessage(err, 'Failed to update business value');
       setToast({ open: true, severity: 'error', message: detail });
     }

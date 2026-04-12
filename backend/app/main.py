@@ -1,10 +1,12 @@
 import logging
 import os
+import json
+import sys
 from contextlib import asynccontextmanager
 from functools import partial
 
 import sentry_sdk
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
@@ -28,13 +30,84 @@ except ImportError:  # pragma: no cover - Celery optional
     CeleryIntegration = None
 
 # Configure logging level based on environment
-log_level = os.getenv("LOG_LEVEL", "INFO")
-logging.basicConfig(
-    level=getattr(logging, log_level.upper(), logging.INFO),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+class _JsonLogFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=True)
+
+
+def _configure_logging() -> None:
+    log_level = os.getenv("LOG_LEVEL", "INFO")
+    level = getattr(logging, log_level.upper(), logging.INFO)
+    handler = logging.StreamHandler(sys.stdout)
+    if settings.is_production or settings.is_staging:
+        handler.setFormatter(_JsonLogFormatter())
+    else:
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        )
+
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.setLevel(level)
+    root_logger.addHandler(handler)
+
+
+_configure_logging()
 
 logger = logging.getLogger(__name__)
+
+SQLITE_ALLOWED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
+    "tasks": (
+        ("business_value", "FLOAT"),
+        ("value_delivered", "BOOLEAN"),
+        ("roi", "FLOAT"),
+    ),
+    "sprints": (
+        ("velocity", "FLOAT"),
+        ("commitment", "FLOAT"),
+        ("completed", "FLOAT"),
+        ("wip_limit", "INTEGER"),
+    ),
+    "pull_requests": (
+        ("first_review_at", "TIMESTAMP"),
+        ("cycle_time_hours", "FLOAT"),
+        ("lead_time_hours", "FLOAT"),
+        ("time_to_first_review_hours", "FLOAT"),
+        ("rework_count", "INTEGER DEFAULT 0"),
+        ("files_changed", "INTEGER"),
+        ("lines_added", "INTEGER"),
+        ("lines_deleted", "INTEGER"),
+    ),
+}
+
+ALLOWED_CORS_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+ALLOWED_CORS_HEADERS = [
+    "Authorization",
+    "Content-Type",
+    "Accept",
+]
+
+
+def _quote_sqlite_identifier(identifier: str) -> str:
+    if not identifier or not identifier.replace("_", "").isalnum():
+        raise ValueError(f"Unsafe SQLite identifier: {identifier!r}")
+    return f'"{identifier}"'
+
+
+def _is_https_request(request: Request) -> bool:
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    if forwarded_proto:
+        proto = forwarded_proto.split(",")[0].strip().lower()
+        return proto == "https"
+    return request.url.scheme == "https"
 
 
 def _setup_sentry() -> None:
@@ -74,47 +147,26 @@ async def _ensure_sqlite_columns() -> None:
             return
         async with engine.begin() as conn:
 
-            async def ensure_columns(table: str, columns: list[tuple[str, str]]):
-                res = await conn.execute(text(f"PRAGMA table_info({table})"))
+            async def ensure_columns(table: str):
+                allowed_columns = SQLITE_ALLOWED_COLUMNS.get(table)
+                if allowed_columns is None:
+                    raise ValueError(f"SQLite startup migration attempted unknown table {table}")
+
+                quoted_table = _quote_sqlite_identifier(table)
+                res = await conn.execute(text(f"PRAGMA table_info({quoted_table})"))
                 existing = {row[1] for row in res}
-                to_add = [col for col in columns if col[0] not in existing]
+                to_add = [col for col in allowed_columns if col[0] not in existing]
                 for column_name, column_type in to_add:
+                    _quote_sqlite_identifier(column_name)
                     await conn.execute(
-                        text(f"ALTER TABLE {table} ADD COLUMN {column_name} {column_type}")
+                        text(
+                            f"ALTER TABLE {quoted_table} "
+                            f"ADD COLUMN {_quote_sqlite_identifier(column_name)} {column_type}"
+                        )
                     )
 
-            await ensure_columns(
-                "tasks",
-                [
-                    ("business_value", "FLOAT"),
-                    ("value_delivered", "BOOLEAN"),
-                    ("roi", "FLOAT"),
-                ],
-            )
-
-            await ensure_columns(
-                "sprints",
-                [
-                    ("velocity", "FLOAT"),
-                    ("commitment", "FLOAT"),
-                    ("completed", "FLOAT"),
-                    ("wip_limit", "INTEGER"),
-                ],
-            )
-
-            await ensure_columns(
-                "pull_requests",
-                [
-                    ("first_review_at", "TIMESTAMP"),
-                    ("cycle_time_hours", "FLOAT"),
-                    ("lead_time_hours", "FLOAT"),
-                    ("time_to_first_review_hours", "FLOAT"),
-                    ("rework_count", "INTEGER DEFAULT 0"),
-                    ("files_changed", "INTEGER"),
-                    ("lines_added", "INTEGER"),
-                    ("lines_deleted", "INTEGER"),
-                ],
-            )
+            for table_name in SQLITE_ALLOWED_COLUMNS:
+                await ensure_columns(table_name)
     except Exception as e:
         logger.warning("SQLite column migration failed: %s", e)
 
@@ -369,11 +421,28 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=ALLOWED_CORS_METHODS,
+    allow_headers=ALLOWED_CORS_HEADERS,
 )
 
 register_middlewares(app)
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    )
+    if (settings.is_production or settings.is_staging) and _is_https_request(request):
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains",
+        )
+    return response
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 app.include_router(ws_router, prefix="/api/v1")

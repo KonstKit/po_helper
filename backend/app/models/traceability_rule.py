@@ -45,6 +45,7 @@ class TraceabilityRule(Base):
     schedule_cron: Mapped[str | None] = mapped_column(String(100), nullable=True)
     schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     trigger_on_webhook: Mapped[bool] = mapped_column(Boolean, default=False)
+    execute_on_sync_complete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     webhook_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
     next_scheduled_run: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

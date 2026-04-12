@@ -39,6 +39,7 @@ class TraceabilityRuleBase(BaseModel):
     schedule_cron: Optional[str] = Field(None, max_length=100)
     schedule_enabled: bool = False
     trigger_on_webhook: bool = False
+    execute_on_sync_complete: bool = False
 
 
 class TraceabilityRuleCreate(TraceabilityRuleBase):
@@ -57,6 +58,7 @@ class TraceabilityRuleUpdate(BaseModel):
     schedule_cron: Optional[str] = Field(None, max_length=100)
     schedule_enabled: Optional[bool] = None
     trigger_on_webhook: Optional[bool] = None
+    execute_on_sync_complete: Optional[bool] = None
 
 
 class TraceabilityRuleInDB(TraceabilityRuleBase):
@@ -94,6 +96,7 @@ class TraceabilityRuleResponse(TraceabilityRuleInDB):
             "schedule_cron": db_rule.schedule_cron,
             "schedule_enabled": db_rule.schedule_enabled,
             "trigger_on_webhook": db_rule.trigger_on_webhook,
+            "execute_on_sync_complete": db_rule.execute_on_sync_complete,
             "next_scheduled_run": db_rule.next_scheduled_run,
             "total_executions": db_rule.total_executions,
             "successful_executions": db_rule.successful_executions,

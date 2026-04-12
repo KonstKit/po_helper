@@ -11,11 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func as sql_func, exists
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
+from app.core.crypto import decrypt_str
 from app.core.database import get_db
 from app.models import Artifact, ArtifactLink, Project, User, Permissions
 from app.models.settings import IntegrationSetting
 from app.models.project_repository import ProjectRepository
 from app.api.deps import ensure_project_access, require_permission
+from app.services.integration_config import get_connector_overrides, get_connector_overrides_map
+from app.services.jira import JiraService
+from app.services.confluence_service import ConfluenceService
 from .common import _dag_types
 
 router = APIRouter()
@@ -143,7 +148,7 @@ def _generate_consistency_recommendations(issues: Dict[str, Any]) -> List[Dict[s
                 "category": "stale",
                 "action": "Re-sync stale artifacts from source systems",
                 "reason": f"Found {issues['stale']['count']} artifact(s) not updated in over 90 days",
-                "fix": "Run backfill to refresh artifact data from Jira, Confluence, and Git",
+                "fix": "Run source sync or traceability repair to refresh artifact data from Jira, Confluence, and Git",
             }
         )
 
@@ -250,178 +255,409 @@ async def _detect_all_cycles(
     return cycles_found
 
 
+def _isoformat(value: Optional[datetime]) -> Optional[str]:
+    return value.isoformat() if value else None
+
+
+def _safe_decrypt(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    try:
+        decrypted = decrypt_str(value)
+    except Exception:
+        return None
+    return decrypted or None
+
+
+def _project_meta(project: Project) -> Dict[str, Any]:
+    meta = project.meta
+    return meta if isinstance(meta, dict) else {}
+
+
+def _project_last_sync(project: Project) -> Optional[str]:
+    meta = _project_meta(project)
+    raw = meta.get("last_sync_at")
+    return str(raw) if raw else None
+
+
+def _compute_project_health_status(
+    *,
+    last_sync: Optional[str],
+    artifact_count: int,
+    source_statuses: Optional[List[str]] = None,
+) -> str:
+    if last_sync:
+        try:
+            last_sync_dt = datetime.fromisoformat(last_sync.replace("Z", "+00:00"))
+            age_days = (datetime.utcnow() - last_sync_dt.replace(tzinfo=None)).days
+            if age_days > 7:
+                return "stale"
+        except ValueError:
+            pass
+
+    statuses = set(source_statuses or [])
+    if "degraded" in statuses and artifact_count == 0:
+        return "critical"
+    if artifact_count == 0:
+        return "warning"
+    if "degraded" in statuses:
+        return "warning"
+    if "reachable" in statuses:
+        return "healthy"
+    return "unknown"
+
+
+def _compute_overall_health(reachable_sources: int, total_sources: int, total_artifacts: int) -> tuple[str, float]:
+    if total_sources <= 0:
+        return "critical", 0.0
+
+    connectivity = reachable_sources / total_sources
+    artifact_bonus = 1.0 if total_artifacts > 0 else 0.0
+    score = round(((connectivity * 0.7) + (artifact_bonus * 0.3)) * 100, 1)
+
+    if score >= 80:
+        return "healthy", score
+    if score >= 45:
+        return "warning", score
+    return "critical", score
+
+
+async def _build_jira_source_health(
+    db: AsyncSession,
+    *,
+    project_id: Optional[int],
+    integration: Optional[IntegrationSetting],
+    artifact_count: int,
+    last_sync: Optional[str],
+    checked_at: str,
+) -> Dict[str, Any]:
+    overrides = await get_connector_overrides(db, project_id, "jira")
+    if overrides and not overrides.enabled:
+        return {
+            "source": "jira",
+            "label": "Jira",
+            "status": "not_configured",
+            "effective_connector_source": "project_override",
+            "artifact_count": artifact_count,
+            "last_sync": last_sync,
+            "checked_at": checked_at,
+            "error": "Connector disabled for this project",
+        }
+
+    base_url = (
+        str(overrides.settings.get("base_url"))
+        if overrides and overrides.settings.get("base_url")
+        else (integration.base_url if integration and integration.base_url else settings.JIRA_BASE_URL)
+    )
+    token = (
+        str(overrides.settings.get("api_token"))
+        if overrides and overrides.settings.get("api_token")
+        else (_safe_decrypt(integration.api_token) if integration else settings.JIRA_API_TOKEN)
+    )
+    email = (
+        str(overrides.settings.get("email"))
+        if overrides and overrides.settings.get("email")
+        else (integration.email if integration and integration.email else settings.JIRA_EMAIL)
+    )
+    email = None if getattr(settings, "JIRA_FORCE_PAT", True) else (email or None)
+
+    effective_source = "project_override" if overrides else "global"
+    if not base_url or not token:
+        return {
+            "source": "jira",
+            "label": "Jira",
+            "status": "not_configured",
+            "effective_connector_source": effective_source if overrides else "none",
+            "artifact_count": artifact_count,
+            "last_sync": last_sync,
+            "checked_at": checked_at,
+            "error": None,
+        }
+
+    try:
+        client = JiraService()
+        client.connect(base_url, email, token)
+        client.validate()
+        status = "reachable"
+        error = None
+    except Exception as exc:
+        status = "degraded"
+        error = str(exc)
+
+    return {
+        "source": "jira",
+        "label": "Jira",
+        "status": status,
+        "effective_connector_source": effective_source,
+        "artifact_count": artifact_count,
+        "last_sync": last_sync,
+        "checked_at": checked_at,
+        "error": error,
+        "base_url": base_url,
+    }
+
+
+async def _build_confluence_source_health(
+    db: AsyncSession,
+    *,
+    project_id: Optional[int],
+    integration: Optional[IntegrationSetting],
+    artifact_count: int,
+    last_sync: Optional[str],
+    checked_at: str,
+) -> Dict[str, Any]:
+    overrides = await get_connector_overrides(db, project_id, "confluence")
+    if overrides and not overrides.enabled:
+        return {
+            "source": "confluence",
+            "label": "Confluence",
+            "status": "not_configured",
+            "effective_connector_source": "project_override",
+            "artifact_count": artifact_count,
+            "last_sync": last_sync,
+            "checked_at": checked_at,
+            "error": "Connector disabled for this project",
+        }
+
+    base_url = (
+        str(overrides.settings.get("base_url"))
+        if overrides and overrides.settings.get("base_url")
+        else (
+            integration.base_url if integration and integration.base_url else settings.CONFLUENCE_BASE_URL
+        )
+    )
+    token = (
+        str(overrides.settings.get("api_token"))
+        if overrides and overrides.settings.get("api_token")
+        else (_safe_decrypt(integration.api_token) if integration else settings.CONFLUENCE_API_TOKEN)
+    )
+    email = (
+        str(overrides.settings.get("email"))
+        if overrides and overrides.settings.get("email")
+        else (integration.email if integration and integration.email else settings.CONFLUENCE_EMAIL)
+    )
+    effective_source = "project_override" if overrides else "global"
+    if not base_url or not token:
+        return {
+            "source": "confluence",
+            "label": "Confluence",
+            "status": "not_configured",
+            "effective_connector_source": effective_source if overrides else "none",
+            "artifact_count": artifact_count,
+            "last_sync": last_sync,
+            "checked_at": checked_at,
+            "error": None,
+        }
+
+    try:
+        client = ConfluenceService()
+        client.connect(base_url, email or None, token)
+        client.validate()
+        status = "reachable"
+        error = None
+    except Exception as exc:
+        status = "degraded"
+        error = str(exc)
+
+    return {
+        "source": "confluence",
+        "label": "Confluence",
+        "status": status,
+        "effective_connector_source": effective_source,
+        "artifact_count": artifact_count,
+        "last_sync": last_sync,
+        "checked_at": checked_at,
+        "error": error,
+        "base_url": base_url,
+    }
+
+
+async def _build_git_source_health(
+    db: AsyncSession,
+    *,
+    project_id: Optional[int],
+    integrations: Dict[str, IntegrationSetting],
+    repositories: List[ProjectRepository],
+    artifact_count: int,
+    checked_at: str,
+) -> Dict[str, Any]:
+    if not repositories:
+        return {
+            "source": "git",
+            "label": "Git Repositories",
+            "status": "not_configured",
+            "effective_connector_source": "none",
+            "artifact_count": artifact_count,
+            "last_sync": None,
+            "checked_at": checked_at,
+            "error": None,
+            "repository_count": 0,
+        }
+
+    providers = {(getattr(repo.repository, "provider", None) or "").lower() for repo in repositories}
+    providers.discard("")
+    overrides = await get_connector_overrides_map(db, project_id, providers)
+
+    missing_providers: List[str] = []
+    for provider in sorted(providers):
+        override = overrides.get(provider)
+        if override and not override.enabled:
+            missing_providers.append(provider)
+            continue
+
+        integration = integrations.get(provider)
+        token = None
+        if override and (override.settings.get("api_token") or override.settings.get("token")):
+            token = str(override.settings.get("api_token") or override.settings.get("token"))
+        elif integration:
+            token = _safe_decrypt(integration.api_token)
+        if not token:
+            missing_providers.append(provider)
+
+    status = "reachable" if not missing_providers else "degraded"
+    error = None
+    if missing_providers:
+        error = f"Missing active provider credentials: {', '.join(sorted(missing_providers))}"
+
+    return {
+        "source": "git",
+        "label": "Git Repositories",
+        "status": status,
+        "effective_connector_source": "repository_link",
+        "artifact_count": artifact_count,
+        "last_sync": None,
+        "checked_at": checked_at,
+        "error": error,
+        "repository_count": len(repositories),
+    }
+
+
 @router.get("/sync-health")
 async def get_sync_health(
     project_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
-    """
-    Get synchronization health status across all data sources.
-
-    Returns:
-    - Overall sync status
-    - Per-source status (Jira, Confluence, Git)
-    - Last sync times and artifact counts
-    - Recent errors or warnings
-    """
+    """Get canonical synchronization health across sources."""
     if project_id is None and not current_user.has_permission(Permissions.ADMIN):
         raise HTTPException(status_code=403, detail="project_id is required")
-    if project_id is not None:
-        await ensure_project_access(project_id, db, current_user)
 
-    # Build all queries first (no await yet)
-    integrations_query = select(IntegrationSetting)
+    selected_project: Optional[Project] = None
+    if project_id is not None:
+        selected_project = await ensure_project_access(project_id, db, current_user)
+
+    integrations_result = await db.execute(select(IntegrationSetting))
+    integrations = {row.kind: row for row in integrations_result.scalars().all()}
 
     source_counts_query = select(
-        Artifact.source, sql_func.count(Artifact.id).label("count")
+        Artifact.source,
+        sql_func.count(Artifact.id).label("count"),
     ).group_by(Artifact.source)
     if project_id is not None:
         source_counts_query = source_counts_query.where(Artifact.project_id == project_id)
+    source_counts_result = await db.execute(source_counts_query)
+    source_counts: Dict[str, int] = {
+        row.source: int(getattr(row, "count", 0) or 0)
+        for row in source_counts_result.all()
+    }
 
-    projects_query = select(Project)
+    project_counts_query = (
+        select(Artifact.project_id, sql_func.count(Artifact.id).label("count"))
+        .where(Artifact.project_id.is_not(None))
+        .group_by(Artifact.project_id)
+    )
+    if project_id is not None:
+        project_counts_query = project_counts_query.where(Artifact.project_id == project_id)
+    project_counts_result = await db.execute(project_counts_query)
+    project_artifact_counts = {
+        int(row.project_id): int(getattr(row, "count", 0) or 0)
+        for row in project_counts_result.all()
+        if row.project_id is not None
+    }
+
+    projects_query = select(Project).order_by(Project.id.asc())
     if project_id is not None:
         projects_query = projects_query.where(Project.id == project_id)
+    projects_result = await db.execute(projects_query)
+    projects = projects_result.scalars().all()
 
     repos_query = select(ProjectRepository).options(selectinload(ProjectRepository.repository))
     if project_id is not None:
         repos_query = repos_query.where(ProjectRepository.project_id == project_id)
+    repositories_result = await db.execute(repos_query)
+    repositories = repositories_result.scalars().all()
 
-    # NOTE: AsyncSession is not safe for concurrent use; avoid asyncio.gather(db.execute(...)).
-    integrations_result = await db.execute(integrations_query)
-    source_result = await db.execute(source_counts_query)
-    projects_result = await db.execute(projects_query)
-    repos_result = await db.execute(repos_query)
+    checked_at = datetime.utcnow().isoformat()
+    jira_last_sync = _project_last_sync(selected_project) if selected_project else None
+    if jira_last_sync is None:
+        jira_last_sync = next((value for value in (_project_last_sync(project) for project in projects) if value), None)
 
-    # Process results
-    integrations = {row.kind: row for row in integrations_result.scalars().all()}
-    source_counts: Dict[str, int] = {
-        row.source: int(getattr(row, "count", 0) or 0) for row in source_result.all()
-    }
-    projects = projects_result.scalars().all()
-    repositories = repos_result.scalars().all()
-
-    # Calculate last sync times per source
-    last_syncs: Dict[str, Any] = {}
-    project_sync_info = []
-
-    for proj in projects:
-        meta = proj.meta or {}
-        last_sync = meta.get("last_sync_at")
-        if last_sync:
-            if "jira" not in last_syncs or last_sync > last_syncs.get("jira", ""):
-                last_syncs["jira"] = last_sync
-
-        project_sync_info.append(
-            {
-                "id": proj.id,
-                "name": proj.name or proj.jira_key,
-                "jira_key": proj.jira_key,
-                "last_sync_at": last_sync,
-                "issues_count": meta.get("issues_count", 0),
-            }
-        )
-
-    repo_info = []
-    for repo in repositories:
-        repo_entity = getattr(repo, "repository", None)
-        repo_info.append(
-            {
-                "id": repo.id,
-                "project_id": repo.project_id,
-                "name": repo_entity.repo_slug if repo_entity else None,
-                "provider": repo_entity.provider if repo_entity else None,
-                "url": (repo_entity.settings or {}).get("url") if repo_entity else None,
-            }
-        )
-
-    # Build source status
-    sources = []
-
-    # Jira status
-    jira_integration = integrations.get("jira")
-    sources.append(
-        {
-            "source": "jira",
-            "label": "Jira",
-            "status": "connected"
-            if jira_integration and jira_integration.base_url
-            else "not_configured",
-            "base_url": jira_integration.base_url if jira_integration else None,
-            "artifact_count": source_counts.get("jira", 0),
-            "last_sync": last_syncs.get("jira"),
-            "updated_at": jira_integration.updated_at.isoformat()
-            if jira_integration and jira_integration.updated_at
-            else None,
-        }
-    )
-
-    # Confluence status
-    confluence_integration = integrations.get("confluence")
-    confluence_page_count = source_counts.get("confluence", 0)
-    sources.append(
-        {
-            "source": "confluence",
-            "label": "Confluence",
-            "status": "connected"
-            if confluence_integration and confluence_integration.base_url
-            else "not_configured",
-            "base_url": confluence_integration.base_url if confluence_integration else None,
-            "artifact_count": confluence_page_count,
-            "last_sync": None,  # Confluence doesn't have centralized sync tracking
-            "updated_at": confluence_integration.updated_at.isoformat()
-            if confluence_integration and confluence_integration.updated_at
-            else None,
-        }
-    )
-
-    # Git status
+    confluence_last_sync = None
     git_artifact_count = int(source_counts.get("github", 0)) + int(source_counts.get("gitlab", 0))
-    sources.append(
-        {
-            "source": "git",
-            "label": "Git Repositories",
-            "status": "connected" if repositories else "not_configured",
-            "repository_count": len(repositories),
-            "artifact_count": git_artifact_count,
-            "last_sync": None,
-            "repositories": repo_info[:10],  # Limit to first 10
-        }
-    )
 
-    # Calculate overall health
+    sources = [
+        await _build_jira_source_health(
+            db,
+            project_id=project_id,
+            integration=integrations.get("jira"),
+            artifact_count=source_counts.get("jira", 0),
+            last_sync=jira_last_sync,
+            checked_at=checked_at,
+        ),
+        await _build_confluence_source_health(
+            db,
+            project_id=project_id,
+            integration=integrations.get("confluence"),
+            artifact_count=source_counts.get("confluence", 0),
+            last_sync=confluence_last_sync,
+            checked_at=checked_at,
+        ),
+        await _build_git_source_health(
+            db,
+            project_id=project_id,
+            integrations=integrations,
+            repositories=repositories,
+            artifact_count=git_artifact_count,
+            checked_at=checked_at,
+        ),
+    ]
+
     total_artifacts = sum(source_counts.values())
-    configured_sources = sum(1 for s in sources if s["status"] == "connected")
-    total_sources = len(sources)
-
-    # Health score: weighted by artifact coverage and source connectivity
-    health_score = 0.0
-    if total_sources > 0:
-        connectivity_score = configured_sources / total_sources * 0.4
-        # Artifact coverage: penalize if any major source has 0 artifacts
-        positive_sources = sum(1 for s in sources if int(s.get("artifact_count") or 0) > 0)
-        artifact_coverage = positive_sources / total_sources * 0.6
-        health_score = connectivity_score + artifact_coverage
-
-    health_status = (
-        "healthy" if health_score >= 0.7 else ("warning" if health_score >= 0.4 else "critical")
+    reachable_sources = sum(1 for source in sources if source["status"] == "reachable")
+    overall_status, overall_score = _compute_overall_health(
+        reachable_sources, len(sources), total_artifacts
     )
+
+    project_rows = []
+    for project in projects:
+        last_sync = _project_last_sync(project)
+        artifact_count = int(project_artifact_counts.get(project.id, 0))
+        project_rows.append(
+            {
+                "project_id": project.id,
+                "project_name": project.name or project.jira_key,
+                "jira_key": project.jira_key,
+                "last_sync": last_sync,
+                "artifact_count": artifact_count,
+                "health_status": _compute_project_health_status(
+                    last_sync=last_sync,
+                    artifact_count=artifact_count,
+                    source_statuses=[source["status"] for source in sources],
+                ),
+            }
+        )
 
     return {
-        "health": {
-            "status": health_status,
-            "score": round(health_score, 2),
-            "connected_sources": configured_sources,
-            "total_sources": total_sources,
-        },
+        "health": {"status": overall_status, "score": overall_score},
         "summary": {
+            "total_sources": len(sources),
+            "reachable_sources": reachable_sources,
             "total_artifacts": total_artifacts,
-            "total_links": 0,  # Will be calculated below
-            "projects_count": len(projects),
-            "repositories_count": len(repositories),
+            "last_sync": jira_last_sync,
+            "checked_at": checked_at,
         },
         "sources": sources,
-        "projects": project_sync_info[:20],  # Limit to first 20
+        "projects": project_rows[:20],
     }
 
 
@@ -431,105 +667,108 @@ async def get_detailed_sync_health(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
-    """
-    Get detailed sync health for a specific project.
-
-    Returns more granular data including:
-    - Per-artifact-type breakdown
-    - Link coverage by source
-    - Recent sync history (if available)
-    """
+    """Get canonical sync-health details for one project."""
     project = await ensure_project_access(project_id, db, current_user)
 
-    # Build all queries first (parallel execution)
     type_source_query = (
         select(Artifact.type, Artifact.source, sql_func.count(Artifact.id).label("count"))
         .where(Artifact.project_id == project_id)
         .group_by(Artifact.type, Artifact.source)
     )
-
-    link_query = (
-        select(ArtifactLink.link_type, sql_func.count(ArtifactLink.id).label("count"))
-        .where(ArtifactLink.project_id == project_id)
-        .group_by(ArtifactLink.link_type)
+    repos_query = (
+        select(ProjectRepository)
+        .options(selectinload(ProjectRepository.repository))
+        .where(ProjectRepository.project_id == project_id)
     )
-
-    repos_query = select(ProjectRepository).where(ProjectRepository.project_id == project_id)
-
     has_link = exists(
         select(ArtifactLink.id).where(
-            (ArtifactLink.from_artifact_id == Artifact.id)
-            | (ArtifactLink.to_artifact_id == Artifact.id)
+            (ArtifactLink.from_artifact_id == Artifact.id) | (ArtifactLink.to_artifact_id == Artifact.id)
         )
     )
     orphan_count_query = select(sql_func.count(Artifact.id)).where(
-        Artifact.project_id == project_id, ~has_link
+        Artifact.project_id == project_id,
+        ~has_link,
     )
-
-    # NOTE: AsyncSession is not safe for concurrent use; avoid asyncio.gather(db.execute(...)).
+    integrations_result = await db.execute(select(IntegrationSetting))
+    integrations = {row.kind: row for row in integrations_result.scalars().all()}
     type_source_result = await db.execute(type_source_query)
-    link_result = await db.execute(link_query)
     repos_result = await db.execute(repos_query)
     orphan_result = await db.execute(orphan_count_query)
 
-    # Process results
-    type_source_counts = type_source_result.all()
-    links_by_type = {row.link_type: int(getattr(row, "count", 0) or 0) for row in link_result.all()}
     repositories = repos_result.scalars().all()
-    orphan_count = orphan_result.scalar() or 0
+    orphan_count = int(orphan_result.scalar() or 0)
+    by_type: Dict[str, int] = {}
+    by_source: Dict[str, int] = {}
+    for row in type_source_result.all():
+        art_type = str(row.type)
+        source = str(row.source)
+        count = int(getattr(row, "count", 0) or 0)
+        by_type[art_type] = by_type.get(art_type, 0) + count
+        by_source[source] = by_source.get(source, 0) + count
 
-    # Build breakdown
-    by_type: Dict[str, Dict[str, Any]] = {}
-    by_source: Dict[str, Dict[str, Any]] = {}
-    for row in type_source_counts:
-        art_type, source, count = row.type, row.source, int(getattr(row, "count", 0) or 0)
-        if art_type not in by_type:
-            by_type[art_type] = {"total": 0, "by_source": {}}
-        by_type[art_type]["total"] += count
-        by_type[art_type]["by_source"][source] = count
+    total_artifacts = sum(by_source.values())
+    linked_artifacts = max(total_artifacts - orphan_count, 0)
+    coverage_pct = (linked_artifacts / total_artifacts * 100.0) if total_artifacts else 0.0
+    checked_at = datetime.utcnow().isoformat()
+    last_sync = _project_last_sync(project)
 
-        if source not in by_source:
-            by_source[source] = {"total": 0, "by_type": {}}
-        by_source[source]["total"] += count
-        by_source[source]["by_type"][art_type] = count
-
-    repo_info = []
-    for r in repositories:
-        repo_entity = getattr(r, "repository", None)
-        repo_info.append(
-            {
-                "id": r.id,
-                "name": repo_entity.repo_slug if repo_entity else None,
-                "provider": repo_entity.provider if repo_entity else None,
-                "url": (repo_entity.settings or {}).get("url") if repo_entity else None,
-            }
-        )
-
-    # Project metadata
-    meta = project.meta or {}
+    sources = [
+        await _build_jira_source_health(
+            db,
+            project_id=project_id,
+            integration=integrations.get("jira"),
+            artifact_count=by_source.get("jira", 0),
+            last_sync=last_sync,
+            checked_at=checked_at,
+        ),
+        await _build_confluence_source_health(
+            db,
+            project_id=project_id,
+            integration=integrations.get("confluence"),
+            artifact_count=by_source.get("confluence", 0),
+            last_sync=None,
+            checked_at=checked_at,
+        ),
+        await _build_git_source_health(
+            db,
+            project_id=project_id,
+            integrations=integrations,
+            repositories=repositories,
+            artifact_count=by_source.get("github", 0) + by_source.get("gitlab", 0),
+            checked_at=checked_at,
+        ),
+    ]
 
     return {
-        "project": {
-            "id": project.id,
-            "name": project.name or project.jira_key,
-            "jira_key": project.jira_key,
-            "last_sync_at": meta.get("last_sync_at"),
-            "issues_count": meta.get("issues_count", 0),
-        },
-        "artifacts": {
-            "by_type": by_type,
-            "by_source": by_source,
-            "total": sum(int(by_source[s]["total"]) for s in by_source),
-        },
-        "links": {
-            "by_type": links_by_type,
-            "total": sum(links_by_type.values()),
-        },
-        "coverage": {
+        "project_id": project.id,
+        "project_name": project.name or project.jira_key,
+        "jira_key": project.jira_key,
+        "last_sync": last_sync,
+        "health_status": _compute_project_health_status(
+            last_sync=last_sync,
+            artifact_count=total_artifacts,
+            source_statuses=[source["status"] for source in sources],
+        ),
+        "by_type": by_type,
+        "by_source": by_source,
+        "link_coverage": {
+            "total_artifacts": total_artifacts,
+            "linked_artifacts": linked_artifacts,
             "orphaned_artifacts": orphan_count,
-            "linked_artifacts": sum(by_source[s]["total"] for s in by_source) - orphan_count,
+            "coverage_pct": coverage_pct,
         },
-        "repositories": repo_info,
+        "repositories": [
+            {
+                "id": repo.id,
+                "provider": getattr(repo.repository, "provider", None),
+                "repo_slug": getattr(repo.repository, "repo_slug", None),
+                "default_branch": getattr(repo.repository, "default_branch", None),
+            }
+            for repo in repositories
+            if getattr(repo, "repository", None) is not None
+        ],
+        "sources": sources,
+        "checked_at": checked_at,
     }
 
 

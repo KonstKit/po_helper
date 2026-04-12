@@ -1,0 +1,2 @@
+export const API_TIMEOUT_MS = 15_000;
+export const TRACEABILITY_REPAIR_TIMEOUT_MS = 120_000;

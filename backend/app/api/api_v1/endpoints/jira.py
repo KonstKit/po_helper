@@ -1,6 +1,7 @@
 import asyncio
 from typing import Optional, Dict, Any
-from fastapi import APIRouter, Depends, BackgroundTasks, Query
+from urllib.parse import urlparse
+from fastapi import APIRouter, Depends, BackgroundTasks, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from time import perf_counter
 from app.core.database import get_db
@@ -21,6 +22,17 @@ import logging
 router = APIRouter()
 logger = logging.getLogger(__name__)
 JIRA_PROJECT_BOARDS_SLOW_THRESHOLD_SECONDS = 3.0
+
+
+def _normalize_http_base_url(base_url: str, provider: str) -> str:
+    normalized = base_url.strip().rstrip("/")
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {provider} base_url. Only http/https URLs are allowed.",
+        )
+    return normalized
 
 
 def _record_boards_guardrail(
@@ -83,18 +95,19 @@ async def connect_to_jira(
     with handle_api_error(
         operation="connect_to_jira", exception_map={JiraAuthError: 401, JiraUnexpectedResponse: 502}
     ):
+        normalized_base_url = _normalize_http_base_url(base_url, "jira")
         resolved_use_pat = bool(use_pat)
         connect_email = None if resolved_use_pat else (email or None)
 
         logger.info(
             "Connecting to Jira: base_url=%s use_pat=%s has_email=%s",
-            base_url,
+            normalized_base_url,
             resolved_use_pat,
             bool(connect_email),
         )
 
         await _call_jira(
-            jira_service.connect, base_url, connect_email, api_token, use_pat=resolved_use_pat
+            jira_service.connect, normalized_base_url, connect_email, api_token, use_pat=resolved_use_pat
         )
 
         # Validate by calling /myself
@@ -113,8 +126,8 @@ async def connect_to_jira(
                     row = IntegrationSetting(kind="jira")
                     db.add(row)
                 row.base_url = (
-                    (jira_service.base_url or base_url).rstrip("/")
-                    if (jira_service.base_url or base_url)
+                    (jira_service.base_url or normalized_base_url).rstrip("/")
+                    if (jira_service.base_url or normalized_base_url)
                     else None
                 )
                 row.email = None if resolved_use_pat else (email or None)

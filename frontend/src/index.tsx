@@ -8,6 +8,7 @@ import { store } from './store/store';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import theme from './theme';
 import './chart';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const container = document.getElementById('root');
 if (!container) {
@@ -20,12 +21,14 @@ root.render(
     <Provider store={store}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <BrowserRouter future={{
-          v7_startTransition: true,
-          v7_relativeSplatPath: true
-        }}>
-          <App />
-        </BrowserRouter>
+        <ErrorBoundary>
+          <BrowserRouter future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true
+          }}>
+            <App />
+          </BrowserRouter>
+        </ErrorBoundary>
       </ThemeProvider>
     </Provider>
   </React.StrictMode>

@@ -150,7 +150,7 @@ async def login(
     request: Request,
     db: AsyncSession = Depends(get_db),
     form_data: OAuth2PasswordRequestForm = Depends(),
-) -> Any:
+) -> JSONResponse:
     """
     OAuth2 compatible token login.
 
@@ -273,7 +273,12 @@ async def issue_scoped_token(
 
 
 @router.post("/register", response_model=UserSchema)
-async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)) -> Any:
+@limiter.limit("3/minute")
+async def register(
+    request: Request,
+    user_in: UserCreate,
+    db: AsyncSession = Depends(get_db),
+) -> User:
     """Register a new user with a default role."""
     user: User | None = None
     try:

@@ -42,9 +42,8 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
 import GridOnIcon from '@mui/icons-material/GridOn';
 import DashboardIcon from '@mui/icons-material/Dashboard';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
-import BackfillProgressDialog, { BackfillStep } from '../components/BackfillProgressDialog';
 import MatrixExportDialog from '../components/traceability/MatrixExportDialog';
 import RTMMatrixViewer from '../components/traceability/RTMMatrixViewer';
 import RTMMatrixFilters from '../components/traceability/RTMMatrixFilters';
@@ -64,7 +63,7 @@ import {
   listProjects,
   runTraceabilityBackfill,
 } from '../services/api';
-import { getErrorMessage } from '../utils/errorUtils';
+import { getErrorMessage, logError } from '../utils/errorUtils';
 
 interface BackfillState {
   running: boolean;
@@ -83,6 +82,30 @@ const parseProjectId = (value: string): number | 'all' => {
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 'all';
+};
+
+const buildRepairMessage = (result: TraceabilityBackfillResult): string => {
+  const details: string[] = [];
+
+  if (result.sources.jira) {
+    details.push(`Jira ${result.sources.jira.created} created / ${result.sources.jira.updated} updated`);
+  }
+  if (result.sources.confluence) {
+    details.push(
+      `Confluence ${result.sources.confluence.created} created / ${result.sources.confluence.updated} updated`
+    );
+  }
+  if (result.sources.git) {
+    const repositories = result.sources.git.repositories ?? [];
+    details.push(
+      repositories.length > 0
+        ? `Git synced ${repositories.length} ${repositories.length === 1 ? 'repository' : 'repositories'}`
+        : 'Git checked with no repository changes'
+    );
+  }
+
+  const summary = `Traceability repair complete: created ${result.created}, updated ${result.updated}.`;
+  return details.length > 0 ? `${summary} ${details.join(' • ')}.` : summary;
 };
 
 interface LinkTypeBreakdown {
@@ -108,6 +131,7 @@ interface TypeRow {
 }
 
 const Traceability: React.FC = () => {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState<number | 'all'>('all');
   const [projectsLoading, setProjectsLoading] = useState(false);
@@ -120,7 +144,6 @@ const Traceability: React.FC = () => {
   const [includeConfluence, setIncludeConfluence] = useState(true);
   const [includeGit, setIncludeGit] = useState(true);
   const [backfillState, setBackfillState] = useState<BackfillState>({ running: false });
-  const [backfillSteps, setBackfillSteps] = useState<BackfillStep[]>([]);
 
   const [artifactInput, setArtifactInput] = useState('');
   const [jiraKeyInput, setJiraKeyInput] = useState('');
@@ -186,7 +209,7 @@ const Traceability: React.FC = () => {
         });
       } catch (err: unknown) {
         if (cancelled) return;
-        console.error('Failed to load projects', err);
+        logError('Failed to load projects', err);
         setProjectsError(getErrorMessage(err, 'Failed to load projects'));
       } finally {
         if (!cancelled) {
@@ -211,7 +234,7 @@ const Traceability: React.FC = () => {
       });
       setMatrix(data);
     } catch (err: unknown) {
-      console.error('Failed to load traceability matrix', err);
+      logError('Failed to load traceability matrix', err);
       setMatrixError(getErrorMessage(err, 'Failed to load traceability data'));
     } finally {
       setMatrixLoading(false);
@@ -307,94 +330,32 @@ const Traceability: React.FC = () => {
 
   const handleBackfill = useCallback(async () => {
     if (typeof projectId !== 'number') {
-      setBackfillState({ running: false, error: 'Select a project before running backfill.' });
+      setBackfillState({ running: false, error: 'Select a project before running traceability repair.' });
       return;
     }
-
-    // Initialize progress steps
-    const initialSteps: BackfillStep[] = [
-      { id: 'jira', label: 'Parsing Jira issues', status: 'pending' },
-      { id: 'confluence', label: 'Parsing Confluence pages', status: 'pending' },
-      { id: 'git', label: 'Analyzing Git commits', status: 'pending' },
-      { id: 'links', label: 'Building traceability links', status: 'pending' },
-      { id: 'finalize', label: 'Finalizing results', status: 'pending' },
-    ];
-
-    // Filter steps based on options
-    const steps = initialSteps.filter(
-      (step) =>
-        (step.id !== 'confluence' || includeConfluence) &&
-        (step.id !== 'git' || includeGit)
-    );
-
-    setBackfillSteps(steps);
-    setBackfillState({ running: true, message: 'Backfill in progress...', error: null, lastResult: null });
-
-    // Simulate progress through steps (since backend doesn't provide real-time progress)
-    const simulateProgress = async () => {
-      const stepDuration = 800; // ms per step
-      for (let i = 0; i < steps.length; i++) {
-        await new Promise((resolve) => setTimeout(resolve, stepDuration));
-        setBackfillSteps((prev) =>
-          prev.map((step, idx) =>
-            idx === i
-              ? { ...step, status: 'in_progress' }
-              : idx < i
-              ? { ...step, status: 'completed' }
-              : step
-          )
-        );
-      }
-    };
-
-    // Start simulated progress
-    const progressPromise = simulateProgress();
+    setBackfillState({
+      running: true,
+      message: 'Traceability repair is running...',
+      error: null,
+      lastResult: null,
+    });
 
     try {
       const result = await runTraceabilityBackfill(projectId, { includeConfluence, includeGit });
 
-      // Wait for progress animation to complete
-      await progressPromise;
-
-      // Mark all steps as completed
-      setBackfillSteps((prev) =>
-        prev.map((step) => ({ ...step, status: 'completed', total: step.id === 'links' ? result.created + result.updated : undefined }))
-      );
-
-      const gitSummary = result.git;
-      let gitMessage = '';
-      if (gitSummary) {
-        if (gitSummary.error) {
-          gitMessage = ` Git import error: ${gitSummary.error}`;
-        } else {
-          const repositories = gitSummary.repositories ?? [];
-          const repoCount = repositories.length;
-          if (repoCount > 0) {
-            const commitLinks = repositories.reduce((sum, repo) => sum + (repo.commits?.links_created ?? 0), 0);
-            const prLinks = repositories.reduce((sum, repo) => sum + (repo.pull_requests?.links_created ?? 0), 0);
-            const totalLinks = commitLinks + prLinks;
-            gitMessage = ` Git: ${repoCount} repo${repoCount === 1 ? '' : 's'}, ${totalLinks} link${totalLinks === 1 ? '' : 's'}.`;
-          } else {
-            gitMessage = ' Git repositories synced with no new links.';
-          }
-        }
-      }
-
-      // Close dialog after 1 second
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
       setBackfillState({
         running: false,
-        message: `Backfill complete: created ${result.created}, updated ${result.updated}.` + gitMessage,
+        message: buildRepairMessage(result),
         error: null,
         lastResult: result,
       });
-      setBackfillSteps([]);
       await fetchMatrix({ force: true });
     } catch (err: unknown) {
-      console.error('Traceability backfill failed', err);
-      setBackfillState({ running: false, error: getErrorMessage(err, 'Traceability backfill failed') });
-      setBackfillSteps([]);
+      logError('Traceability repair failed', err);
+      setBackfillState({
+        running: false,
+        error: getErrorMessage(err, 'Traceability repair failed'),
+      });
     }
   }, [fetchMatrix, includeConfluence, includeGit, projectId]);
 
@@ -476,7 +437,7 @@ const Traceability: React.FC = () => {
         setFlowRootId(artifactId);
         setSelectedNodeId(artifactId);
       } catch (err: unknown) {
-        console.error('Failed to load requirement flow', err);
+        logError('Failed to load requirement flow', err);
         setFlowError(getErrorMessage(err, 'Failed to load requirement flow'));
       } finally {
         setFlowLoading(false);
@@ -506,7 +467,9 @@ const Traceability: React.FC = () => {
       const neighbors = await getTraceabilityTaskArtifacts(key);
       const artifactId = neighbors.task_artifact?.id;
       if (!artifactId) {
-        setFlowError('No artifact found for the provided Jira key. Run the backfill first.');
+        setFlowError(
+          'No traceability artifact exists for that Jira key yet. Sync the project first, then run traceability repair for legacy data if needed.'
+        );
         setFlowLoading(false);
         return;
       }
@@ -516,7 +479,7 @@ const Traceability: React.FC = () => {
       setFlowRootId(artifactId);
       setSelectedNodeId(artifactId);
     } catch (err: unknown) {
-      console.error('Failed to resolve Jira key', err);
+      logError('Failed to resolve Jira key', err);
       setFlowError(getErrorMessage(err, 'Failed to resolve Jira key'));
     } finally {
       setFlowLoading(false);
@@ -558,6 +521,13 @@ const Traceability: React.FC = () => {
 
   const hasAlerts = Boolean(projectsError || matrixError || backfillState.error || backfillState.message);
   const showEmptyState = !matrixLoading && !matrixHasData;
+  const selectedProjectIssuesCount = Number(selectedProject?.meta?.issues_count ?? 0);
+  const selectedProjectLastSync = typeof selectedProject?.meta?.last_sync_at === 'string'
+    ? selectedProject.meta.last_sync_at
+    : null;
+  const hasSourceSyncSignal = Boolean(selectedProjectLastSync || selectedProjectIssuesCount > 0);
+  const showSyncSetupState = typeof projectId === 'number' && showEmptyState && !hasSourceSyncSignal;
+  const backfillWarnings = backfillState.lastResult?.warnings ?? [];
 
   return (
     <Box>
@@ -565,7 +535,7 @@ const Traceability: React.FC = () => {
         Traceability
       </Typography>
       <Typography variant="body1" color="text.secondary">
-        Monitor end-to-end linkage between requirements, delivery work, and validations. Run a backfill to populate artifacts, then track coverage and gaps by artifact type.
+        Monitor end-to-end linkage between requirements, delivery work, and validations. Source sync now creates most artifacts automatically; use traceability repair to reconcile legacy projects or incomplete runs.
       </Typography>
 
       {/* Quick navigation to related pages */}
@@ -623,6 +593,11 @@ const Traceability: React.FC = () => {
           {matrixError && <Alert severity="error">{matrixError}</Alert>}
           {backfillState.error && <Alert severity="error">{backfillState.error}</Alert>}
           {backfillState.message && !backfillState.error && <Alert severity="success">{backfillState.message}</Alert>}
+          {backfillWarnings.map((warning) => (
+            <Alert key={warning} severity="warning">
+              {warning}
+            </Alert>
+          ))}
         </Stack>
       )}
 
@@ -713,7 +688,7 @@ const Traceability: React.FC = () => {
                 onClick={handleBackfill}
                 disabled={backfillState.running || typeof projectId !== 'number'}
               >
-                Run backfill
+                Run traceability repair
               </Button>
               <Button
                 variant="outlined"
@@ -738,11 +713,14 @@ const Traceability: React.FC = () => {
             {selectedProject && (
               <Typography variant="caption" color="text.secondary">
                 Jira key: {selectedProject.jira_key}
+                {selectedProjectLastSync
+                  ? ` • Last source sync: ${new Date(selectedProjectLastSync).toLocaleString()}`
+                  : ''}
               </Typography>
             )}
             {typeof projectId !== 'number' && (
               <Typography variant="caption" color="text.secondary">
-                Select a project to enable backfill and deeper analysis.
+                Select a project to enable traceability repair and deeper analysis.
               </Typography>
             )}
           </Paper>
@@ -789,31 +767,71 @@ const Traceability: React.FC = () => {
                 <Box sx={{ mt: 2 }}>
                   <EmptyState
                     icon={<AccountTreeIcon sx={{ fontSize: 60 }} />}
-                    title="Traceability Requires Setup"
+                    title={
+                      typeof projectId !== 'number'
+                        ? 'Select a Project'
+                        : showSyncSetupState
+                          ? 'Sync Source Data First'
+                          : 'Repair Traceability Artifacts'
+                    }
                     description={
                       <Box>
                         <Typography variant="body1" paragraph>
-                          You have {matrix?.total || 0} artifacts but no links detected yet.
+                          {typeof projectId !== 'number'
+                            ? 'Choose a single project to inspect sync signals and repair traceability artifacts.'
+                            : showSyncSetupState
+                              ? 'This project does not show any recent Jira or Confluence ingest signal yet.'
+                              : 'Source data exists for this project, but traceability artifacts are still missing or incomplete.'}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          Click &quot;Run Backfill&quot; to analyze smart-commit parsing, Confluence references, and Git relationships.
+                          {typeof projectId !== 'number'
+                            ? 'Project-scoped sync and repair actions are only available after you narrow the scope.'
+                            : showSyncSetupState
+                              ? 'Start with source sync so tasks and pages are imported automatically. Repair is only needed for legacy data or incomplete ingestion runs.'
+                              : 'Run repair to reconcile Jira tasks, Confluence pages, and optional Git data into the artifact graph, then refresh coverage.'}
                         </Typography>
                       </Box>
                     }
                     primaryAction={{
-                      label: 'Run Backfill Analysis',
-                      onClick: handleBackfill,
+                      label:
+                        typeof projectId !== 'number'
+                          ? 'Open Projects'
+                          : showSyncSetupState
+                            ? 'Open Project Sync'
+                            : 'Run Traceability Repair',
+                      onClick:
+                        typeof projectId !== 'number'
+                          ? () => navigate('/projects')
+                          : showSyncSetupState
+                            ? () =>
+                                navigate(selectedProject ? `/projects/${selectedProject.id}` : '/projects')
+                            : handleBackfill,
                     }}
+                    secondaryAction={
+                      typeof projectId !== 'number'
+                        ? undefined
+                        : showSyncSetupState
+                          ? {
+                              label: 'Open Knowledge Sync',
+                              onClick: () => navigate('/knowledge'),
+                              variant: 'outlined',
+                            }
+                          : {
+                              label: 'Refresh Snapshot',
+                              onClick: handleRefresh,
+                              variant: 'outlined',
+                            }
+                    }
                     benefits={[
-                      'Smart-commit parsing (JIRA-123 in commits)',
+                      'Jira and Confluence ingestion can populate artifacts automatically',
                       'Confluence → Jira ticket references',
                       'Git commits → Pull requests → Tests',
-                      'Expected result: 40-60% automatic coverage',
+                      'Repair reconciles legacy or failed traceability runs',
                     ]}
                     setupSteps={[
-                      'Ensure Jira sync has completed',
-                      'Click "Run Backfill Analysis" button',
-                      'Wait ~5-10 minutes for analysis to complete',
+                      'Run project or knowledge sync if source data is missing',
+                      'Run traceability repair when artifacts need reconciliation',
+                      'Refresh the matrix and flow explorer after ingestion completes',
                     ]}
                   />
                 </Box>
@@ -842,7 +860,7 @@ const Traceability: React.FC = () => {
                       <TableRow>
                         <TableCell colSpan={7} align="center">
                           <Typography variant="body2" color="text.secondary">
-                            No artifacts yet. Backfill will populate Jira issues, commits, and documentation references.
+                            No artifacts yet. Start with source sync, then use traceability repair only if this project predates automatic artifact ingestion.
                           </Typography>
                         </TableCell>
                       </TableRow>
@@ -941,7 +959,7 @@ const Traceability: React.FC = () => {
             {flowLoading && <LinearProgress sx={{ width: 180 }} />}
           </Box>
           <Typography variant="body2" color="text.secondary">
-            Drill into a specific requirement or Jira issue to visualize its downstream links. You can enter an artifact ID directly or resolve it via a Jira issue key after running the backfill.
+            Drill into a specific requirement or Jira issue to visualize downstream links. You can enter an artifact ID directly or resolve it via a Jira issue key after source sync or traceability repair.
           </Typography>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'flex-end' }}>
@@ -1262,12 +1280,6 @@ const Traceability: React.FC = () => {
           </Grid>
         )}
       </Box>
-
-      {/* Backfill Progress Dialog */}
-      <BackfillProgressDialog
-        open={backfillState.running && backfillSteps.length > 0}
-        steps={backfillSteps}
-      />
 
       {/* Matrix Export Dialog */}
       {typeof projectId === 'number' && (

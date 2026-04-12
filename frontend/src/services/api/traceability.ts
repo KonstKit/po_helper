@@ -4,6 +4,7 @@
 import api, { withRetry } from './client';
 import { AxiosRequestConfig } from 'axios';
 import { DEFAULT_PAGE_SIZE } from './types';
+import { TRACEABILITY_REPAIR_TIMEOUT_MS } from '../../constants/app';
 import type {
   TraceabilityMatrixSummary,
   TraceabilityBackfillResult,
@@ -51,403 +52,46 @@ import type {
 } from './types';
 import { normalizePaginatedResponse } from './pagination';
 
-const CONFIDENCE_RANGES = ['0.0-0.2', '0.2-0.4', '0.4-0.6', '0.6-0.8', '0.8-1.0'] as const;
-
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
 
 const asFiniteNumber = (value: unknown, fallback = 0): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 
-const asStringOrNull = (value: unknown): string | null =>
-  typeof value === 'string' ? value : null;
-
-const asPercent = (value: unknown, fallback = 0): number => {
-  const num = asFiniteNumber(value, fallback);
-  if (num >= 0 && num <= 1) return num * 100;
-  return num;
-};
-
-const rangeMidpoint = (range: string): number => {
-  const [startRaw, endRaw] = range.split('-');
-  const start = Number(startRaw);
-  const end = Number(endRaw);
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
-  return (start + end) / 2;
-};
-
-const toHistogram = (rawHistogram: unknown): { range: string; count: number }[] => {
-  if (Array.isArray(rawHistogram)) {
-    return rawHistogram.map((item) => {
-      const bucket = asRecord(item);
-      return {
-        range: String(bucket.range || ''),
-        count: asFiniteNumber(bucket.count, 0),
-      };
-    });
-  }
-
-  const histogramRecord = asRecord(rawHistogram);
-  return CONFIDENCE_RANGES.map((range) => ({
-    range,
-    count: asFiniteNumber(histogramRecord[range], 0),
-  }));
-};
-
 const normalizeConfidenceDistribution = (raw: unknown): ConfidenceDistribution => {
   const payload = asRecord(raw);
-  const histogram = toHistogram(payload.histogram);
-  const totalFromHistogram = histogram.reduce((sum, item) => sum + item.count, 0);
+  const histogram = Array.isArray(payload.histogram)
+    ? payload.histogram.map((item) => {
+        const bucket = asRecord(item);
+        return {
+          range: String(bucket.range || ''),
+          count: asFiniteNumber(bucket.count, 0),
+        };
+      })
+    : [];
 
   const byLinkTypeRaw = asRecord(payload.by_link_type);
   const byLinkType: Record<string, { count: number; avg_confidence: number }> = {};
-  let weightedConfidenceSum = 0;
-  let weightedConfidenceCount = 0;
-
   Object.entries(byLinkTypeRaw).forEach(([linkType, value]) => {
     const row = asRecord(value);
-    const count = asFiniteNumber(row.count, 0);
-    const avgFromField = row.avg_confidence;
-    const avg = typeof avgFromField === 'number' && Number.isFinite(avgFromField)
-      ? avgFromField
-      : asFiniteNumber(row.avg, 0);
-
     byLinkType[linkType] = {
-      count,
-      avg_confidence: avg,
+      count: asFiniteNumber(row.count, 0),
+      avg_confidence: asFiniteNumber(row.avg_confidence, 0),
     };
-
-    if (count > 0 && Number.isFinite(avg)) {
-      weightedConfidenceSum += avg * count;
-      weightedConfidenceCount += count;
-    }
   });
 
   const statsRaw = asRecord(payload.stats);
-  const totalLinks = asFiniteNumber(
-    statsRaw.total_links,
-    asFiniteNumber(payload.total, totalFromHistogram)
-  );
-  const avgConfidence = asFiniteNumber(
-    statsRaw.avg_confidence,
-    weightedConfidenceCount > 0 ? weightedConfidenceSum / weightedConfidenceCount : 0
-  );
-
-  const sortedHistogram = [...histogram].sort((a, b) => rangeMidpoint(a.range) - rangeMidpoint(b.range));
-  const scoredCount = sortedHistogram.reduce((sum, item) => sum + item.count, 0);
-  let medianConfidence = asFiniteNumber(statsRaw.median_confidence, 0);
-  if (medianConfidence === 0 && scoredCount > 0) {
-    const midpoint = scoredCount / 2;
-    let cumulative = 0;
-    for (const bucket of sortedHistogram) {
-      cumulative += bucket.count;
-      if (cumulative >= midpoint) {
-        medianConfidence = rangeMidpoint(bucket.range);
-        break;
-      }
-    }
-  }
-
-  let minConfidence = asFiniteNumber(statsRaw.min_confidence, 0);
-  let maxConfidence = asFiniteNumber(statsRaw.max_confidence, 0);
-  if (minConfidence === 0 && maxConfidence === 0) {
-    const nonZero = sortedHistogram.filter((item) => item.count > 0);
-    if (nonZero.length > 0) {
-      const [minRangeStartRaw] = nonZero[0].range.split('-');
-      const [, maxRangeEndRaw] = nonZero[nonZero.length - 1].range.split('-');
-      minConfidence = Number(minRangeStartRaw) || 0;
-      maxConfidence = Number(maxRangeEndRaw) || 0;
-    }
-  }
 
   return {
     histogram,
     stats: {
-      total_links: totalLinks,
-      avg_confidence: avgConfidence,
-      median_confidence: medianConfidence,
-      min_confidence: minConfidence,
-      max_confidence: maxConfidence,
+      total_links: asFiniteNumber(statsRaw.total_links, 0),
+      avg_confidence: asFiniteNumber(statsRaw.avg_confidence, 0),
+      median_confidence: asFiniteNumber(statsRaw.median_confidence, 0),
+      min_confidence: asFiniteNumber(statsRaw.min_confidence, 0),
+      max_confidence: asFiniteNumber(statsRaw.max_confidence, 0),
     },
     by_link_type: byLinkType,
-  };
-};
-
-// =============================================================================
-// Sync Health Normalization
-// =============================================================================
-
-const toOverallHealthStatus = (
-  value: unknown
-): SyncHealthResponse['health'] => {
-  return value === 'healthy' || value === 'warning' || value === 'critical'
-    ? value
-    : 'warning';
-};
-
-const computeProjectHealthStatus = (
-  base: unknown,
-  lastSync: string | null,
-  artifactCount: number
-): DetailedSyncHealthResponse['health_status'] => {
-  const baseStatus = base === 'healthy' || base === 'warning' || base === 'critical'
-    ? base
-    : 'unknown';
-
-  if (lastSync) {
-    const date = new Date(lastSync);
-    if (Number.isFinite(date.getTime())) {
-      const days = (Date.now() - date.getTime()) / 86_400_000;
-      if (days > 7) {
-        return 'stale';
-      }
-    }
-  }
-
-  if (artifactCount === 0 && baseStatus === 'healthy') {
-    return 'warning';
-  }
-
-  return baseStatus;
-};
-
-const normalizeSyncHealth = (raw: unknown): SyncHealthResponse => {
-  const payload = asRecord(raw);
-
-  // Legacy/expected shape: health is a string, health_score is a number.
-  if (typeof payload.health === 'string' && typeof payload.health_score === 'number') {
-    const summaryRaw = asRecord(payload.summary);
-    const sourcesRaw = Array.isArray(payload.sources) ? payload.sources : [];
-    const projectsRaw = Array.isArray(payload.projects) ? payload.projects : [];
-
-    return {
-      health: toOverallHealthStatus(payload.health),
-      health_score: asFiniteNumber(payload.health_score, 0),
-      summary: {
-        total_sources: asFiniteNumber(summaryRaw.total_sources, 0),
-        connected_sources: asFiniteNumber(summaryRaw.connected_sources, 0),
-        total_artifacts: asFiniteNumber(summaryRaw.total_artifacts, 0),
-        last_sync: asStringOrNull(summaryRaw.last_sync),
-      },
-      sources: sourcesRaw
-        .map((item) => {
-          const row = asRecord(item);
-          const source = typeof row.source === 'string' ? row.source : '';
-          const connected = typeof row.connected === 'boolean'
-            ? row.connected
-            : row.status === 'connected';
-          return {
-            source,
-            connected,
-            last_sync: asStringOrNull(row.last_sync),
-            artifact_count: asFiniteNumber(row.artifact_count, 0),
-            error: asStringOrNull(row.error),
-          };
-        })
-        .filter((s) => s.source.length > 0),
-      projects: projectsRaw
-        .map((item) => {
-          const row = asRecord(item);
-          const projectId = asFiniteNumber(row.project_id, asFiniteNumber(row.id, 0));
-          const projectName = typeof row.project_name === 'string'
-            ? row.project_name
-            : typeof row.name === 'string'
-              ? row.name
-              : '';
-          const jiraKey = typeof row.jira_key === 'string' ? row.jira_key : '';
-          const lastSync = asStringOrNull(row.last_sync ?? row.last_sync_at);
-          const artifactCount = asFiniteNumber(row.artifact_count, 0);
-          return {
-            project_id: projectId,
-            project_name: projectName,
-            jira_key: jiraKey,
-            last_sync: lastSync,
-            artifact_count: artifactCount,
-            health_status: computeProjectHealthStatus(row.health_status, lastSync, artifactCount),
-          };
-        })
-        .filter((p) => p.project_id > 0),
-    };
-  }
-
-  // Current backend shape (Feb 2026): health is an object {status, score, ...}
-  const healthRaw = asRecord(payload.health);
-  const summaryRaw = asRecord(payload.summary);
-
-  const sourcesRaw = Array.isArray(payload.sources) ? payload.sources : [];
-  const sources = sourcesRaw
-    .map((item) => {
-      const row = asRecord(item);
-      const source = typeof row.source === 'string' ? row.source : '';
-      const status = typeof row.status === 'string' ? row.status : '';
-      const connected = typeof row.connected === 'boolean' ? row.connected : status === 'connected';
-
-      let error = asStringOrNull(row.error);
-      if (!error && !connected && status) {
-        error = status === 'not_configured' ? 'Not configured' : status;
-      }
-
-      return {
-        source,
-        connected,
-        last_sync: asStringOrNull(row.last_sync),
-        artifact_count: asFiniteNumber(row.artifact_count, 0),
-        error,
-      };
-    })
-    .filter((s) => s.source.length > 0);
-
-  const health = toOverallHealthStatus(healthRaw.status ?? payload.health);
-  const healthScore = asPercent(healthRaw.score ?? payload.health_score, 0);
-
-  const totalArtifacts = asFiniteNumber(summaryRaw.total_artifacts, 0);
-
-  const lastSyncCandidates = sources
-    .map((s) => s.last_sync)
-    .filter((v): v is string => typeof v === 'string' && v.length > 0);
-  const lastSync = lastSyncCandidates.length > 0
-    ? lastSyncCandidates
-      .map((value) => ({ value, date: new Date(value) }))
-      .filter((row) => Number.isFinite(row.date.getTime()))
-      .sort((a, b) => a.date.getTime() - b.date.getTime())
-      .at(-1)?.value ?? null
-    : null;
-
-  const connectedSources = asFiniteNumber(
-    healthRaw.connected_sources,
-    sources.filter((s) => s.connected).length
-  );
-  const totalSources = asFiniteNumber(healthRaw.total_sources, sources.length);
-
-  const projectsRaw = Array.isArray(payload.projects) ? payload.projects : [];
-  const artifactCountFallback = projectsRaw.length === 1 ? totalArtifacts : 0;
-
-  const projects = projectsRaw
-    .map((item) => {
-      const row = asRecord(item);
-      const projectId = asFiniteNumber(row.project_id, asFiniteNumber(row.id, 0));
-      const projectName = typeof row.project_name === 'string'
-        ? row.project_name
-        : typeof row.name === 'string'
-          ? row.name
-          : '';
-      const jiraKey = typeof row.jira_key === 'string' ? row.jira_key : '';
-      const lastSync = asStringOrNull(row.last_sync ?? row.last_sync_at);
-      const artifactCount = asFiniteNumber(row.artifact_count, artifactCountFallback);
-
-      return {
-        project_id: projectId,
-        project_name: projectName,
-        jira_key: jiraKey,
-        last_sync: lastSync,
-        artifact_count: artifactCount,
-        health_status: computeProjectHealthStatus(health, lastSync, artifactCount),
-      };
-    })
-    .filter((p) => p.project_id > 0);
-
-  return {
-    health,
-    health_score: healthScore,
-    summary: {
-      total_sources: totalSources,
-      connected_sources: connectedSources,
-      total_artifacts: totalArtifacts,
-      last_sync: lastSync,
-    },
-    sources,
-    projects,
-  };
-};
-
-const normalizeDetailedSyncHealth = (raw: unknown): DetailedSyncHealthResponse => {
-  const payload = asRecord(raw);
-
-  const projectRaw = asRecord(payload.project);
-  const artifactsRaw = asRecord(payload.artifacts);
-  const coverageRaw = asRecord(payload.coverage);
-  const legacyCoverageRaw = asRecord(payload.link_coverage);
-
-  const projectId = asFiniteNumber(projectRaw.id ?? payload.project_id, 0);
-  const projectName = typeof projectRaw.name === 'string'
-    ? projectRaw.name
-    : typeof payload.project_name === 'string'
-      ? payload.project_name
-      : '';
-  const jiraKey = typeof projectRaw.jira_key === 'string'
-    ? projectRaw.jira_key
-    : typeof payload.jira_key === 'string'
-      ? payload.jira_key
-      : '';
-  const lastSync = asStringOrNull(projectRaw.last_sync_at ?? payload.last_sync);
-
-  const byTypeRaw = asRecord(artifactsRaw.by_type ?? payload.by_type);
-  const byType: Record<string, number> = {};
-  Object.entries(byTypeRaw).forEach(([type, value]) => {
-    const row = asRecord(value);
-    byType[type] = asFiniteNumber(row.total, asFiniteNumber(value, 0));
-  });
-
-  const bySourceRaw = asRecord(artifactsRaw.by_source ?? payload.by_source);
-  const bySource: Record<string, number> = {};
-  Object.entries(bySourceRaw).forEach(([source, value]) => {
-    const row = asRecord(value);
-    bySource[source] = asFiniteNumber(row.total, asFiniteNumber(value, 0));
-  });
-
-  let totalArtifacts = asFiniteNumber(artifactsRaw.total, 0);
-  if (totalArtifacts === 0) {
-    totalArtifacts = Object.values(bySource).reduce((sum, value) => sum + value, 0);
-  }
-
-  const orphanedCount = asFiniteNumber(
-    coverageRaw.orphaned_artifacts,
-    asFiniteNumber(legacyCoverageRaw.orphaned_artifacts, asFiniteNumber(payload.orphaned_count, 0)),
-  );
-  const linkedArtifacts = asFiniteNumber(
-    coverageRaw.linked_artifacts,
-    asFiniteNumber(legacyCoverageRaw.linked_artifacts, 0),
-  );
-  const coveragePct = totalArtifacts > 0 ? (linkedArtifacts / totalArtifacts) * 100 : 0;
-
-  const repositoriesRaw = Array.isArray(payload.repositories) ? payload.repositories : [];
-  const repositories = repositoriesRaw
-    .map((item) => {
-      const row = asRecord(item);
-      const id = asFiniteNumber(row.id, 0);
-      const provider = typeof row.provider === 'string' ? row.provider : '';
-      const repoSlug = typeof row.repo_slug === 'string'
-        ? row.repo_slug
-        : typeof row.name === 'string'
-          ? row.name
-          : '';
-      const defaultBranch = asStringOrNull(row.default_branch);
-      return {
-        id,
-        provider,
-        repo_slug: repoSlug,
-        default_branch: defaultBranch ?? undefined,
-      };
-    })
-    .filter((repo) => repo.id > 0 && repo.repo_slug.length > 0);
-
-  const healthStatus = computeProjectHealthStatus('healthy', lastSync, totalArtifacts);
-
-  return {
-    project_id: projectId,
-    project_name: projectName,
-    jira_key: jiraKey,
-    last_sync: lastSync,
-    health_status: healthStatus,
-    by_type: byType,
-    by_source: bySource,
-    link_coverage: {
-      total_artifacts: totalArtifacts,
-      linked_artifacts: linkedArtifacts,
-      coverage_pct: coveragePct,
-    },
-    orphaned_count: orphanedCount,
-    repositories,
   };
 };
 
@@ -483,7 +127,7 @@ export const backfillTraceability = async (
 
   const { data } = await api.post(`/v1/traceability/backfill`, undefined, {
     params,
-    timeout: opts?.timeoutMs ?? 120000, // 2 minutes for backfill
+    timeout: opts?.timeoutMs ?? TRACEABILITY_REPAIR_TIMEOUT_MS,
   });
   return data as TraceabilityBackfillResult;
 };
@@ -751,7 +395,7 @@ export const getSyncHealth = async (
     params,
     timeout: 30000,
   });
-  return normalizeSyncHealth(data);
+  return data as SyncHealthResponse;
 };
 
 export const getDetailedSyncHealth = async (
@@ -761,7 +405,7 @@ export const getDetailedSyncHealth = async (
     params: { project_id: projectId },
     timeout: 30000,
   });
-  return normalizeDetailedSyncHealth(data);
+  return data as DetailedSyncHealthResponse;
 };
 
 // =============================================================================
