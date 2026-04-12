@@ -43,7 +43,7 @@ import {
   ConfidenceDistribution,
   FullChainNode,
 } from '../services/api';
-import { getErrorMessage } from '../utils/errorUtils';
+import { getErrorMessage, logError } from '../utils/errorUtils';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -98,7 +98,7 @@ const TraceabilityVisualization: React.FC = () => {
           setProjectId(items[0].id);
         }
       })
-      .catch(console.error);
+      .catch((error) => logError('Failed to load traceability projects', error));
   }, []);
 
   // Read artifact ID from URL
@@ -129,7 +129,7 @@ const TraceabilityVisualization: React.FC = () => {
         const data = await getConfidenceDistribution({ projectId });
         setConfidenceData(data);
       } catch (err) {
-        console.error('Failed to load confidence distribution', err);
+        logError('Failed to load confidence distribution', err);
         setConfidenceData(null);
         setConfidenceError(getErrorMessage(err, 'Failed to load confidence distribution'));
       } finally {
@@ -443,7 +443,7 @@ const TraceabilityVisualization: React.FC = () => {
 
           {!confidenceData && !confidenceLoading && (
             <Alert severity="info">
-              No confidence data available. Run the traceability backfill first.
+              No confidence data available. Sync source data first, then run traceability repair if this project predates automatic artifact ingestion.
             </Alert>
           )}
         </Paper>
@@ -453,9 +453,10 @@ const TraceabilityVisualization: React.FC = () => {
         <SuggestedLinksPanel
           projectId={projectId}
           onLinkCreated={() => {
-            // Refresh confidence data if we're viewing it
             if (confidenceData) {
-              getConfidenceDistribution({ projectId }).then(setConfidenceData);
+              void getConfidenceDistribution({ projectId })
+                .then(setConfidenceData)
+                .catch((error) => logError('Failed to refresh confidence distribution', error));
             }
           }}
         />

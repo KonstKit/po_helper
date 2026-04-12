@@ -8,6 +8,8 @@
  * - Exponential backoff retry helper for transient failures
  */
 import axios from "axios";
+import { API_TIMEOUT_MS } from '../../constants/app';
+import { logError } from '../../utils/errorUtils';
 
 /** Base URL for API v1 endpoints */
 export const API_BASE_URL = "/api/v1";
@@ -26,7 +28,7 @@ export const CACHE_TTL = 60000;
  */
 const api = axios.create({
   baseURL: "/api",
-  timeout: 15000,
+  timeout: API_TIMEOUT_MS,
 });
 
 const SESSION_ERROR_SNIPPETS = [
@@ -106,7 +108,7 @@ api.interceptors.response.use(
 
     // Handle timeout errors
     if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
-      console.error("Backend timeout - server may be unresponsive");
+      logError("Backend timeout - server may be unresponsive", error);
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
@@ -120,7 +122,7 @@ api.interceptors.response.use(
       }
     } else if (!error.response) {
       // Handle network errors (backend unreachable)
-      console.error("Backend unreachable - network error");
+      logError("Backend unreachable - network error", error);
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(

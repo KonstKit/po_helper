@@ -593,7 +593,19 @@ export interface TraceabilityBackfillResult {
   status: string;
   created: number;
   updated: number;
+  warnings: string[];
+  sources: {
+    jira?: TraceabilityBackfillSourceResult;
+    confluence?: TraceabilityBackfillSourceResult;
+    git?: GitImportSummary;
+  };
   git?: GitImportSummary;
+}
+
+export interface TraceabilityBackfillSourceResult {
+  created: number;
+  updated: number;
+  warnings?: string[];
 }
 
 export interface TraceabilityFlowNode {
@@ -851,12 +863,19 @@ export interface GenerateSuggestionsResult {
 // Sync Health Types
 // =============================================================================
 
+export type SyncSourceStatus = 'not_configured' | 'reachable' | 'degraded';
+
 export interface SyncSourceHealth {
   source: string;
-  connected: boolean;
+  label: string;
+  status: SyncSourceStatus;
+  effective_connector_source: string;
   last_sync?: string | null;
   artifact_count: number;
+  checked_at: string;
   error?: string | null;
+  base_url?: string | null;
+  repository_count?: number;
 }
 
 export interface SyncProjectHealth {
@@ -869,13 +888,16 @@ export interface SyncProjectHealth {
 }
 
 export interface SyncHealthResponse {
-  health: 'healthy' | 'warning' | 'critical';
-  health_score: number;
+  health: {
+    status: 'healthy' | 'warning' | 'critical';
+    score: number;
+  };
   summary: {
     total_sources: number;
-    connected_sources: number;
+    reachable_sources: number;
     total_artifacts: number;
     last_sync?: string | null;
+    checked_at: string;
   };
   sources: SyncSourceHealth[];
   projects: SyncProjectHealth[];
@@ -892,9 +914,11 @@ export interface DetailedSyncHealthResponse {
   link_coverage: {
     total_artifacts: number;
     linked_artifacts: number;
+    orphaned_artifacts: number;
     coverage_pct: number;
   };
-  orphaned_count: number;
+  sources: SyncSourceHealth[];
+  checked_at: string;
   repositories: Array<{
     id: number;
     provider: string;
@@ -1498,6 +1522,7 @@ export interface TraceabilityRule {
   schedule_cron?: string | null;
   schedule_enabled?: boolean;
   trigger_on_webhook?: boolean;
+  execute_on_sync_complete?: boolean;
   next_scheduled_run?: string | null;
   total_executions: number;
   successful_executions: number;
@@ -1520,6 +1545,7 @@ export interface TraceabilityRuleCreate {
   schedule_cron?: string;
   schedule_enabled?: boolean;
   trigger_on_webhook?: boolean;
+  execute_on_sync_complete?: boolean;
 }
 
 /** Data for updating a traceability rule */
@@ -1534,6 +1560,7 @@ export interface TraceabilityRuleUpdate {
   schedule_cron?: string;
   schedule_enabled?: boolean;
   trigger_on_webhook?: boolean;
+  execute_on_sync_complete?: boolean;
 }
 
 /** Traceability rule execution record */

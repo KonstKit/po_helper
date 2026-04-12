@@ -41,6 +41,7 @@ import {
 import { Collapse } from '@mui/material';
 import { useDispatch } from 'react-redux';
 import { performLogout } from '../utils/logout';
+import { readStoredJson, writeStoredJson } from '../utils/browserStorage';
 
 const drawerWidth = 240;
 
@@ -107,8 +108,7 @@ export default function Layout() {
 
   // Load collapsed state from localStorage
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
-    const saved = localStorage.getItem('navigation_collapsed_groups');
-    return saved ? JSON.parse(saved) : {};
+    return readStoredJson<Record<string, boolean>>('navigation_collapsed_groups', {});
   });
 
   // Track which items with children are expanded
@@ -120,7 +120,7 @@ export default function Layout() {
       [label]: !collapsedGroups[label],
     };
     setCollapsedGroups(newState);
-    localStorage.setItem('navigation_collapsed_groups', JSON.stringify(newState));
+    writeStoredJson('navigation_collapsed_groups', newState);
   };
 
   const toggleItem = (itemText: string) => {

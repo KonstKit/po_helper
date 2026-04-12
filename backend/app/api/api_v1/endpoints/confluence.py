@@ -1,3 +1,4 @@
+from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from typing import Optional, AsyncGenerator, Any, cast
@@ -17,6 +18,17 @@ import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _normalize_http_base_url(base_url: str, provider: str) -> str:
+    normalized = base_url.strip().rstrip("/")
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {provider} base_url. Only http/https URLs are allowed.",
+        )
+    return normalized
 
 
 async def _call_confluence(func, *args, **kwargs):
@@ -43,8 +55,9 @@ async def connect_confluence(
         save: Whether to save credentials to database
     """
     with handle_api_error(operation="connect_confluence"):
+        normalized_base_url = _normalize_http_base_url(base_url, "confluence")
         await _call_confluence(
-            confluence_service.connect, base_url, email, api_token, is_cloud=is_cloud
+            confluence_service.connect, normalized_base_url, email, api_token, is_cloud=is_cloud
         )
         await _call_confluence(confluence_service.validate)
         if save:
@@ -60,8 +73,8 @@ async def connect_confluence(
                 from app.core.crypto import encrypt_str
 
                 row.base_url = (
-                    (confluence_service.base_url or base_url).rstrip("/")
-                    if (confluence_service.base_url or base_url)
+                    (confluence_service.base_url or normalized_base_url).rstrip("/")
+                    if (confluence_service.base_url or normalized_base_url)
                     else None
                 )
                 row.email = email or None

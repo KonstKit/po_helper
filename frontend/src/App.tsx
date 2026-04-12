@@ -15,6 +15,7 @@ import RequireAuth from './components/RequireAuth';
 import OnboardingWizard from './components/OnboardingWizard';
 import { PageViewTracker } from './components/PageViewTracker';
 import { ToastProvider } from './components/ToastProvider';
+import { logError } from './utils/errorUtils';
 import './App.css';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -60,8 +61,7 @@ function App() {
     // Clean up expired cache on startup
     storage.clearExpired();
     if (isDevelopment) {
-      const usage = storage.getUsageInfo();
-      console.log('[App] Cache cleaned, usage:', usage);
+      storage.getUsageInfo();
     }
 
     // Track account creation or first login
@@ -117,7 +117,7 @@ function App() {
       const defaults = await generateSmartDefaults();
       saveSmartDefaults(defaults);
     } catch (error) {
-      console.error('Failed to generate smart defaults:', error);
+      logError('Failed to generate smart defaults', error);
     }
 
     navigate('/');

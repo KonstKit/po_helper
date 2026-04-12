@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db, AsyncSessionLocal
 from app.models import Artifact, ArtifactLink, Task, ConfluencePage, User, Permissions
@@ -25,6 +24,8 @@ from app.core.cache_enhanced import (
 from app.services.confluence_service import confluence_service
 from app.services.git_import_service import git_import_service
 from app.services.traceability.link_service import LinkService, LinkCreationMethod
+from app.services.traceability.artifact_sync import get_traceability_artifact_sync_service
+from app.services.traceability.post_sync import run_traceability_post_sync
 from app.utils import get_or_404, execute_with_lock
 from app.utils.batch_operations import traverse_graph_batched
 
@@ -36,6 +37,18 @@ router = APIRouter()
 async def _call_confluence(func, *args, **kwargs):
     """Run blocking Confluence service calls off the event loop."""
     return await asyncio.to_thread(func, *args, **kwargs)
+
+
+def _git_artifact_delta(git_result: dict[str, Any]) -> int:
+    repositories = git_result.get("repositories") or []
+    delta = 0
+    for repository in repositories:
+        commits = repository.get("commits") or {}
+        pull_requests = repository.get("pull_requests") or {}
+        delta += int(commits.get("created", 0) or 0)
+        delta += int(commits.get("updated", 0) or 0)
+        delta += int(pull_requests.get("processed", 0) or 0)
+    return delta
 
 
 @router.post("/link")
@@ -356,85 +369,54 @@ async def backfill_artifacts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
-    """Project backfill: project tasks and optionally Confluence pages to artifacts."""
+    """Repair/reconcile traceability artifacts for a project."""
     await ensure_project_access(project_id, db, current_user)
     if db.in_transaction():
         await db.rollback()
 
-    created = 0
-    updated = 0
+    artifact_sync_service = get_traceability_artifact_sync_service()
+    sources: Dict[str, Any] = {}
+    warnings: List[str] = []
+    total_created = 0
+    total_updated = 0
 
     try:
         async with db.begin():
-            res = await db.execute(select(Task).where(Task.project_id == project_id))
-            tasks = res.scalars().all()
-            for task in tasks:
-                key = task.key or task.jira_id
-                if not key:
-                    continue
-                sel = select(Artifact).where(
-                    Artifact.project_id == project_id,
-                    Artifact.type == "jira_issue",
-                    Artifact.source == "jira",
-                    Artifact.external_id == str(key),
-                    Artifact.version == 1,
-                )
-                artifact = (await execute_with_lock(db, sel)).scalar_one_or_none()
-                if artifact is None:
-                    artifact = Artifact(
-                        project_id=project_id,
-                        type="jira_issue",
-                        source="jira",
-                        external_id=str(key),
-                        display_key=str(key),
-                        title=task.summary,
-                        status=task.status,
-                        meta={
-                            "jira_id": task.jira_id,
-                            "priority": task.priority,
-                            "assignee_email": task.assignee_email,
-                        },
-                    )
-                    db.add(artifact)
-                    created += 1
-                else:
-                    artifact.title = task.summary
-                    artifact.status = task.status
-                    updated += 1
+            jira_result = await artifact_sync_service.sync_jira_project_artifacts(
+                db,
+                project_id,
+                ingestion_run_id=f"traceability_repair:{project_id}",
+                source_metadata={"sync_source": "manual_repair", "trigger": "manual"},
+            )
+            total_created += jira_result.created
+            total_updated += jira_result.updated
+            warnings.extend(jira_result.warnings)
+            sources["jira"] = {
+                "created": jira_result.created,
+                "updated": jira_result.updated,
+                "warnings": jira_result.warnings,
+            }
 
             if include_confluence:
-                pages_result = await db.execute(select(ConfluencePage))
-                pages: List[ConfluencePage] = list(pages_result.scalars().all())
-                for page in pages:
-                    selp = select(Artifact).where(
-                        Artifact.type == "confluence_page",
-                        Artifact.source == "confluence",
-                        Artifact.external_id == str(page.confluence_id),
-                        Artifact.version == 1,
-                        Artifact.project_id == project_id,
-                    )
-                    artifact = (await execute_with_lock(db, selp)).scalar_one_or_none()
-                    if artifact is None:
-                        artifact = Artifact(
-                            project_id=project_id,
-                            type="confluence_page",
-                            source="confluence",
-                            external_id=str(page.confluence_id),
-                            display_key=str(page.confluence_id),
-                            title=page.title,
-                            status=None,
-                            url=page.url,
-                            meta={"space_key": page.space_key, "page_type": page.page_type},
-                        )
-                        db.add(artifact)
-                        created += 1
-                    else:
-                        artifact.title = page.title
-                        artifact.url = page.url
-                        updated += 1
-    except IntegrityError:
-        await db.rollback()
-        pass
+                confluence_result = await artifact_sync_service.sync_confluence_project_artifacts(
+                    db,
+                    project_id,
+                    ingestion_run_id=f"traceability_repair:{project_id}",
+                    source_metadata={"sync_source": "manual_repair", "trigger": "manual"},
+                )
+                total_created += confluence_result.created
+                total_updated += confluence_result.updated
+                warnings.extend(confluence_result.warnings)
+                sources["confluence"] = {
+                    "created": confluence_result.created,
+                    "updated": confluence_result.updated,
+                    "warnings": confluence_result.warnings,
+                }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Traceability repair failed for project %s", project_id)
+        raise HTTPException(status_code=500, detail=f"Traceability repair failed: {exc}") from exc
 
     git_result = None
     if include_git:
@@ -451,12 +433,36 @@ async def backfill_artifacts(
             logger.error("Git import failed for project %s: %s", project_id, exc)
             git_result = {"error": str(exc)}
 
-    payload: Dict[str, Any] = {"status": "ok", "created": created, "updated": updated}
-    if git_result is not None:
-        payload["git"] = git_result
+    artifact_delta = total_created + total_updated
+    if artifact_delta > 0:
+        await run_traceability_post_sync(
+            project_id,
+            artifact_delta=artifact_delta,
+            source="manual_repair",
+            trigger="manual",
+        )
 
-    # Invalidate traceability caches after backfill
-    await CacheInvalidator.on_artifact_link_change(project_id)
+    payload: Dict[str, Any] = {
+        "status": "ok",
+        "created": total_created,
+        "updated": total_updated,
+        "sources": sources,
+        "warnings": warnings,
+    }
+    if git_result is not None:
+        payload["sources"]["git"] = git_result
+        payload["git"] = git_result
+        git_delta = _git_artifact_delta(git_result)
+        if git_delta > 0:
+            await run_traceability_post_sync(
+                project_id,
+                artifact_delta=git_delta,
+                source="git_import",
+                trigger="manual",
+            )
+
+    if artifact_delta <= 0 and git_result is None:
+        await CacheInvalidator.on_artifact_link_change(project_id)
 
     return JSONResponse(content=payload)
 

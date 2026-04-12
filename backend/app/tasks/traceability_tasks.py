@@ -71,6 +71,85 @@ async def _execute_all_enabled_rules_async(project_id: Optional[int] = None) -> 
     return results
 
 
+async def _generate_suggestions_async(project_id: int) -> Dict[str, Any]:
+    """Generate and store TF-IDF suggestions for a project."""
+    from app.services.text_similarity import get_similarity_service
+
+    async with AsyncSessionLocal() as db:
+        service = get_similarity_service()
+        suggestions = await service.generate_suggestions(
+            db,
+            project_id=project_id,
+            rebuild_index=True,
+        )
+        stored = await service.store_suggestions(db, suggestions, project_id=project_id)
+        return {
+            "project_id": project_id,
+            "generated": len(suggestions),
+            "stored": stored,
+        }
+
+
+async def _execute_sync_complete_rules_async(
+    project_id: int,
+    *,
+    source: Optional[str] = None,
+    trigger: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Execute rules that opt into sync-complete triggers."""
+    from sqlalchemy import or_, select
+
+    from app.core.database import SessionLocal
+    from app.models.traceability_rule import TraceabilityRule
+    from app.services.traceability.engine import RuleExecutionEngine
+
+    results: List[Dict[str, Any]] = []
+
+    with SessionLocal() as db:
+        stmt = select(TraceabilityRule).where(
+            TraceabilityRule.enabled.is_(True),
+            TraceabilityRule.execute_on_sync_complete.is_(True),
+            or_(TraceabilityRule.project_id == project_id, TraceabilityRule.project_id.is_(None)),
+        )
+        rules = db.execute(stmt).scalars().all()
+
+        engine = RuleExecutionEngine(db)
+        for rule in rules:
+            try:
+                result = engine.execute_rule(rule.id)
+                results.append(
+                    {
+                        "rule_id": rule.id,
+                        "rule_name": rule.name,
+                        "status": result.get("status"),
+                        "links_created": result.get("links_created", 0),
+                        "project_id": project_id,
+                        "source": source,
+                        "trigger": trigger,
+                    }
+                )
+            except Exception as exc:
+                logger.error(
+                    "Error executing sync-complete rule %d for project %d: %s",
+                    rule.id,
+                    project_id,
+                    exc,
+                )
+                results.append(
+                    {
+                        "rule_id": rule.id,
+                        "rule_name": rule.name,
+                        "status": "error",
+                        "error": str(exc),
+                        "project_id": project_id,
+                        "source": source,
+                        "trigger": trigger,
+                    }
+                )
+
+    return results
+
+
 async def _recompute_derived_links_async(
     project_id: int,
     from_type: str = "requirement",
@@ -165,6 +244,44 @@ def execute_all_rules_task(project_id: Optional[int] = None) -> List[Dict[str, A
     logger.info("Executing all enabled rules (project_id=%s)", project_id)
     results = run_async(_execute_all_enabled_rules_async(project_id))
     logger.info("Executed %d rules", len(results))
+    return results
+
+
+@celery_app.task(name="traceability.generate_suggestions")
+def generate_suggestions_task(project_id: int) -> Dict[str, Any]:
+    """Generate TF-IDF suggestions after artifact ingestion."""
+    logger.info("Generating traceability suggestions for project %d", project_id)
+    result = run_async(_generate_suggestions_async(project_id))
+    logger.info(
+        "Traceability suggestions generated for project %d: generated=%d stored=%d",
+        project_id,
+        result.get("generated", 0),
+        result.get("stored", 0),
+    )
+    return result
+
+
+@celery_app.task(name="traceability.execute_sync_complete_rules")
+def execute_sync_complete_rules_task(
+    project_id: int,
+    source: Optional[str] = None,
+    trigger: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Execute rules that opt into sync-complete automation."""
+    logger.info(
+        "Executing sync-complete traceability rules for project %d (source=%s trigger=%s)",
+        project_id,
+        source,
+        trigger,
+    )
+    results = run_async(
+        _execute_sync_complete_rules_async(project_id, source=source, trigger=trigger)
+    )
+    logger.info(
+        "Executed %d sync-complete rules for project %d",
+        len(results),
+        project_id,
+    )
     return results
 
 

@@ -4,7 +4,7 @@ from time import perf_counter
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, cast, Integer, delete
+from sqlalchemy import select, func, cast, Integer, delete, or_
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
@@ -25,6 +25,37 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _visible_projects_query(current_user: User):
+    query = select(Project).order_by(Project.id.asc())
+    token_tenant_id = get_token_tenant_id()
+
+    if token_tenant_id is not None:
+        return query.where(
+            Project.meta.is_not(None),
+            Project.meta["tenant_id"].as_string() == str(token_tenant_id),
+        )
+
+    return query.where(
+        or_(
+            Project.meta.is_(None),
+            Project.meta["tenant_id"].as_string().is_(None),
+        )
+    )
+
+
+def _project_access_candidate_query(current_user: User):
+    query = _visible_projects_query(current_user)
+    if has_admin_access(current_user):
+        return query
+
+    return query.where(
+        or_(
+            Project.owner_id == current_user.id,
+            Project.meta.is_not(None),
+        )
+    )
+
+
 @router.get("/", response_model=List[ProjectSchema])
 async def get_projects(
     skip: int = 0,
@@ -43,13 +74,13 @@ async def get_projects(
             )
             return []
 
-        query = select(Project).order_by(Project.id.asc())
-        if has_admin_access(current_user) and get_token_tenant_id() is None:
+        query = _visible_projects_query(current_user)
+        if has_admin_access(current_user):
             projects = await paginate_query(db, query, skip, limit)
         else:
             projects: list[Project] = []
             skipped_visible = 0
-            stream = await db.stream_scalars(query)
+            stream = await db.stream_scalars(_project_access_candidate_query(current_user))
             try:
                 async for project in stream:
                     if not can_access_project(project, current_user):

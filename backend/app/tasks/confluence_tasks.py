@@ -3,7 +3,7 @@ Celery tasks for Confluence synchronization.
 Provides robust background processing with retry logic and progress tracking.
 """
 
-from typing import Optional, Dict, Any, cast
+from typing import Optional, Dict, Any, cast, Tuple
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -23,6 +23,8 @@ from app.models.confluence import ConfluencePage
 from app.models.settings import IntegrationSetting
 from app.models.traceability import Source, SyncTask as SyncTaskModel
 from app.services.confluence_service import confluence_service
+from app.services.traceability.artifact_sync import get_traceability_artifact_sync_service
+from app.services.traceability.post_sync import run_traceability_post_sync
 from app.services.sync_tracking import (
     finish_sync_task,
     get_or_create_source,
@@ -93,6 +95,8 @@ def _build_item_counts(
     total_pages: int,
     batches: int,
     last_event_id: Optional[str],
+    artifacts_created: int = 0,
+    artifacts_updated: int = 0,
 ) -> Dict[str, Any]:
     return {
         "space_key": space_key,
@@ -104,6 +108,8 @@ def _build_item_counts(
         "total_pages": total_pages,
         "batches": batches,
         "last_event_id": last_event_id,
+        "artifacts_created": artifacts_created,
+        "artifacts_updated": artifacts_updated,
     }
 
 
@@ -396,8 +402,12 @@ async def _async_sync_space(
     total_updated = 0
     total_batches = 0
     last_event_id: Optional[str] = None
+    total_artifacts_created = 0
+    total_artifacts_updated = 0
+    affected_project_ids: set[int] = set()
     sync_status = "success"
     error_message: Optional[str] = None
+    artifact_sync_service = get_traceability_artifact_sync_service()
 
     try:
         sync_source_id, sync_task_id, _, created_new_tracking = await _start_confluence_tracking(
@@ -440,6 +450,8 @@ async def _async_sync_space(
             batch_number += 1
             batch_created = 0
             batch_updated = 0
+            batch_artifacts_created = 0
+            batch_artifacts_updated = 0
 
             task.update_progress(f"Processing batch {batch_number} ({len(pages)} pages)...")
 
@@ -462,11 +474,25 @@ async def _async_sync_space(
             if full_pages:
                 async with AsyncSessionLocal() as db:
                     for full_page in full_pages:
-                        created = await _process_page(db, full_page)
+                        created, page_row = await _process_page(db, full_page)
                         if created:
                             batch_created += 1
                         else:
                             batch_updated += 1
+
+                        artifact_result = await artifact_sync_service.sync_confluence_page_artifacts(
+                            db,
+                            page_row,
+                            ingestion_run_id=run_key,
+                            source_metadata={
+                                "sync_source": "confluence",
+                                "space_key": space_key,
+                                "trigger": trigger,
+                            },
+                        )
+                        batch_artifacts_created += artifact_result.created
+                        batch_artifacts_updated += artifact_result.updated
+                        affected_project_ids.update(artifact_result.project_ids)
 
                         task.processed_pages += 1
                         task.created_count = total_created + batch_created
@@ -486,16 +512,25 @@ async def _async_sync_space(
                                 total_pages=task.total_pages,
                                 batches=total_batches + 1,
                                 last_event_id=last_event_id,
+                                artifacts_created=total_artifacts_created + batch_artifacts_created,
+                                artifacts_updated=total_artifacts_updated + batch_artifacts_updated,
                             ),
                         )
 
-                    if batch_created or batch_updated:
+                    if (
+                        batch_created
+                        or batch_updated
+                        or batch_artifacts_created
+                        or batch_artifacts_updated
+                    ):
                         await db.commit()
 
             total_batches += 1
             total_synced += len(full_pages)
             total_created += batch_created
             total_updated += batch_updated
+            total_artifacts_created += batch_artifacts_created
+            total_artifacts_updated += batch_artifacts_updated
 
             # Adjust estimate if needed
             if total_synced > task.total_pages:
@@ -513,10 +548,18 @@ async def _async_sync_space(
 
         logger.info(
             f"Sync complete: synced={total_synced}, "
-            f"created={total_created}, updated={total_updated}"
+            f"created={total_created}, updated={total_updated}, "
+            f"artifacts_created={total_artifacts_created}, artifacts_updated={total_artifacts_updated}"
         )
 
-        return {"synced": total_synced, "created": total_created, "updated": total_updated}
+        return {
+            "synced": total_synced,
+            "created": total_created,
+            "updated": total_updated,
+            "artifacts_created": total_artifacts_created,
+            "artifacts_updated": total_artifacts_updated,
+            "projects_affected": sorted(affected_project_ids),
+        }
 
     except Exception as exc:
         sync_status = "failed"
@@ -540,14 +583,24 @@ async def _async_sync_space(
                 total_pages=task.total_pages,
                 batches=total_batches,
                 last_event_id=last_event_id,
+                artifacts_created=total_artifacts_created,
+                artifacts_updated=total_artifacts_updated,
             ),
             last_event_id=last_event_id,
             error_message=error_message,
         )
+        if sync_status == "success" and (total_artifacts_created or total_artifacts_updated):
+            for project_id in sorted(affected_project_ids):
+                await run_traceability_post_sync(
+                    project_id,
+                    artifact_delta=total_artifacts_created + total_artifacts_updated,
+                    source="confluence_sync",
+                    trigger=trigger,
+                )
 
 
-async def _process_page(db, page_data: Dict[str, Any]) -> bool:
-    """Process a single Confluence page. Returns True if created, False if updated."""
+async def _process_page(db, page_data: Dict[str, Any]) -> Tuple[bool, ConfluencePage]:
+    """Process a single Confluence page. Returns (created, page_row)."""
     from app.api.api_v1.endpoints.confluence import _parse_dt
 
     page_id = page_data.get("id")
@@ -595,7 +648,7 @@ async def _process_page(db, page_data: Dict[str, Any]) -> bool:
         existing.updated_at = row_updated_at
         existing.labels = (page_data.get("metadata") or {}).get("labels")
         existing.html = (page_data.get("body") or {}).get("storage", {}).get("value")
-        return False
+        return False, existing
     else:
         # Create new
         new_page = ConfluencePage(
@@ -612,7 +665,7 @@ async def _process_page(db, page_data: Dict[str, Any]) -> bool:
             html=(page_data.get("body") or {}).get("storage", {}).get("value"),
         )
         db.add(new_page)
-        return True
+        return True, new_page
 
 
 # Scheduled sync task for Celery Beat

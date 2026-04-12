@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.core.crypto import decrypt_str
 from app.models import IntegrationSetting, Repository
 from app.services.integration_config import get_connector_overrides_map
+from app.services.traceability.post_sync import run_traceability_post_sync
 from app.services.repository_resolver import repository_resolver
 from app.services.git.webhook_processor import process_commits, process_pull_request
 
@@ -180,6 +181,22 @@ class GitImportService:
                 repo_stats["pull_requests"] = pr_stats
 
             results.append(repo_stats)
+
+        artifact_delta = 0
+        for repo_result in results:
+            commits = repo_result.get("commits") or {}
+            pull_requests = repo_result.get("pull_requests") or {}
+            artifact_delta += int(commits.get("created", 0) or 0)
+            artifact_delta += int(commits.get("updated", 0) or 0)
+            artifact_delta += int(pull_requests.get("processed", 0) or 0)
+
+        if artifact_delta > 0:
+            await run_traceability_post_sync(
+                project_id,
+                artifact_delta=artifact_delta,
+                source="git_import",
+                trigger=trigger,
+            )
 
         return {"project_id": project_id, "repositories": results}
 

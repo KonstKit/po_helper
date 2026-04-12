@@ -21,6 +21,11 @@ from app.services.sync.issue_sync_service import IssueSyncService, IssueSyncResu
 from app.services.sync.worklog_sync_service import WorklogSyncService, WorklogSyncResult
 from app.services.sync.sprint_snapshot_service import SprintSnapshotService, SnapshotResult
 from app.services.sync.board_sync_service import BoardSyncService, BoardSyncResult
+from app.services.traceability.artifact_sync import (
+    TraceabilityArtifactSyncResult,
+    get_traceability_artifact_sync_service,
+)
+from app.services.traceability.post_sync import run_traceability_post_sync
 from app.services.sync_tracking import (
     get_or_create_source,
     start_sync_task,
@@ -61,6 +66,8 @@ class ProjectSyncResult:
     # Overall statistics
     total_issues: int = 0
     sync_duration_seconds: float = 0.0
+    artifacts_created: int = 0
+    artifacts_updated: int = 0
 
     # Errors
     errors: List[tuple[str, str]] = field(default_factory=list)
@@ -203,6 +210,22 @@ class ProjectSyncOrchestrator:
                     "issues_updated": result.issues.total_updated if result.issues else 0,
                 },
             )
+            artifact_sync = await self._sync_traceability_artifacts(
+                project_key,
+                project_id,
+                sync_task_id=sync_task_id,
+                trigger=trigger,
+            )
+            result.artifacts_created = artifact_sync.created
+            result.artifacts_updated = artifact_sync.updated
+            await self._heartbeat_sync_task(
+                sync_task_id,
+                {
+                    "issues_total": result.total_issues,
+                    "artifacts_created": result.artifacts_created,
+                    "artifacts_updated": result.artifacts_updated,
+                },
+            )
             result.worklogs = await self._sync_worklogs(project_key, project_id, issues)
             await self._heartbeat_sync_task(
                 sync_task_id,
@@ -296,6 +319,13 @@ class ProjectSyncOrchestrator:
                             "worklogs_imported": result.worklogs.total_worklogs_imported,
                             "worklog_issues_processed": result.worklogs.total_issues_processed,
                             "worklog_issues_skipped": result.worklogs.total_issues_skipped,
+                        }
+                    )
+                if result.artifacts_created or result.artifacts_updated:
+                    item_counts.update(
+                        {
+                            "artifacts_created": result.artifacts_created,
+                            "artifacts_updated": result.artifacts_updated,
                         }
                     )
                 if result.snapshots is not None:
@@ -442,6 +472,51 @@ class ProjectSyncOrchestrator:
         except Exception as e:
             logger.error("Issue sync failed for %s: %s", project_key, e, exc_info=True)
             return None
+
+    async def _sync_traceability_artifacts(
+        self,
+        project_key: str,
+        project_id: int,
+        *,
+        sync_task_id: Optional[int],
+        trigger: str | None,
+    ) -> TraceabilityArtifactSyncResult:
+        """Upsert Jira issue artifacts immediately after task sync completes."""
+        service = get_traceability_artifact_sync_service()
+        ingestion_run_id = f"jira_sync:{sync_task_id or project_id}"
+
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await service.sync_jira_project_artifacts(
+                    db,
+                    project_id,
+                    ingestion_run_id=ingestion_run_id,
+                    source_metadata={
+                        "sync_source": "jira",
+                        "project_key": project_key,
+                        "trigger": trigger,
+                    },
+                )
+                await db.commit()
+        except Exception as exc:
+            logger.error(
+                "Traceability artifact sync failed for %s (project_id=%s): %s",
+                project_key,
+                project_id,
+                exc,
+                exc_info=True,
+            )
+            return TraceabilityArtifactSyncResult()
+
+        if result.artifact_delta > 0:
+            await run_traceability_post_sync(
+                project_id,
+                artifact_delta=result.artifact_delta,
+                source="jira_sync",
+                trigger=trigger,
+            )
+
+        return result
 
     async def _sync_worklogs(
         self,

@@ -22,22 +22,34 @@ services:
       retries: 5
     networks:
       - po_helper_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 1G
 
   redis:
     image: redis:7-alpine
     container_name: po_helper_redis
-    command: redis-server --port 6381
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    command: sh -c 'exec redis-server --port 6381 --requirepass "$REDIS_PASSWORD"'
     ports:
       - "6381:6381"
     volumes:
       - po_helper_redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-p", "6381", "ping"]
+      test: ["CMD-SHELL", "redis-cli -p 6381 -a \"$REDIS_PASSWORD\" ping"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - po_helper_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
 
   backend:
     build:
@@ -52,9 +64,9 @@ services:
       - backend/.env
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/po_helper
-      - REDIS_URL=redis://redis:6381/0
-      - CELERY_BROKER_URL=redis://redis:6381/0
-      - CELERY_RESULT_BACKEND=redis://redis:6381/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6381/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6381/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6381/0
       - ENVIRONMENT=development
     depends_on:
       postgres:
@@ -66,6 +78,11 @@ services:
     restart: unless-stopped
     networks:
       - po_helper_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.50'
+          memory: 2G
 
   frontend:
     build:
@@ -81,6 +98,11 @@ services:
     restart: unless-stopped
     networks:
       - po_helper_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
 
   frontend-tooling:
     image: node:20-alpine
@@ -109,9 +131,9 @@ services:
       - backend/.env
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/po_helper
-      - REDIS_URL=redis://redis:6381/0
-      - CELERY_BROKER_URL=redis://redis:6381/0
-      - CELERY_RESULT_BACKEND=redis://redis:6381/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6381/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6381/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6381/0
       - ENVIRONMENT=development
     depends_on:
       postgres:
@@ -123,6 +145,11 @@ services:
     restart: unless-stopped
     networks:
       - po_helper_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 1G
 
   celery-beat:
     build:
@@ -135,9 +162,9 @@ services:
       - backend/.env
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/po_helper
-      - REDIS_URL=redis://redis:6381/0
-      - CELERY_BROKER_URL=redis://redis:6381/0
-      - CELERY_RESULT_BACKEND=redis://redis:6381/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6381/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6381/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6381/0
       - ENVIRONMENT=development
     depends_on:
       postgres:
@@ -149,6 +176,11 @@ services:
     restart: unless-stopped
     networks:
       - po_helper_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
 
 volumes:
   po_helper_postgres_data:

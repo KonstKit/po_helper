@@ -581,7 +581,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ open, onComplete, o
                 <ListItemText primary="1. Map Jira custom fields for better analytics" secondary="Settings → Jira Fields" />
               </ListItem>
               <ListItem>
-                <ListItemText primary="2. Run traceability backfill" secondary="Traceability → Run Backfill" />
+                <ListItemText primary="2. Repair traceability artifacts if needed" secondary="Traceability → Run Traceability Repair" />
               </ListItem>
               <ListItem>
                 <ListItemText primary="3. Connect Git for commit tracking" secondary="Settings → GitHub/GitLab" />

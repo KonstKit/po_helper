@@ -272,7 +272,7 @@ const RTMMatrixViewer: React.FC<RTMMatrixViewerProps> = ({
           No matrix data available with current filters.
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Try adjusting the filters or run a backfill to populate artifacts.
+          Try adjusting the filters, syncing source data, or running traceability repair for legacy projects.
         </Typography>
       </Box>
     );

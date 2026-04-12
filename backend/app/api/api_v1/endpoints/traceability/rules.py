@@ -599,6 +599,7 @@ async def create_rule(
         schedule_cron=rule_data.schedule_cron,
         schedule_enabled=rule_data.schedule_enabled,
         trigger_on_webhook=rule_data.trigger_on_webhook,
+        execute_on_sync_complete=rule_data.execute_on_sync_complete,
         next_scheduled_run=next_scheduled_run,
     )
 

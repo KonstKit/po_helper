@@ -52,7 +52,7 @@ import {
   listProjects,
   Project,
 } from '../../services/api';
-import { getErrorMessage } from '../../utils/errorUtils';
+import { getErrorMessage, logError } from '../../utils/errorUtils';
 
 interface SyncHealthDashboardProps {
   projectId?: number;
@@ -98,6 +98,18 @@ const formatRelativeTime = (dateString?: string | null): string => {
   if (diffDays < 7) return `${diffDays}d ago`;
   return date.toLocaleDateString();
 };
+
+const healthSummaryText = (healthData: SyncHealthResponse): string =>
+  [
+    `${healthData.summary.reachable_sources} of ${healthData.summary.total_sources} sources reachable`,
+    `${healthData.summary.total_artifacts.toLocaleString()} total artifacts`,
+    healthData.summary.last_sync
+      ? `Last sync: ${formatRelativeTime(healthData.summary.last_sync)}`
+      : undefined,
+    `Checked: ${formatRelativeTime(healthData.summary.checked_at)}`,
+  ]
+    .filter(Boolean)
+    .join(' - ');
 
 const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
   projectId: initialProjectId,
@@ -156,7 +168,7 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
       const detail = await getDetailedSyncHealth(projectId);
       setDetailedData(detail);
     } catch (err: unknown) {
-      console.error('Failed to load detailed health:', err);
+      logError('Failed to load detailed health', err);
     } finally {
       setDetailLoading(false);
     }
@@ -174,30 +186,51 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
       sx={{
         flex: 1,
         minWidth: 180,
-        bgcolor: source.connected ? 'success.50' : 'error.50',
-        borderColor: source.connected ? 'success.main' : 'error.main',
+        bgcolor:
+          source.status === 'reachable'
+            ? 'success.50'
+            : source.status === 'degraded'
+              ? 'warning.50'
+              : 'grey.50',
+        borderColor:
+          source.status === 'reachable'
+            ? 'success.main'
+            : source.status === 'degraded'
+              ? 'warning.main'
+              : 'grey.400',
       }}
     >
       <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
         <Stack direction="row" alignItems="center" spacing={1} mb={1}>
           {SOURCE_ICONS[source.source.toLowerCase()] || <Storage />}
-          <Typography variant="subtitle2" sx={{ textTransform: 'capitalize' }}>
-            {source.source}
-          </Typography>
-          {source.connected ? (
+          <Typography variant="subtitle2">{source.label}</Typography>
+          {source.status === 'reachable' ? (
             <Cloud color="success" fontSize="small" />
+          ) : source.status === 'degraded' ? (
+            <Warning color="warning" fontSize="small" />
           ) : (
-            <CloudOff color="error" fontSize="small" />
+            <CloudOff color="disabled" fontSize="small" />
           )}
         </Stack>
         <Typography variant="body2" color="text.secondary">
           {source.artifact_count.toLocaleString()} artifacts
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          {source.connected ? `Last sync: ${formatRelativeTime(source.last_sync)}` : 'Not connected'}
+          {source.status === 'reachable'
+            ? `Last sync: ${formatRelativeTime(source.last_sync)}`
+            : source.status === 'degraded'
+              ? `Last check: ${formatRelativeTime(source.checked_at)}`
+              : 'Not configured'}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" display="block">
+          Source: {source.effective_connector_source}
         </Typography>
         {source.error && (
-          <Typography variant="caption" color="error" display="block">
+          <Typography
+            variant="caption"
+            color={source.status === 'degraded' ? 'warning.main' : 'text.secondary'}
+            display="block"
+          >
             {source.error}
           </Typography>
         )}
@@ -210,11 +243,7 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
 
     return (
       <React.Fragment key={project.project_id}>
-        <TableRow
-          hover
-          sx={{ cursor: 'pointer' }}
-          onClick={() => loadDetailedHealth(project.project_id)}
-        >
+        <TableRow hover sx={{ cursor: 'pointer' }} onClick={() => loadDetailedHealth(project.project_id)}>
           <TableCell>
             <IconButton size="small">
               {isExpanded ? <ExpandLess /> : <ExpandMore />}
@@ -229,15 +258,9 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
             </Stack>
           </TableCell>
           <TableCell>
-            <Chip
-              size="small"
-              label={project.jira_key}
-              variant="outlined"
-            />
+            <Chip size="small" label={project.jira_key} variant="outlined" />
           </TableCell>
-          <TableCell align="right">
-            {project.artifact_count.toLocaleString()}
-          </TableCell>
+          <TableCell align="right">{project.artifact_count.toLocaleString()}</TableCell>
           <TableCell>
             <Tooltip title={project.last_sync || 'Never synced'}>
               <Typography variant="body2" color="text.secondary">
@@ -267,53 +290,38 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
               ) : detailedData && detailedData.project_id === project.project_id ? (
                 <Box py={2} px={2}>
                   <Grid container spacing={2}>
-                    {/* Artifacts by Type */}
                     <Grid item xs={12} md={4}>
                       <Typography variant="subtitle2" gutterBottom>
                         Artifacts by Type
                       </Typography>
                       <Stack spacing={0.5}>
                         {Object.entries(detailedData.by_type).map(([type, count]) => (
-                          <Stack
-                            key={type}
-                            direction="row"
-                            justifyContent="space-between"
-                          >
+                          <Stack key={type} direction="row" justifyContent="space-between">
                             <Typography variant="body2" color="text.secondary">
                               {type}
                             </Typography>
-                            <Typography variant="body2">
-                              {count.toLocaleString()}
-                            </Typography>
+                            <Typography variant="body2">{count.toLocaleString()}</Typography>
                           </Stack>
                         ))}
                       </Stack>
                     </Grid>
 
-                    {/* Artifacts by Source */}
                     <Grid item xs={12} md={4}>
                       <Typography variant="subtitle2" gutterBottom>
                         Artifacts by Source
                       </Typography>
                       <Stack spacing={0.5}>
                         {Object.entries(detailedData.by_source).map(([source, count]) => (
-                          <Stack
-                            key={source}
-                            direction="row"
-                            justifyContent="space-between"
-                          >
+                          <Stack key={source} direction="row" justifyContent="space-between">
                             <Typography variant="body2" color="text.secondary">
                               {source}
                             </Typography>
-                            <Typography variant="body2">
-                              {count.toLocaleString()}
-                            </Typography>
+                            <Typography variant="body2">{count.toLocaleString()}</Typography>
                           </Stack>
                         ))}
                       </Stack>
                     </Grid>
 
-                    {/* Link Coverage */}
                     <Grid item xs={12} md={4}>
                       <Typography variant="subtitle2" gutterBottom>
                         Link Coverage
@@ -336,17 +344,16 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
                       <Typography variant="body2" color="text.secondary">
                         {detailedData.link_coverage.linked_artifacts} / {detailedData.link_coverage.total_artifacts} linked
                       </Typography>
-                      {detailedData.orphaned_count > 0 && (
+                      {detailedData.link_coverage.orphaned_artifacts > 0 && (
                         <Chip
                           size="small"
-                          label={`${detailedData.orphaned_count} orphaned`}
+                          label={`${detailedData.link_coverage.orphaned_artifacts} orphaned`}
                           color="warning"
                           sx={{ mt: 1 }}
                         />
                       )}
                     </Grid>
 
-                    {/* Repositories */}
                     {detailedData.repositories.length > 0 && (
                       <Grid item xs={12}>
                         <Typography variant="subtitle2" gutterBottom>
@@ -388,27 +395,25 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
 
   if (error) {
     return (
-      <Alert severity="error" action={
-        <Button color="inherit" size="small" onClick={loadHealthData}>
-          Retry
-        </Button>
-      }>
+      <Alert
+        severity="error"
+        action={
+          <Button color="inherit" size="small" onClick={loadHealthData}>
+            Retry
+          </Button>
+        }
+      >
         {error}
       </Alert>
     );
   }
 
   if (!healthData) {
-    return (
-      <Alert severity="info">
-        No sync health data available.
-      </Alert>
-    );
+    return <Alert severity="info">No sync health data available.</Alert>;
   }
 
   return (
     <Box>
-      {/* Header with controls */}
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h6">Sync Health Dashboard</Typography>
         <Stack direction="row" spacing={2}>
@@ -427,22 +432,17 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
               ))}
             </Select>
           </FormControl>
-          <Button
-            variant="outlined"
-            startIcon={<Refresh />}
-            onClick={loadHealthData}
-          >
+          <Button variant="outlined" startIcon={<Refresh />} onClick={loadHealthData}>
             Refresh
           </Button>
         </Stack>
       </Stack>
 
-      {/* Overall Health Card */}
       <Card
         sx={{
           mb: 3,
-          bgcolor: `${HEALTH_COLORS[String(healthData.health || 'unknown')]}15`,
-          borderLeft: `4px solid ${HEALTH_COLORS[String(healthData.health || 'unknown')]}`,
+          bgcolor: `${HEALTH_COLORS[String(healthData.health.status || 'unknown')]}15`,
+          borderLeft: `4px solid ${HEALTH_COLORS[String(healthData.health.status || 'unknown')]}`,
         }}
       >
         <CardContent>
@@ -453,7 +453,7 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
                   width: 80,
                   height: 80,
                   borderRadius: '50%',
-                  bgcolor: `${HEALTH_COLORS[String(healthData.health || 'unknown')]}20`,
+                  bgcolor: `${HEALTH_COLORS[String(healthData.health.status || 'unknown')]}20`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -461,28 +461,24 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
               >
                 <Typography
                   variant="h4"
-                  sx={{ color: HEALTH_COLORS[String(healthData.health || 'unknown')], fontWeight: 700 }}
+                  sx={{ color: HEALTH_COLORS[String(healthData.health.status || 'unknown')], fontWeight: 700 }}
                 >
-                  {Math.round(healthData.health_score)}%
+                  {Math.round(healthData.health.score)}%
                 </Typography>
               </Box>
             </Grid>
             <Grid item xs>
               <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-                {HEALTH_ICONS[String(healthData.health || 'unknown')]}
+                {HEALTH_ICONS[String(healthData.health.status || 'unknown')]}
                 <Typography variant="h5" fontWeight={600}>
                   {(() => {
-                    const status = typeof healthData.health === 'string' ? healthData.health : 'unknown';
+                    const status = healthData.health.status || 'unknown';
                     return `System ${status.charAt(0).toUpperCase()}${status.slice(1)}`;
                   })()}
                 </Typography>
               </Stack>
               <Typography variant="body2" color="text.secondary">
-                {healthData.summary.connected_sources} of {healthData.summary.total_sources} sources connected
-                • {healthData.summary.total_artifacts.toLocaleString()} total artifacts
-                {healthData.summary.last_sync && (
-                  <> • Last sync: {formatRelativeTime(healthData.summary.last_sync)}</>
-                )}
+                {healthSummaryText(healthData)}
               </Typography>
             </Grid>
             <Grid item>
@@ -492,13 +488,13 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
                 </Typography>
                 <LinearProgress
                   variant="determinate"
-                  value={healthData.health_score}
+                  value={healthData.health.score}
                   sx={{
                     height: 12,
                     borderRadius: 1,
                     bgcolor: '#e0e0e0',
                     '& .MuiLinearProgress-bar': {
-                      bgcolor: HEALTH_COLORS[healthData.health],
+                      bgcolor: HEALTH_COLORS[healthData.health.status],
                     },
                   }}
                 />
@@ -508,7 +504,6 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
         </CardContent>
       </Card>
 
-      {/* Source Cards */}
       <Typography variant="subtitle1" fontWeight={600} mb={1}>
         Data Sources
       </Typography>
@@ -516,7 +511,6 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
         {healthData.sources.map(renderSourceCard)}
       </Stack>
 
-      {/* Project Table */}
       <Typography variant="subtitle1" fontWeight={600} mb={1}>
         Project Health ({healthData.projects.length})
       </Typography>

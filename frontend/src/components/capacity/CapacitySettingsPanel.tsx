@@ -49,6 +49,7 @@ import {
   calculateEffectiveCapacity,
   focusFactorToPercent,
 } from '../../hooks/useCapacityCalc';
+import { logError } from '../../utils/errorUtils';
 
 interface CapacitySettingsPanelProps {
   projectId?: number;
@@ -138,7 +139,7 @@ const CapacitySettingsPanel: React.FC<CapacitySettingsPanelProps> = ({
       setSettings(settingsData.data);
       setSummary(summaryData);
     } catch (err) {
-      console.error('Failed to load capacity data:', err);
+      logError('Failed to load capacity data', err);
       setError('Failed to load capacity settings');
     } finally {
       setLoading(false);
@@ -208,7 +209,7 @@ const CapacitySettingsPanel: React.FC<CapacitySettingsPanelProps> = ({
       loadData();
       onCapacityChange?.();
     } catch (err) {
-      console.error('Failed to save capacity setting:', err);
+      logError('Failed to save capacity setting', err);
       setError('Failed to save capacity setting');
     }
   };
@@ -220,7 +221,7 @@ const CapacitySettingsPanel: React.FC<CapacitySettingsPanelProps> = ({
       loadData();
       onCapacityChange?.();
     } catch (err) {
-      console.error('Failed to delete capacity setting:', err);
+      logError('Failed to delete capacity setting', err);
       setError('Failed to delete capacity setting');
     }
   };

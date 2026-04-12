@@ -40,12 +40,35 @@ webhook_breaker = CircuitBreaker(
 )
 
 
+def _allow_unsigned_webhooks() -> bool:
+    return settings.is_development or settings.ENVIRONMENT == "test"
+
+
+def _require_webhook_secret(provider: str, secret: Optional[str]) -> None:
+    if secret:
+        return
+    if _allow_unsigned_webhooks():
+        logger.warning(
+            "%s webhook secret not configured - accepting requests in %s",
+            provider,
+            settings.ENVIRONMENT,
+        )
+        return
+    logger.error(
+        "%s webhook secret missing while ENVIRONMENT=%s",
+        provider,
+        settings.ENVIRONMENT,
+    )
+    raise HTTPException(
+        status_code=503,
+        detail=f"{provider} webhook secret is not configured",
+    )
+
+
 def verify_github_signature(secret: Optional[str], body: bytes, signature: Optional[str]) -> bool:
     """Verify GitHub webhook signature."""
     if not secret:
-        # No secret configured - accept in dev mode but log warning
-        logger.warning("GitHub webhook secret not configured - accepting all requests")
-        return True
+        return False
 
     if not signature:
         logger.error("GitHub webhook signature missing")
@@ -60,17 +83,16 @@ def verify_github_signature(secret: Optional[str], body: bytes, signature: Optio
         return False
 
 
-def verify_gitlab_token(token: Optional[str]) -> bool:
+def verify_gitlab_token(secret: Optional[str], token: Optional[str]) -> bool:
     """Verify GitLab webhook token."""
-    if not settings.GITLAB_WEBHOOK_SECRET:
-        logger.warning("GitLab webhook secret not configured - accepting all requests")
-        return True
+    if not secret:
+        return False
 
     if not token:
         logger.error("GitLab webhook token missing")
         return False
 
-    return token == settings.GITLAB_WEBHOOK_SECRET
+    return token == secret
 
 
 async def _handle_push_event(
@@ -128,6 +150,7 @@ async def handle_github_webhook(request: Request, db: AsyncSession) -> Dict[str,
         return {"ok": True, "status": "rate_limited"}
 
     # Verify signature
+    _require_webhook_secret("GitHub", settings.GITHUB_WEBHOOK_SECRET)
     body = await request.body()
     signature = request.headers.get("X-Hub-Signature-256")
 
@@ -231,8 +254,9 @@ async def handle_gitlab_webhook(request: Request, db: AsyncSession) -> Dict[str,
         return {"ok": True, "status": "rate_limited"}
 
     # Verify token
+    _require_webhook_secret("GitLab", settings.GITLAB_WEBHOOK_SECRET)
     token = request.headers.get("X-Gitlab-Token")
-    if not verify_gitlab_token(token):
+    if not verify_gitlab_token(settings.GITLAB_WEBHOOK_SECRET, token):
         raise HTTPException(status_code=401, detail="Invalid token")
 
     # Parse payload
@@ -301,9 +325,7 @@ def verify_bitbucket_signature(
     Bitbucket Server/Data Center may use X-Hub-Signature or a simple token.
     """
     if not secret:
-        # No secret configured - accept in dev mode but log warning
-        logger.warning("Bitbucket webhook secret not configured - accepting all requests")
-        return True
+        return False
 
     if not signature:
         logger.error("Bitbucket webhook signature missing")
@@ -350,6 +372,7 @@ async def handle_bitbucket_webhook(request: Request, db: AsyncSession) -> Dict[s
 
     # Get webhook secret from settings
     bitbucket_secret = getattr(settings, "BITBUCKET_WEBHOOK_SECRET", None)
+    _require_webhook_secret("Bitbucket", bitbucket_secret)
     if not verify_bitbucket_signature(bitbucket_secret, body, signature):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
