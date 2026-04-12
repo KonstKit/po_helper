@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func as sql_func, exists
+from sqlalchemy import select, func as sql_func, exists, or_
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
@@ -17,13 +17,59 @@ from app.core.database import get_db
 from app.models import Artifact, ArtifactLink, Project, User, Permissions
 from app.models.settings import IntegrationSetting
 from app.models.project_repository import ProjectRepository
-from app.api.deps import ensure_project_access, require_permission
+from app.api.deps import ensure_project_access, has_admin_access, require_permission
+from app.core.request_context import get_token_tenant_id
 from app.services.integration_config import get_connector_overrides, get_connector_overrides_map
 from app.services.jira import JiraService
 from app.services.confluence_service import ConfluenceService
 from .common import _dag_types
 
 router = APIRouter()
+
+
+def _visible_projects_query():
+    query = select(Project).order_by(Project.id.asc())
+    token_tenant_id = get_token_tenant_id()
+
+    if token_tenant_id is not None:
+        return query.where(
+            Project.meta.is_not(None),
+            Project.meta["tenant_id"].as_string() == str(token_tenant_id),
+        )
+
+    return query.where(
+        or_(
+            Project.meta.is_(None),
+            Project.meta["tenant_id"].as_string().is_(None),
+        )
+    )
+
+
+async def _load_visible_projects_for_sync_health(
+    db: AsyncSession,
+    *,
+    project_id: Optional[int],
+    current_user: User,
+) -> tuple[Optional[Project], list[Project], list[int]]:
+    if project_id is not None:
+        project = await ensure_project_access(project_id, db, current_user)
+        return project, [project], [project.id]
+
+    result = await db.execute(_visible_projects_query())
+    projects = result.scalars().all()
+    return None, projects, [project.id for project in projects]
+
+
+def _validate_jira_connection(base_url: str, email: Optional[str], token: str) -> None:
+    client = JiraService()
+    client.connect(base_url, email, token)
+    client.validate()
+
+
+def _validate_confluence_connection(base_url: str, email: Optional[str], token: str) -> None:
+    client = ConfluenceService()
+    client.connect(base_url, email, token)
+    client.validate()
 
 
 def _suggest_link_action_by_type(artifact_type: str) -> str:
@@ -375,9 +421,7 @@ async def _build_jira_source_health(
         }
 
     try:
-        client = JiraService()
-        client.connect(base_url, email, token)
-        client.validate()
+        await asyncio.to_thread(_validate_jira_connection, base_url, email, token)
         status = "reachable"
         error = None
     except Exception as exc:
@@ -450,9 +494,7 @@ async def _build_confluence_source_health(
         }
 
     try:
-        client = ConfluenceService()
-        client.connect(base_url, email or None, token)
-        client.validate()
+        await asyncio.to_thread(_validate_confluence_connection, base_url, email or None, token)
         status = "reachable"
         error = None
     except Exception as exc:
@@ -539,53 +581,59 @@ async def get_sync_health(
     current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
     """Get canonical synchronization health across sources."""
-    if project_id is None and not current_user.has_permission(Permissions.ADMIN):
+    if project_id is None and not has_admin_access(current_user):
         raise HTTPException(status_code=403, detail="project_id is required")
 
-    selected_project: Optional[Project] = None
-    if project_id is not None:
-        selected_project = await ensure_project_access(project_id, db, current_user)
+    selected_project, projects, visible_project_ids = await _load_visible_projects_for_sync_health(
+        db,
+        project_id=project_id,
+        current_user=current_user,
+    )
 
     integrations_result = await db.execute(select(IntegrationSetting))
     integrations = {row.kind: row for row in integrations_result.scalars().all()}
 
-    source_counts_query = select(
-        Artifact.source,
-        sql_func.count(Artifact.id).label("count"),
-    ).group_by(Artifact.source)
-    if project_id is not None:
-        source_counts_query = source_counts_query.where(Artifact.project_id == project_id)
-    source_counts_result = await db.execute(source_counts_query)
-    source_counts: Dict[str, int] = {
-        row.source: int(getattr(row, "count", 0) or 0)
-        for row in source_counts_result.all()
-    }
+    source_counts: Dict[str, int] = {}
+    project_artifact_counts: Dict[int, int] = {}
+    repositories: List[ProjectRepository] = []
 
-    project_counts_query = (
-        select(Artifact.project_id, sql_func.count(Artifact.id).label("count"))
-        .where(Artifact.project_id.is_not(None))
-        .group_by(Artifact.project_id)
-    )
-    if project_id is not None:
-        project_counts_query = project_counts_query.where(Artifact.project_id == project_id)
-    project_counts_result = await db.execute(project_counts_query)
-    project_artifact_counts = {
-        int(row.project_id): int(getattr(row, "count", 0) or 0)
-        for row in project_counts_result.all()
-        if row.project_id is not None
-    }
+    if visible_project_ids:
+        source_counts_query = (
+            select(
+                Artifact.source,
+                sql_func.count(Artifact.id).label("count"),
+            )
+            .where(Artifact.project_id.in_(visible_project_ids))
+            .group_by(Artifact.source)
+        )
+        source_counts_result = await db.execute(source_counts_query)
+        source_counts = {
+            row.source: int(getattr(row, "count", 0) or 0)
+            for row in source_counts_result.all()
+        }
 
-    projects_query = select(Project).order_by(Project.id.asc())
-    if project_id is not None:
-        projects_query = projects_query.where(Project.id == project_id)
-    projects_result = await db.execute(projects_query)
-    projects = projects_result.scalars().all()
+        project_counts_query = (
+            select(Artifact.project_id, sql_func.count(Artifact.id).label("count"))
+            .where(
+                Artifact.project_id.is_not(None),
+                Artifact.project_id.in_(visible_project_ids),
+            )
+            .group_by(Artifact.project_id)
+        )
+        project_counts_result = await db.execute(project_counts_query)
+        project_artifact_counts = {
+            int(row.project_id): int(getattr(row, "count", 0) or 0)
+            for row in project_counts_result.all()
+            if row.project_id is not None
+        }
 
-    repos_query = select(ProjectRepository).options(selectinload(ProjectRepository.repository))
-    if project_id is not None:
-        repos_query = repos_query.where(ProjectRepository.project_id == project_id)
-    repositories_result = await db.execute(repos_query)
-    repositories = repositories_result.scalars().all()
+        repos_query = (
+            select(ProjectRepository)
+            .options(selectinload(ProjectRepository.repository))
+            .where(ProjectRepository.project_id.in_(visible_project_ids))
+        )
+        repositories_result = await db.execute(repos_query)
+        repositories = repositories_result.scalars().all()
 
     checked_at = datetime.utcnow().isoformat()
     jira_last_sync = _project_last_sync(selected_project) if selected_project else None
@@ -794,7 +842,7 @@ async def run_consistency_check(
     - Broken references (links to non-existent artifacts)
     - Stale artifacts (not updated for N days)
     """
-    if project_id is None and not current_user.has_permission(Permissions.ADMIN):
+    if project_id is None and not has_admin_access(current_user):
         raise HTTPException(status_code=403, detail="project_id is required")
 
     if project_id is not None:
@@ -1016,7 +1064,7 @@ async def fix_consistency_issues(
     - fixed: Number of issues fixed
     - preview: List of fixes that would be applied (in dry_run mode)
     """
-    if project_id is None and not current_user.has_permission(Permissions.ADMIN):
+    if project_id is None and not has_admin_access(current_user):
         raise HTTPException(status_code=403, detail="project_id is required")
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)
@@ -1164,7 +1212,7 @@ async def detect_cycles_detailed(
 
     Returns all cycles found with full artifact information.
     """
-    if project_id is None and not current_user.has_permission(Permissions.ADMIN):
+    if project_id is None and not has_admin_access(current_user):
         raise HTTPException(status_code=403, detail="project_id is required")
     if project_id is not None:
         await ensure_project_access(project_id, db, current_user)

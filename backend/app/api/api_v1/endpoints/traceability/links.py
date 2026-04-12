@@ -39,18 +39,6 @@ async def _call_confluence(func, *args, **kwargs):
     return await asyncio.to_thread(func, *args, **kwargs)
 
 
-def _git_artifact_delta(git_result: dict[str, Any]) -> int:
-    repositories = git_result.get("repositories") or []
-    delta = 0
-    for repository in repositories:
-        commits = repository.get("commits") or {}
-        pull_requests = repository.get("pull_requests") or {}
-        delta += int(commits.get("created", 0) or 0)
-        delta += int(commits.get("updated", 0) or 0)
-        delta += int(pull_requests.get("processed", 0) or 0)
-    return delta
-
-
 @router.post("/link")
 async def create_link(
     from_id: int,
@@ -452,14 +440,6 @@ async def backfill_artifacts(
     if git_result is not None:
         payload["sources"]["git"] = git_result
         payload["git"] = git_result
-        git_delta = _git_artifact_delta(git_result)
-        if git_delta > 0:
-            await run_traceability_post_sync(
-                project_id,
-                artifact_delta=git_delta,
-                source="git_import",
-                trigger="manual",
-            )
 
     if artifact_delta <= 0 and git_result is None:
         await CacheInvalidator.on_artifact_link_change(project_id)
