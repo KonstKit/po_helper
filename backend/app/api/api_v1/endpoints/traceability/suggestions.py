@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Optional, Dict, List, Any, TypedDict
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -211,7 +211,7 @@ async def approve_suggestion(
         # Mark as approved but don't create duplicate
         suggestion.status = "approved"
         suggestion.reviewed_by = current_user.id
-        suggestion.reviewed_at = datetime.utcnow()
+        suggestion.reviewed_at = datetime.now(timezone.utc)
         suggestion.review_note = note or "Link already existed"
         await db.commit()
 
@@ -231,7 +231,7 @@ async def approve_suggestion(
     ):
         suggestion.status = "rejected"
         suggestion.reviewed_by = current_user.id
-        suggestion.reviewed_at = datetime.utcnow()
+        suggestion.reviewed_at = datetime.now(timezone.utc)
         suggestion.review_note = "Rejected: would create a cycle"
         await db.commit()
 
@@ -259,7 +259,7 @@ async def approve_suggestion(
     # Update suggestion status
     suggestion.status = "approved"
     suggestion.reviewed_by = current_user.id
-    suggestion.reviewed_at = datetime.utcnow()
+    suggestion.reviewed_at = datetime.now(timezone.utc)
     suggestion.review_note = note
 
     await db.commit()
@@ -300,7 +300,7 @@ async def reject_suggestion(
 
     suggestion.status = "rejected"
     suggestion.reviewed_by = current_user.id
-    suggestion.reviewed_at = datetime.utcnow()
+    suggestion.reviewed_at = datetime.now(timezone.utc)
     suggestion.review_note = note
 
     await db.commit()
@@ -427,7 +427,7 @@ async def bulk_approve_suggestions(
             ):
                 suggestion.status = "rejected"
                 suggestion.reviewed_by = current_user.id
-                suggestion.reviewed_at = datetime.utcnow()
+                suggestion.reviewed_at = datetime.now(timezone.utc)
                 suggestion.review_note = "Bulk rejected: would create cycle"
                 results["cycle_prevented"] += 1
                 continue
@@ -461,7 +461,7 @@ async def bulk_approve_suggestions(
 
             suggestion.status = "approved"
             suggestion.reviewed_by = current_user.id
-            suggestion.reviewed_at = datetime.utcnow()
+            suggestion.reviewed_at = datetime.now(timezone.utc)
             suggestion.review_note = note or "Bulk approved"
             results["approved"] += 1
 

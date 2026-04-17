@@ -6,7 +6,7 @@ Supports background task execution, progress reporting, and cancellation.
 import uuid
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Callable, Awaitable
 from enum import Enum
 from app.core.config import settings
@@ -33,7 +33,7 @@ class TaskInfo:
         self.message = ""
         self.result = None
         self.error = None
-        self.created_at = datetime.utcnow()
+        self.created_at = datetime.now(timezone.utc)
         self.started_at: Optional[datetime] = None
         self.completed_at: Optional[datetime] = None
         self.cancellation_token = asyncio.Event()
@@ -173,13 +173,13 @@ class TaskManager:
             status=TaskStatus.COMPLETED,
             progress=100.0,
             result=result,
-            completed_at=datetime.utcnow(),
+            completed_at=datetime.now(timezone.utc),
         )
 
     def fail_task(self, task_id: str, error: Any):
         """Mark task as failed."""
         self.update_task(
-            task_id, status=TaskStatus.FAILED, error=error, completed_at=datetime.utcnow()
+            task_id, status=TaskStatus.FAILED, error=error, completed_at=datetime.now(timezone.utc)
         )
 
     def cancel_task(self, task_id: str) -> bool:
@@ -192,7 +192,7 @@ class TaskManager:
             return False
 
         task.cancellation_token.set()
-        self.update_task(task_id, status=TaskStatus.CANCELLED, completed_at=datetime.utcnow())
+        self.update_task(task_id, status=TaskStatus.CANCELLED, completed_at=datetime.now(timezone.utc))
         return True
 
     def is_cancelled(self, task_id: str) -> bool:
@@ -210,7 +210,7 @@ class TaskManager:
 
         try:
             # Mark as running
-            self.update_task(task_id, status=TaskStatus.RUNNING, started_at=datetime.utcnow())
+            self.update_task(task_id, status=TaskStatus.RUNNING, started_at=datetime.now(timezone.utc))
 
             # Inject task_id into kwargs for progress updates
             kwargs["task_id"] = task_id
@@ -254,7 +254,7 @@ class TaskManager:
         if len(self._tasks) <= self._max_tasks:
             return
 
-        cutoff = datetime.utcnow() - timedelta(seconds=self._cleanup_interval)
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=self._cleanup_interval)
         to_remove = []
 
         for task_id, task in self._tasks.items():

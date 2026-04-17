@@ -1,7 +1,7 @@
 """Tests for traceability services: LinkService, ValidationRulesService, DerivationService, ImpactAnalysisService."""
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 from app.models.traceability import Artifact, ArtifactLink
@@ -111,7 +111,7 @@ def create_mock_artifact(
     artifact.status = status or "active"
     artifact.source = "jira"
     artifact.meta = {}
-    artifact.created_at = datetime.utcnow()
+    artifact.created_at = datetime.now(timezone.utc)
     artifact.tenant_id = None
     return artifact
 
@@ -135,7 +135,7 @@ def create_mock_link(
     link.tenant_id = None
     link.created_via = "manual"
     link.confidence_factors = None
-    link.created_at = datetime.utcnow()
+    link.created_at = datetime.now(timezone.utc)
     return link
 
 
@@ -521,13 +521,13 @@ class TestConfidenceScoringService:
         from_artifact = {
             "id": 1,
             "type": "commit",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         }
 
         to_artifact = {
             "id": 2,
             "type": "jira_issue",
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         }
 
         confidence, factors = service.calculate_confidence(

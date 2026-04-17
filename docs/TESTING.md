@@ -24,3 +24,9 @@
 | `E2E_API_URL` | `http://localhost:8000/health` | Backend health endpoint used for smoke check |
 
 Use `npm run test:headed` for a headed browser or `npm run codegen` to record new flows.
+
+## Operational Runbooks
+
+- Frontend verification with containerized `node/npm`: [docs/runbooks/frontend-verification.md](runbooks/frontend-verification.md)
+- Traceability repair artifact-count comparison: [docs/runbooks/traceability-repair-artifact-counts.md](runbooks/traceability-repair-artifact-counts.md)
+- Latest frontend quality baseline snapshot: [docs/internal/frontend_quality_baseline_2026-04-17.md](internal/frontend_quality_baseline_2026-04-17.md)

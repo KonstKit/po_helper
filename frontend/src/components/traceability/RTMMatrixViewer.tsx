@@ -9,7 +9,7 @@
  * - Sticky row headers
  * - Horizontal/vertical scroll
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Box,
@@ -39,7 +39,6 @@ import type {
   RTMPagination,
   ArtifactSummary,
   RTMCell,
-  RTMCellLink,
 } from '../../services/api/types';
 import { queryRTMMatrix } from '../../services/api/traceability';
 import { getErrorMessage } from '../../utils/errorUtils';

@@ -7,7 +7,7 @@ import asyncio
 import re
 import logging
 from typing import Any, Dict, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 
 from app.services.jira.contracts import IJiraTransport
@@ -88,7 +88,7 @@ class JiraFieldMapper:
         """
         # Check cache
         if not force_refresh and self.last_discovery is not None:
-            if datetime.utcnow() - self.last_discovery < self.cache_ttl:
+            if datetime.now(timezone.utc) - self.last_discovery < self.cache_ttl:
                 logger.info("Using cached field discovery")
                 return self.field_cache
 
@@ -112,7 +112,7 @@ class JiraFieldMapper:
                         "key": field.get("key"),
                     }
 
-            self.last_discovery = datetime.utcnow()
+            self.last_discovery = datetime.now(timezone.utc)
             logger.info(f"Discovered {len(self.field_cache)} fields from Jira")
 
             # Auto-map common fields
@@ -592,7 +592,7 @@ class JiraFieldMapper:
             "mappings": {k.value: v for k, v in self.mappings.items()},
             "jira_url": self.base_url,
             "discovered_fields": len(self.field_cache),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     def import_configuration(self, config: Dict[str, Any]):

@@ -16,7 +16,7 @@ from app.services.audit_log import record_audit_event
 STALE_RUNNING_ERROR_CODE = "stale_running_ttl"
 
 
-def _utcnow() -> datetime:
+def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
@@ -86,7 +86,7 @@ async def start_sync_task(
     if run_recovery:
         await recover_stale_running_sync_tasks(db, project_id=project_id)
 
-    started_at = _utcnow()
+    started_at = _now_utc()
     task = SyncTask(
         source_id=source_id,
         project_id=project_id,
@@ -204,7 +204,7 @@ async def touch_sync_task_heartbeat(
     if task is None or task.status != "running":
         return task
 
-    task.heartbeat_at = _utcnow()
+    task.heartbeat_at = _now_utc()
     if item_counts is not None:
         task.item_counts = item_counts
     return task
@@ -222,7 +222,7 @@ async def recover_stale_running_sync_tasks(
         effective_ttl = int(getattr(settings, "SYNC_TASK_RUNNING_TTL_SECONDS", 7200) or 7200)
     effective_ttl = max(1, int(effective_ttl))
 
-    now_utc = _utcnow()
+    now_utc = _now_utc()
     stale_before = now_utc - timedelta(seconds=effective_ttl)
 
     filters = [
@@ -290,7 +290,7 @@ async def get_fresh_running_sync_task(
             getattr(settings, "SYNC_TASK_ACTIVE_HEARTBEAT_GRACE_SECONDS", 900) or 900
         )
     effective_freshness = max(1, int(effective_freshness))
-    fresh_after = _utcnow() - timedelta(seconds=effective_freshness)
+    fresh_after = _now_utc() - timedelta(seconds=effective_freshness)
 
     stmt = (
         select(SyncTask)
@@ -323,7 +323,7 @@ async def finish_sync_task(
     if task is None:
         return None
 
-    finished_at = _utcnow()
+    finished_at = _now_utc()
     task.status = status
     task.finished_at = finished_at
     task.heartbeat_at = finished_at

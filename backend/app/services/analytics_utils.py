@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import math
 import statistics
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
@@ -26,6 +26,15 @@ logger = logging.getLogger(__name__)
 DONE_STATUSES = {"done", "closed", "resolved", "accepted", "completed"}
 IN_PROGRESS_STATUSES = {"in progress", "active", "doing"}
 FAILURE_STATES = {"failed", "rollback", "reverted"}
+
+
+def as_aware_utc(value: Any) -> Any:
+    """Normalize datetime values to timezone-aware UTC."""
+    if not isinstance(value, datetime):
+        return value
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def normalize_status(value: Optional[str]) -> str:
@@ -111,7 +120,7 @@ def compute_team_health(tasks: List[Any]) -> Dict[str, Any]:
         Dictionary with team health metrics
     """
     total = len(tasks)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     done = 0
     in_progress = 0
@@ -127,8 +136,11 @@ def compute_team_health(tasks: List[Any]) -> Dict[str, Any]:
         if status_norm in DONE_STATUSES:
             done += 1
             if task.created_date and task.resolved_date:
-                delta = task.resolved_date - task.created_date
-                cycle_times.append(delta.total_seconds() / 3600.0)
+                created_dt = as_aware_utc(task.created_date)
+                resolved_dt = as_aware_utc(task.resolved_date)
+                if isinstance(created_dt, datetime) and isinstance(resolved_dt, datetime):
+                    delta = resolved_dt - created_dt
+                    cycle_times.append(delta.total_seconds() / 3600.0)
         elif status_norm in IN_PROGRESS_STATUSES:
             in_progress += 1
         else:
@@ -141,6 +153,7 @@ def compute_team_health(tasks: List[Any]) -> Dict[str, Any]:
                 due = task.due_date
                 if isinstance(due, str):
                     due = datetime.fromisoformat(due)
+                due = as_aware_utc(due)
                 if due and due < now:
                     overdue += 1
             except Exception:
@@ -229,7 +242,9 @@ def calculate_dora_metrics(
     for incident in incidents:
         opened = getattr(incident, "created_date", None)
         resolved = getattr(incident, "resolved_date", None)
-        if opened and resolved and resolved > opened:
+        opened = as_aware_utc(opened)
+        resolved = as_aware_utc(resolved)
+        if isinstance(opened, datetime) and isinstance(resolved, datetime) and resolved > opened:
             delta = resolved - opened
             mttr_values.append(delta.total_seconds() / 3600.0)
 
