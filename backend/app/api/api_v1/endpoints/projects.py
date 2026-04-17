@@ -282,27 +282,27 @@ async def update_project(
             update_data["meta"] = target_meta or None
 
         try:
-            async with db.begin():
-                if "jira_key" in update_data and update_data["jira_key"] is not None:
-                    sel = (
-                        select(Project)
-                        .where(Project.jira_key == update_data["jira_key"])
-                        .where(Project.id != project_id)
+            if "jira_key" in update_data and update_data["jira_key"] is not None:
+                sel = (
+                    select(Project)
+                    .where(Project.jira_key == update_data["jira_key"])
+                    .where(Project.id != project_id)
+                )
+                result = await execute_with_lock(db, sel)
+                if result.scalar_one_or_none():
+                    logger.warning(
+                        "projects.update.duplicate_jira_key project_id=%s jira_key=%s duration=%.3f",
+                        project_id,
+                        update_data["jira_key"],
+                        perf_counter() - start,
                     )
-                    result = await execute_with_lock(db, sel)
-                    if result.scalar_one_or_none():
-                        logger.warning(
-                            "projects.update.duplicate_jira_key project_id=%s jira_key=%s duration=%.3f",
-                            project_id,
-                            update_data["jira_key"],
-                            perf_counter() - start,
-                        )
-                        raise HTTPException(
-                            status_code=400, detail="Project with this key already exists"
-                        )
+                    raise HTTPException(
+                        status_code=400, detail="Project with this key already exists"
+                    )
 
-                for field, value in update_data.items():
-                    setattr(project, field, value)
+            for field, value in update_data.items():
+                setattr(project, field, value)
+            await db.commit()
         except IntegrityError:
             # Handle race with unique constraint on jira_key
             await db.rollback()

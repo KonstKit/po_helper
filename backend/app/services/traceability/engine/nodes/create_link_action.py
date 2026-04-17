@@ -42,6 +42,12 @@ class CreateLinkActionExecutor(NodeExecutor):
 
         if len(incoming) == 1:
             artifacts = context.get_input_artifacts(node["id"])
+            if not config.get("allow_self_linking", False):
+                context.add_warning(
+                    "CreateLinkAction: single-input self-linking is disabled by default; "
+                    "connect a second input source or set allow_self_linking=true."
+                )
+                return []
             self._create_self_links(
                 artifacts, link_type, bidirectional, reverse_link_type, context
             )

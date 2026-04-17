@@ -45,7 +45,7 @@ async def get_coverage_analytics(
     Args:
         db: Database session
         project_id: Filter by project
-        artifact_types: Artifact types to analyze (default: requirements)
+        artifact_types: Artifact types to analyze (default: all artifact types in scope)
         include_trends: Include historical trend data
         trend_days: Days of trend data to include
         quality_gates: Custom quality gate thresholds
@@ -61,9 +61,9 @@ async def get_coverage_analytics(
     )
 
     try:
-        # Default to requirements if no types specified
+        # Default to all artifact types in scope when no filter is provided.
         if not artifact_types:
-            artifact_types = ["requirement"]
+            artifact_types = await _resolve_artifact_types(db, project_id)
 
         # --- Step 1: Calculate coverage for specified types ---
         coverage_stats = await _calculate_coverage_stats(
@@ -143,6 +143,15 @@ async def _count_artifacts_by_type(
 
     result = await db.execute(stmt)
     return {row.type: row.count for row in result.all()}
+
+
+async def _resolve_artifact_types(
+    db: AsyncSession,
+    project_id: Optional[int],
+) -> List[str]:
+    """Resolve all artifact types in scope, used as default coverage filter."""
+    by_type = await _count_artifacts_by_type(db, project_id)
+    return sorted(by_type.keys())
 
 
 async def _calculate_coverage_stats(
@@ -405,19 +414,27 @@ def _evaluate_quality_gates(
     results: Dict[str, Any] = {}
     gate_details: Dict[str, Dict[str, Any]] = {}
 
+    by_type = coverage_stats.get("by_type", {})
+    requirement_stats = by_type.get("requirement", {})
+
     # Requirement coverage gate
     min_req_coverage = gates.get("min_requirement_coverage_pct", 80.0)
-    req_coverage = coverage_stats["coverage_pct"]
-    results["requirement_coverage"] = req_coverage >= min_req_coverage
+    req_total = int(requirement_stats.get("total", 0)) if requirement_stats else 0
+    req_coverage = (
+        float(requirement_stats.get("coverage_pct", 0.0))
+        if req_total > 0
+        else 0.0
+    )
+    results["requirement_coverage"] = req_coverage >= min_req_coverage if req_total > 0 else True
     gate_details["requirement_coverage"] = {
         "actual": req_coverage,
         "threshold": min_req_coverage,
         "passed": results["requirement_coverage"],
+        "has_requirements": req_total > 0,
     }
 
     # Test coverage gate (coverage of test_case type artifacts)
     min_test_coverage = gates.get("min_test_coverage_pct", 70.0)
-    by_type = coverage_stats.get("by_type", {})
     test_type_stats = by_type.get("test_case", {})
     test_coverage = test_type_stats.get("coverage_pct", 0.0) if test_type_stats else 0.0
     # Only evaluate if test_case artifacts exist
@@ -449,14 +466,14 @@ def _evaluate_quality_gates(
 
     # Orphan requirements gate
     max_orphan_pct = gates.get("max_orphan_requirements_pct", 10.0)
-    total = coverage_stats["total"]
-    unlinked = coverage_stats["unlinked"]
-    orphan_pct = round((unlinked / total * 100), 2) if total > 0 else 0.0
-    results["orphan_threshold"] = orphan_pct <= max_orphan_pct
+    req_unlinked = int(requirement_stats.get("unlinked", 0)) if req_total > 0 else 0
+    orphan_pct = round((req_unlinked / req_total * 100), 2) if req_total > 0 else 0.0
+    results["orphan_threshold"] = orphan_pct <= max_orphan_pct if req_total > 0 else True
     gate_details["orphan_threshold"] = {
         "actual": orphan_pct,
         "threshold": max_orphan_pct,
         "passed": results["orphan_threshold"],
+        "has_requirements": req_total > 0,
     }
 
     # All gates passed?
