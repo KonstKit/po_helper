@@ -460,7 +460,7 @@ async def test_project_pr_forecast_returns_average_metrics():
 @pytest.mark.asyncio
 async def test_identify_project_risks_flags_multiple_categories():
     await reset_database()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     async with AsyncSessionLocal() as session:
         project = Project(jira_key="RISK", name="Risky", status="active")
@@ -527,7 +527,7 @@ async def test_identify_project_risks_flags_multiple_categories():
 @pytest.mark.asyncio
 async def test_forecast_completion_uses_velocity_and_remaining_hours():
     await reset_database()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     async with AsyncSessionLocal() as session:
         project = Project(jira_key="FORE", name="Forecast", status="active")

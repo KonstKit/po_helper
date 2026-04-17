@@ -4,7 +4,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 import pytest
 import pytest_asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
@@ -33,7 +33,7 @@ async def test_team_health_metrics(async_session: AsyncSession):
     async_session.add(project)
     await async_session.flush()
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     async_session.add_all([
         Task(

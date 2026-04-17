@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
@@ -114,7 +114,7 @@ class ProjectSyncOrchestrator:
         Returns:
             ProjectSyncResult with comprehensive statistics and errors
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         result = ProjectSyncResult(
             project_key=project_key,
             project_id=project_id,
@@ -262,7 +262,7 @@ class ProjectSyncOrchestrator:
             await self._update_project_dates(project_key, project_id)
 
             result.success = True
-            result.sync_duration_seconds = (datetime.utcnow() - start_time).total_seconds()
+            result.sync_duration_seconds = (datetime.now(timezone.utc) - start_time).total_seconds()
 
             logger.info(
                 "Sync complete project=%s saved_issues=%d duration=%.2fs",
@@ -592,7 +592,7 @@ class ProjectSyncOrchestrator:
                 if project:
                     existing_meta = getattr(project, "meta", None) or {}
                     metadata = dict(existing_meta) if isinstance(existing_meta, dict) else {}
-                    metadata["last_sync_at"] = datetime.utcnow().isoformat()
+                    metadata["last_sync_at"] = datetime.now(timezone.utc).isoformat()
                     metadata["issues_count"] = len(issues)
                     project.meta = metadata
                     await db.commit()

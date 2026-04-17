@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import statistics
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from sqlalchemy import and_, case, func, select
@@ -23,7 +23,7 @@ async def get_project_team_health(
     try:
         done_statuses_set = {"done", "closed", "resolved", "complete"}
         in_progress_statuses_set = {"in progress", "active", "doing"}
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         counts_stmt = select(
             func.count(Task.id).label("total"),

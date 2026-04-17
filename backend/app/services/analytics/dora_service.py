@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
 from sqlalchemy import func, or_, select
@@ -20,8 +20,8 @@ async def get_project_dora_metrics(
 ) -> Dict[str, Any]:
     """Compute DORA metrics for a project over a time window."""
     window_days = max(1, int(window_days or 30))
-    since = datetime.utcnow() - timedelta(days=window_days)
-    now_utc = datetime.utcnow()
+    now_utc = datetime.now(timezone.utc)
+    since = now_utc - timedelta(days=window_days)
 
     logger.info("analytics.dora.start project_id=%s window=%s", project_id, window_days)
 
