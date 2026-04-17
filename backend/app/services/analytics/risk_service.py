@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from sqlalchemy import func, select
@@ -19,7 +19,7 @@ async def get_project_risks(
     project_id: int,
 ) -> Dict[str, Any]:
     try:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         done_statuses = list(DONE_STATUSES)
         risks: List[Dict[str, Any]] = []
 

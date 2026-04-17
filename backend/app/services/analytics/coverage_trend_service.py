@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func, select
@@ -20,7 +20,7 @@ async def get_coverage_trend(
     project_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     try:
-        since = datetime.utcnow() - timedelta(days=days)
+        since = datetime.now(timezone.utc) - timedelta(days=days)
         day_col = func.date(CoverageReport.created_at)
         stmt = (
             select(
