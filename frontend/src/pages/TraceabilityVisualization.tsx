@@ -94,9 +94,12 @@ const TraceabilityVisualization: React.FC = () => {
         const items = res.data || [];
         setProjects(items);
         // Default to the first project for non-admin users who cannot query across all projects.
-        if (projectId === undefined && items.length > 0) {
-          setProjectId(items[0].id);
-        }
+        setProjectId((current) => {
+          if (current === undefined && items.length > 0) {
+            return items[0].id;
+          }
+          return current;
+        });
       })
       .catch((error) => logError('Failed to load traceability projects', error));
   }, []);

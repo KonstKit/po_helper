@@ -1,0 +1,54 @@
+name: nightly-backend-suite
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  backend-nightly:
+    runs-on: ubuntu-latest
+    env:
+      DEBUG: "false"
+      SECRET_KEY: "test-secret-key-should-be-long-enough-1234567890"
+      ENCRYPTION_SECRET: "test-secret-key-should-be-long-enough-1234567890"
+      DATABASE_URL: "sqlite+aiosqlite:///./nightly.db"
+      SKIP_SERVICE_AUTOCONNECT: "1"
+      JIRA_BASE_URL: ""
+      JIRA_EMAIL: ""
+      JIRA_API_TOKEN: ""
+      ENABLE_MATRIX_CACHE: "false"
+      REDIS_URL: ""
+      CELERY_ENABLED: "false"
+      CELERY_BROKER_URL: ""
+      CELERY_RESULT_BACKEND: ""
+      PYTHONPATH: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        run: python3 -m pip install -r backend/requirements.txt
+
+      - name: Run backend test suite
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/junit artifacts/tests
+          pytest backend/tests -q \
+            --junitxml=artifacts/junit/backend-nightly.xml \
+            2>&1 | tee artifacts/tests/backend-nightly.log
+
+      - name: Upload JUnit and log artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-nightly-test-artifacts
+          if-no-files-found: warn
+          path: |
+            artifacts/junit/backend-nightly.xml
+            artifacts/tests/backend-nightly.log

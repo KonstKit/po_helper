@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Optional, Dict, Any, List, Set, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -326,6 +326,12 @@ def _project_last_sync(project: Project) -> Optional[str]:
     return str(raw) if raw else None
 
 
+def _as_aware_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _compute_project_health_status(
     *,
     last_sync: Optional[str],
@@ -335,7 +341,7 @@ def _compute_project_health_status(
     if last_sync:
         try:
             last_sync_dt = datetime.fromisoformat(last_sync.replace("Z", "+00:00"))
-            age_days = (datetime.utcnow() - last_sync_dt.replace(tzinfo=None)).days
+            age_days = (_as_aware_utc(datetime.now(timezone.utc)) - _as_aware_utc(last_sync_dt)).days
             if age_days > 7:
                 return "stale"
         except ValueError:
@@ -635,7 +641,7 @@ async def get_sync_health(
         repositories_result = await db.execute(repos_query)
         repositories = repositories_result.scalars().all()
 
-    checked_at = datetime.utcnow().isoformat()
+    checked_at = datetime.now(timezone.utc).isoformat()
     jira_last_sync = _project_last_sync(selected_project) if selected_project else None
     if jira_last_sync is None:
         jira_last_sync = next((value for value in (_project_last_sync(project) for project in projects) if value), None)
@@ -757,7 +763,7 @@ async def get_detailed_sync_health(
     total_artifacts = sum(by_source.values())
     linked_artifacts = max(total_artifacts - orphan_count, 0)
     coverage_pct = (linked_artifacts / total_artifacts * 100.0) if total_artifacts else 0.0
-    checked_at = datetime.utcnow().isoformat()
+    checked_at = datetime.now(timezone.utc).isoformat()
     last_sync = _project_last_sync(project)
 
     sources = [
@@ -990,7 +996,8 @@ async def run_consistency_check(
 
     # 5. Stale artifacts check (not updated recently)
     if check_stale:
-        stale_threshold = datetime.utcnow() - timedelta(days=stale_days)
+        now_utc = datetime.now(timezone.utc)
+        stale_threshold = now_utc - timedelta(days=stale_days)
 
         stale_query = select(
             Artifact.id, Artifact.type, Artifact.external_id, Artifact.title, Artifact.updated_at
@@ -1019,9 +1026,11 @@ async def run_consistency_check(
                 "external_id": row.external_id,
                 "title": row.title,
                 "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-                "days_since_update": (datetime.utcnow() - row.updated_at).days
-                if row.updated_at
-                else None,
+                "days_since_update": (
+                    (now_utc - _as_aware_utc(row.updated_at)).days
+                    if row.updated_at
+                    else None
+                ),
             }
             for row in stale_artifacts
         ]
@@ -1032,7 +1041,7 @@ async def run_consistency_check(
 
     return {
         "project_id": project_id,
-        "checked_at": datetime.utcnow().isoformat(),
+        "checked_at": datetime.now(timezone.utc).isoformat(),
         "total_issues": total_issues,
         "health_score": health_score,
         "status": "healthy"

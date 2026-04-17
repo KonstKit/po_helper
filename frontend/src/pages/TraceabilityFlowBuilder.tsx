@@ -540,7 +540,6 @@ const TraceabilityFlowBuilder: React.FC = () => {
       notify,
       ruleName,
       runServerValidation,
-      executeOnSyncComplete,
     ]
   );
 

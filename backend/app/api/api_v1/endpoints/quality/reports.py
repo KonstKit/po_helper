@@ -1,5 +1,7 @@
 """Sprint Quality Report Generation endpoints."""
 
+from datetime import timezone
+
 from .common import (
     APIRouter,
     Depends,
@@ -112,7 +114,7 @@ async def get_report_data(
         ).where(
             and_(
                 PullRequest.project_id == project_id,
-                PullRequest.created_at >= datetime.utcnow() - timedelta(days=30),
+                PullRequest.created_at >= datetime.now(timezone.utc) - timedelta(days=30),
             )
         )
     )
@@ -126,7 +128,7 @@ async def get_report_data(
         ).where(
             and_(
                 QualityGateHistory.project_id == project_id,
-                QualityGateHistory.created_at >= datetime.utcnow() - timedelta(days=30),
+                QualityGateHistory.created_at >= datetime.now(timezone.utc) - timedelta(days=30),
             )
         )
     )
@@ -202,14 +204,14 @@ async def generate_report(
             download_url=f"/api/v1/quality/reports/download/{filename}",
             file_name=filename,
             format=request.format,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
             file_size_bytes=size_bytes,
         )
     except Exception as e:
         return ReportGenerationResponse(
             success=False,
             format=request.format,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
             error=str(e),
         )
 

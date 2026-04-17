@@ -10,7 +10,7 @@ Tests cover:
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from app.services.rule_execution_engine import InputValidator
 
 
@@ -58,7 +58,7 @@ class TestInputValidator:
 
     def test_validate_date_datetime_object(self):
         """Test validation of datetime objects."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         result = InputValidator.validate_date(now, "test")
         assert result == now
 

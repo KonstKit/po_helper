@@ -43,6 +43,36 @@ jobs:
       - name: Pytest
         run: PYTHONPATH=backend pytest backend/tests -q
 
+  backend-datetime-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Block new backend datetime.utcnow usage
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+          fi
+          if [ -z "${base_sha}" ] || [ "${base_sha}" = "0000000000000000000000000000000000000000" ]; then
+            echo "Skipping datetime guard: no stable base SHA for diff."
+            exit 0
+          fi
+          if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+            echo "Skipping datetime guard: base SHA is not available locally."
+            exit 0
+          fi
+          if git diff --unified=0 "${base_sha}" HEAD -- backend \
+            | grep -E '^\+[^+].*datetime\.utcnow\('; then
+            echo "New backend datetime.utcnow usage detected."
+            exit 1
+          fi
+
   frontend-quality:
     runs-on: ubuntu-latest
     steps:

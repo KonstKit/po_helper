@@ -4,7 +4,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.main import app
-from app.core.database import AsyncSessionLocal, Base, engine
+from app.core.database import AsyncSessionLocal
 from app.models import (
     Project,
     Task,
@@ -17,12 +17,11 @@ from app.models import (
 )
 from app.models.traceability import Artifact
 from app.services.jira_service import jira_service
+from tests._sqlite_schema import reset_sqlite_schema
 
 
 async def reset_database() -> None:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+    await reset_sqlite_schema()
 
 
 @pytest.mark.asyncio

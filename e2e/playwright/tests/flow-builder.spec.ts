@@ -41,6 +41,51 @@ async function waitForFlowBuilder(page: Page) {
   await expect(page.locator('.react-flow__controls')).toBeVisible();
 }
 
+async function createMinimalValidRule(page: Page, ruleName: string) {
+  const canvas = page.locator('.react-flow__pane');
+  const canvasBounds = await canvas.boundingBox();
+
+  if (!canvasBounds) {
+    throw new Error('Flow canvas is not available');
+  }
+
+  const nameInput = page.getByPlaceholder(/rule name/i)
+    .or(page.getByLabel(/rule name/i))
+    .or(page.locator('input').first());
+  await nameInput.fill(ruleName);
+
+  const sourceNode = page.getByText(/commit source|git commit/i)
+    .or(page.getByText(/git commits|git commit/i))
+    .first();
+  await sourceNode.dragTo(canvas, {
+    targetPosition: {
+      x: 100,
+      y: 200,
+    },
+  });
+
+  const actionNode = page.getByText(/create link/i)
+    .or(page.getByText(/link action/i))
+    .first();
+  await actionNode.dragTo(canvas, {
+    targetPosition: {
+      x: 400,
+      y: 200,
+    },
+  });
+
+  const nodes = page.locator('.react-flow__node');
+  const sourceHandle = nodes.first().locator('.react-flow__handle-right, [class*="source"]');
+  const targetHandle = nodes.last().locator('.react-flow__handle-left, [class*="target"]');
+
+  if (await sourceHandle.isVisible() && await targetHandle.isVisible()) {
+    await sourceHandle.dragTo(targetHandle);
+  }
+
+  await page.getByRole('button', { name: /^save$/i }).click();
+  await expect(page.getByRole('button', { name: /save automation/i })).toBeVisible();
+}
+
 test.describe('Flow Builder', () => {
   test.beforeEach(async ({ page }) => {
     await loginAndNavigate(page, '/traceability/flow-builder');
@@ -266,46 +311,32 @@ test.describe('Flow Builder', () => {
 
   test.describe('Save and Execute', () => {
     test('can save a rule with custom name', async ({ page }) => {
-      const canvas = page.locator('.react-flow__pane');
-      const canvasBounds = await canvas.boundingBox();
+      await createMinimalValidRule(page, 'E2E Test Rule');
 
-      if (canvasBounds) {
-        // Set rule name
-        const nameInput = page.getByPlaceholder(/rule name/i)
-          .or(page.getByLabel(/rule name/i))
-          .or(page.locator('input').first());
+      await expect(page.getByRole('button', { name: /save automation/i })).toBeVisible();
+    });
 
-        await nameInput.fill('E2E Test Rule');
+    test('can create, save, and reload automation state', async ({ page }) => {
+      const ruleName = `E2E Automation Rule ${Date.now()}`;
 
-        // Add a minimal valid flow
-        const sourceNode = page.getByText(/commit source|git commit/i).first();
-        await sourceNode.dragTo(canvas, { targetPosition: { x: 100, y: 200 } });
+      await createMinimalValidRule(page, ruleName);
 
-        const actionNode = page.getByText(/create link/i).first();
-        await actionNode.dragTo(canvas, { targetPosition: { x: 400, y: 200 } });
+      await page.getByLabel(/run after sync/i).check();
+      await page.getByRole('button', { name: /save automation/i }).click();
 
-        // Connect nodes
-        const nodes = page.locator('.react-flow__node');
-        const sourceHandle = nodes.first().locator('.react-flow__handle').first();
-        const targetHandle = nodes.last().locator('.react-flow__handle').first();
+      await expect(page.getByText(/automation updated/i)).toBeVisible();
 
-        if (await sourceHandle.isVisible() && await targetHandle.isVisible()) {
-          await sourceHandle.dragTo(targetHandle);
-        }
+      await page.reload();
+      await waitForFlowBuilder(page);
 
-        // Click save
-        await page.getByRole('button', { name: /save/i }).click();
+      const rulePicker = page.getByRole('combobox', { name: /open existing rule/i });
+      await rulePicker.click();
+      const existingRuleOption = page.getByRole('option', { name: ruleName });
+      await expect(existingRuleOption).toBeVisible();
+      await existingRuleOption.click();
 
-        // Wait for save feedback
-        const savedNotification = page.getByText(/saved|success/i)
-          .or(page.locator('.MuiSnackbar'));
-
-        // Either notification appears or no error alert
-        const saveSuccess = await savedNotification.isVisible({ timeout: 5000 })
-          .catch(() => true); // If timeout, assume success (no error appeared)
-
-        expect(saveSuccess).toBeTruthy();
-      }
+      await expect(page.getByLabel(/run after sync/i)).toBeChecked();
+      await expect(page.getByText(/unsaved changes/i)).toHaveCount(0);
     });
 
     test('execute button is disabled without valid flow', async ({ page }) => {

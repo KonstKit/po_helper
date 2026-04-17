@@ -1796,7 +1796,7 @@ export interface MatrixConfigBase {
 }
 
 /** Request to create a matrix configuration */
-export interface MatrixConfigCreate extends MatrixConfigBase {}
+export type MatrixConfigCreate = MatrixConfigBase;
 
 /** Request to update a matrix configuration */
 export interface MatrixConfigUpdate {

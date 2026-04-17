@@ -4,7 +4,7 @@ Provides robust background processing with retry logic and progress tracking.
 """
 
 from typing import Optional, Dict, Any, cast
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from celery import Task, states
 from sqlalchemy import select
@@ -148,7 +148,7 @@ def sync_jira_project(
         Dictionary with sync statistics
     """
     self.channel_id = channel_id
-    start_time = datetime.utcnow()
+    start_time = datetime.now(timezone.utc)
 
     try:
         logger.info(f"Starting Jira sync for project {project_key} (id={project_id})")
@@ -192,7 +192,7 @@ def sync_jira_project(
         )
 
         # Calculate duration
-        duration = (datetime.utcnow() - start_time).total_seconds()
+        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
 
         self.update_progress(f"Sync completed for {project_key}", 100)
 
@@ -204,7 +204,7 @@ def sync_jira_project(
             "synced": self.processed_issues,
             "created": self.created_count,
             "updated": self.updated_count,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         logger.info(
@@ -215,7 +215,7 @@ def sync_jira_project(
         return result
 
     except Exception as exc:
-        duration = (datetime.utcnow() - start_time).total_seconds()
+        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         error_msg = str(exc)
 
         logger.error(f"Jira sync failed for {project_key}: {error_msg}", exc_info=True)

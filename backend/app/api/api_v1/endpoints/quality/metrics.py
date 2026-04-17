@@ -1,5 +1,7 @@
 """Quality Metrics, Summary, Trends, and Dashboard endpoints."""
 
+from datetime import timezone
+
 from .common import (
     APIRouter,
     Depends,
@@ -274,7 +276,7 @@ async def get_quality_trend(
     db: AsyncSession = Depends(get_db),
 ):
     """Get quality trend data over time. Cached for 5 min."""
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now(timezone.utc) - timedelta(days=days)
 
     # Get daily defect counts
     result = await db.execute(
@@ -332,7 +334,7 @@ async def get_quality_trend(
 
         trends.append(
             DefectTrend(
-                date=datetime.combine(date_key, datetime.min.time()),
+                date=datetime.combine(date_key, datetime.min.time(), tzinfo=timezone.utc),
                 total_defects=running_total,
                 escaped_defects=row.escaped,
                 resolved_defects=resolved,
@@ -407,9 +409,9 @@ async def calculate_defect_metrics(
     Escape Rate = escaped_defects / total_defects * 100
     """
     if not period_start:
-        period_start = datetime.utcnow() - timedelta(days=14)
+        period_start = datetime.now(timezone.utc) - timedelta(days=14)
     if not period_end:
-        period_end = datetime.utcnow()
+        period_end = datetime.now(timezone.utc)
 
     base_filter = [
         EscapedDefect.project_id == project_id,

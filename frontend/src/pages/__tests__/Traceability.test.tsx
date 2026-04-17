@@ -100,6 +100,10 @@ describe('Traceability page', () => {
       status: 'ok',
       created: 0,
       updated: 0,
+      warnings: [],
+      sources: {
+        git: { project_id: 1, repositories: [] },
+      },
       git: { project_id: 1, repositories: [] },
     });
 

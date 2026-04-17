@@ -10,7 +10,7 @@ from app.core.database import get_db
 from app.models.confluence import ConfluencePage
 from app.models.settings import IntegrationSetting
 from app.utils import transactional_session, handle_api_error
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 import json
 import asyncio
@@ -146,7 +146,8 @@ def _parse_dt(s: Optional[str]) -> Optional[datetime]:
             s = f"{m.group(1)}{m.group(2)}:{m.group(3)}"
         if s.endswith("Z"):
             s = s[:-1] + "+00:00"
-        return datetime.fromisoformat(s)
+        parsed = datetime.fromisoformat(s)
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
     except Exception:
         return None
 
@@ -202,7 +203,7 @@ async def _upsert_confluence_page(
     ptype_val = ptype or "page"
     url_val = url or ""
     version_val = int(version or 0)
-    created_dt = _parse_dt(created_at) or datetime.utcnow()
+    created_dt = _parse_dt(created_at) or datetime.now(timezone.utc)
     updated_dt = _parse_dt(last_updated) or created_dt
 
     result = await db.execute(
@@ -588,7 +589,7 @@ async def sync_subtree(page_id: str, limit: int = 50, db: AsyncSession = Depends
             ptype_val = ptype or "page"
             url_val = url or ""
             version_val = int(version or 0)
-            created_dt = _parse_dt(created_at) or datetime.utcnow()
+            created_dt = _parse_dt(created_at) or datetime.now(timezone.utc)
             updated_dt = _parse_dt(last_updated) or created_dt
 
             result = await db.execute(

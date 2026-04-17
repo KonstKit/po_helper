@@ -7,7 +7,7 @@ Aggregates data from quality metrics, test coverage, and defect tracking.
 
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict
 from io import BytesIO
 
@@ -179,7 +179,7 @@ class ReportGeneratorService:
             project_name=project_name,
             sprint_id=sprint_id,
             sprint_name=sprint_name,
-            report_date=datetime.utcnow(),
+            report_date=datetime.now(timezone.utc),
             overall_quality_score=score,
             quality_grade=grade,
             key_highlights=highlights,
@@ -634,7 +634,7 @@ class ReportGeneratorService:
         sections: List[ReportSection],
     ) -> tuple:
         """Generate and save report to disk. Returns (filename, filepath, size_bytes)."""
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         project_slug = (
             (report.project_name or f"project_{report.project_id}").replace(" ", "_").lower()
         )
