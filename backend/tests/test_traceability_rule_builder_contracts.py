@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from app.api.api_v1.endpoints.traceability import rules as rules_api
 from app.services.traceability.engine.nodes.commit_source import CommitSourceExecutor
 from app.services.traceability.engine.nodes.create_link_action import CreateLinkActionExecutor
 from app.services.traceability.engine.nodes.decision_node import DecisionNodeExecutor
+from app.services.traceability.engine.nodes.filter_node import FilterNodeExecutor
 from app.services.traceability.engine.nodes.jira_key_extractor import JiraKeyExtractorExecutor
 from app.tasks import traceability_tasks
 
@@ -80,6 +81,19 @@ def test_jira_key_extractor_alias_mapping():
     assert executor._get_field_value(artifact, "body") == "POH-12"
 
 
+def test_filter_node_reads_model_fields_before_meta():
+    executor = FilterNodeExecutor()
+    artifact = SimpleNamespace(
+        status="Done",
+        title="Primary title",
+        meta={"status": "To Do", "title": "Meta title", "custom": "meta-value"},
+    )
+
+    assert executor._get_field_value(artifact, "status") == "Done"
+    assert executor._get_field_value(artifact, "title") == "Primary title"
+    assert executor._get_field_value(artifact, "custom") == "meta-value"
+
+
 def test_decision_confidence_threshold_routes_per_artifact():
     decision = DecisionNodeExecutor()
     artifacts = [
@@ -125,6 +139,66 @@ def test_create_link_action_prefers_configured_reverse_link_type():
     assert used_fallback is False
     assert fallback_value == "implemented_by"
     assert used_fallback_for_default is True
+
+
+def test_create_link_action_single_input_requires_opt_in_for_self_links():
+    executor = CreateLinkActionExecutor()
+    warnings: list[str] = []
+    context = SimpleNamespace(
+        incoming_edges={"action_1": [{"source": "source_1"}]},
+        get_input_artifacts=lambda _node_id: [
+            SimpleNamespace(id=1, external_id="A"),
+            SimpleNamespace(id=2, external_id="B"),
+        ],
+        add_warning=warnings.append,
+        add_error=lambda _message: None,
+        db=MagicMock(),
+        add_link=lambda _link: None,
+        rule_id=123,
+        node_outputs={},
+    )
+
+    executor.execute(
+        {
+            "id": "action_1",
+            "data": {"config": {"link_type": "implements"}},
+        },
+        context,
+    )
+
+    assert warnings
+    assert "single-input self-linking is disabled by default" in warnings[0]
+    context.db.query.assert_not_called()
+
+
+def test_create_link_action_single_input_with_opt_in_creates_links():
+    executor = CreateLinkActionExecutor()
+    context = SimpleNamespace(
+        incoming_edges={"action_1": [{"source": "source_1"}]},
+        get_input_artifacts=lambda _node_id: [
+            SimpleNamespace(id=1, external_id="A"),
+            SimpleNamespace(id=2, external_id="B"),
+            SimpleNamespace(id=3, external_id="C"),
+        ],
+        add_warning=lambda _message: None,
+        add_error=lambda _message: None,
+        db=MagicMock(),
+        add_link=lambda _link: None,
+        rule_id=123,
+        node_outputs={},
+    )
+
+    with patch.object(executor, "_create_link") as create_link:
+        executor.execute(
+            {
+                "id": "action_1",
+                "data": {"config": {"link_type": "implements", "allow_self_linking": True}},
+            },
+            context,
+        )
+
+    # 3 artifacts => 3 pairwise links when self-linking is enabled
+    assert create_link.call_count == 3
 
 
 def test_decision_validation_threshold_range():

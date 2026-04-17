@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlalchemy import select
 
-from app.models import Project, Task
+from app.models import Project, Sprint, Task
 from app.services.jira_service import jira_service
 from app.services.sync.project_sync_orchestrator import ProjectSyncOrchestrator
 
@@ -117,6 +117,16 @@ async def test_dashboard_data_is_consistent_after_sync(client, db_session, monke
 
     sprint_id = synced_tasks[0].sprint_id
     assert sprint_id is not None
+
+    synced_sprint = (
+        await db_session.execute(select(Sprint).where(Sprint.id == sprint_id))
+    ).scalar_one()
+    assert synced_sprint.commitment is not None
+    assert synced_sprint.completed is not None
+    assert synced_sprint.velocity is not None
+    assert synced_sprint.commitment >= 0
+    assert synced_sprint.completed >= 0
+    assert synced_sprint.velocity == pytest.approx(synced_sprint.completed)
 
     velocity_response = await client.get(
         f"/api/v1/analytics/projects/{project.id}/velocity",

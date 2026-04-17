@@ -121,3 +121,29 @@ async def test_create_project_rejects_tenant_mismatch(client, override_user_dep,
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Project tenant mismatch"
+
+
+@pytest.mark.asyncio
+async def test_update_project_succeeds_without_nested_transaction_error(
+    client,
+    db_session,
+    override_user_dep,
+):
+    project = Project(jira_key="PJT-5", name="Before Update", owner_id=42, meta={"member_ids": [42]})
+    db_session.add(project)
+    await db_session.commit()
+    await db_session.refresh(project)
+
+    editor = _ProjectUser(42, {Permissions.PROJECT_UPDATE, Permissions.PROJECT_VIEW})
+    override_user_dep(lambda: editor)
+
+    response = await client.patch(
+        f"/api/v1/projects/{project.id}",
+        json={"name": "After Update"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["name"] == "After Update"
+
+    await db_session.refresh(project)
+    assert project.name == "After Update"

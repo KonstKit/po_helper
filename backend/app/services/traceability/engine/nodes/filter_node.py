@@ -46,6 +46,10 @@ class FilterNodeExecutor(NodeExecutor):
         return filtered_artifacts
 
     def _get_field_value(self, artifact: Artifact, field: str) -> Any:
+        if field and not field.startswith("_") and hasattr(artifact, field):
+            value = getattr(artifact, field)
+            if not callable(value):
+                return value
         meta = artifact.meta or {}
         return meta.get(field)
 

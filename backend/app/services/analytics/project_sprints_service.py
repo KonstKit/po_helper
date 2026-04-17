@@ -16,8 +16,12 @@ from app.utils import parse_datetime
 logger = logging.getLogger(__name__)
 
 
-def _build_sprints_stmt(project_id: int, limit: int):
-    return (
+def _build_sprints_stmt(
+    project_id: int,
+    limit: int,
+    board_sprint_ids: Optional[list[str]] = None,
+):
+    stmt = (
         select(
             Sprint.id.label("sprint_id"),
             Sprint.name,
@@ -34,6 +38,9 @@ def _build_sprints_stmt(project_id: int, limit: int):
         .order_by(Sprint.start_date.desc().nullslast())
         .limit(limit)
     )
+    if board_sprint_ids is not None:
+        stmt = stmt.where(Sprint.jira_id.in_(board_sprint_ids))
+    return stmt
 
 
 def _rows_to_sprints(rows: Any) -> list[Dict[str, Any]]:
@@ -45,8 +52,42 @@ def _rows_to_sprints(rows: Any) -> list[Dict[str, Any]]:
     return sprints
 
 
-async def _fetch_sprints_from_db(db: AsyncSession, project_id: int, limit: int) -> list[Dict[str, Any]]:
-    rows = await asyncio.wait_for(db.execute(_build_sprints_stmt(project_id, limit)), timeout=30.0)
+async def _resolve_board_sprint_ids(board_id: int) -> list[str]:
+    try:
+        jira_sprints = await asyncio.to_thread(jira_service.list_sprints, board_id)
+    except Exception as exc:
+        logger.warning(
+            "analytics.project_sprints.board_filter_fetch_failed board_id=%s error=%s",
+            board_id,
+            exc,
+        )
+        return []
+
+    sprint_ids: list[str] = []
+    for sprint in jira_sprints or []:
+        sprint_id = sprint.get("id")
+        if sprint_id is None:
+            continue
+        sprint_ids.append(str(sprint_id))
+    return sprint_ids
+
+
+async def _fetch_sprints_from_db(
+    db: AsyncSession,
+    project_id: int,
+    limit: int,
+    board_id: Optional[int] = None,
+) -> list[Dict[str, Any]]:
+    board_sprint_ids: Optional[list[str]] = None
+    if isinstance(board_id, int):
+        board_sprint_ids = await _resolve_board_sprint_ids(board_id)
+        if not board_sprint_ids:
+            return []
+
+    rows = await asyncio.wait_for(
+        db.execute(_build_sprints_stmt(project_id, limit, board_sprint_ids)),
+        timeout=30.0,
+    )
     return _rows_to_sprints(rows)
 
 
@@ -136,7 +177,7 @@ async def get_project_sprints(
 
     try:
         try:
-            sprints = await _fetch_sprints_from_db(db, project_id, limit)
+            sprints = await _fetch_sprints_from_db(db, project_id, limit, board_id=board_id)
 
             if not sprints and isinstance(board_id, int):
                 logger.info(
@@ -146,7 +187,12 @@ async def get_project_sprints(
                 )
                 synced = await _backfill_sprints_from_board(db, project_id, board_id)
                 if synced > 0:
-                    sprints = await _fetch_sprints_from_db(db, project_id, limit)
+                    sprints = await _fetch_sprints_from_db(
+                        db,
+                        project_id,
+                        limit,
+                        board_id=board_id,
+                    )
 
             result = {
                 "total": len(sprints),

@@ -15,6 +15,8 @@ from app.models import (
     TestResult,
     CoverageReport,
 )
+from app.models.traceability import Artifact
+from app.services.jira_service import jira_service
 
 
 async def reset_database() -> None:
@@ -160,6 +162,108 @@ async def test_velocity_endpoint_aggregates_closed_sprints():
     assert data["sprints_analyzed"] == 2
     assert data["average_velocity"] == pytest.approx((10 + 6) / 2, rel=1e-3)
     assert any(item["sprint_name"] == "Sprint 1" for item in data["sprint_velocities"])
+
+
+@pytest.mark.asyncio
+async def test_project_sprints_endpoint_filters_by_board_id(monkeypatch: pytest.MonkeyPatch):
+    await reset_database()
+    now = datetime.now(timezone.utc)
+
+    async with AsyncSessionLocal() as session:
+        project = Project(jira_key="BOARD", name="Board Filter Project", status="active")
+        session.add(project)
+        await session.commit()
+        await session.refresh(project)
+        project_id = project.id
+
+        session.add_all(
+            [
+                Sprint(
+                    jira_id="11",
+                    name="Board 11 Sprint",
+                    state="closed",
+                    project_id=project.id,
+                    start_date=now - timedelta(days=14),
+                    end_date=now - timedelta(days=7),
+                ),
+                Sprint(
+                    jira_id="22",
+                    name="Board 22 Sprint",
+                    state="closed",
+                    project_id=project.id,
+                    start_date=now - timedelta(days=7),
+                    end_date=now - timedelta(days=1),
+                ),
+            ]
+        )
+        await session.commit()
+
+    monkeypatch.setattr(
+        jira_service,
+        "list_sprints",
+        lambda board_id: [{"id": 11}] if board_id == 11 else [],
+    )
+
+    from app.services.cache_service import cache_service
+
+    cache_service.clear_pattern("project_sprints")
+
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        response = await client.get(
+            f"/api/v1/analytics/projects/{project_id}/sprints",
+            params={"board_id": 11, "limit": 10},
+        )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["total"] == 1
+    assert [sprint["name"] for sprint in data["sprints"]] == ["Board 11 Sprint"]
+
+
+@pytest.mark.asyncio
+async def test_coverage_analytics_defaults_to_all_artifact_types():
+    await reset_database()
+
+    async with AsyncSessionLocal() as session:
+        project = Project(jira_key="COV", name="Coverage Project", status="active")
+        session.add(project)
+        await session.commit()
+        await session.refresh(project)
+        project_id = project.id
+
+        session.add_all(
+            [
+                Artifact(
+                    type="jira_issue",
+                    source="jira",
+                    external_id="COV-1",
+                    display_key="COV-1",
+                    title="Issue 1",
+                    project_id=project_id,
+                ),
+                Artifact(
+                    type="jira_issue",
+                    source="jira",
+                    external_id="COV-2",
+                    display_key="COV-2",
+                    title="Issue 2",
+                    project_id=project_id,
+                ),
+            ]
+        )
+        await session.commit()
+
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        response = await client.get(
+            "/api/v1/traceability/coverage-analytics",
+            params={"project_id": project_id},
+        )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["coverage"]["total_artifacts"] == 2
+    assert data["coverage"]["by_type"]["jira_issue"]["total"] == 2
+    assert data["quality_gates"]["details"]["requirement_coverage"]["has_requirements"] is False
 
 
 @pytest.mark.asyncio

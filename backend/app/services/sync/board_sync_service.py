@@ -10,6 +10,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.db_utils import supports_for_update
 from app.models import Sprint, Task
 from app.services.jira import JiraService
@@ -41,6 +42,14 @@ class BoardSyncService:
 
     def __init__(self, jira_service: JiraService):
         self.jira_service = jira_service
+
+    @staticmethod
+    def _done_statuses() -> set[str]:
+        configured = getattr(settings, "JIRA_STATUS_MAPPING", {}).get("done", [])
+        normalized = {str(status).strip().lower() for status in configured if str(status).strip()}
+        if normalized:
+            return normalized
+        return {"done", "closed", "resolved", "complete"}
 
     async def sync_boards(
         self,
@@ -218,8 +227,40 @@ class BoardSyncService:
                 db_sprint.id,
                 db,
             )
+            await self._refresh_sprint_metrics(
+                db_sprint,
+                project_id=project_id,
+                db=db,
+            )
 
         return tasks_linked
+
+    async def _refresh_sprint_metrics(
+        self,
+        sprint: Sprint,
+        project_id: int,
+        db: AsyncSession,
+    ) -> None:
+        """Recompute sprint metrics from linked tasks after each sync."""
+        task_rows = await db.execute(
+            select(Task.status, Task.estimate_hours).where(
+                Task.project_id == project_id,
+                Task.sprint_id == sprint.id,
+            )
+        )
+        done_statuses = self._done_statuses()
+        commitment = 0.0
+        completed = 0.0
+
+        for status, estimate_hours in task_rows.all():
+            estimate = float(estimate_hours or 0.0)
+            commitment += estimate
+            if isinstance(status, str) and status.strip().lower() in done_statuses:
+                completed += estimate
+
+        sprint.commitment = round(commitment, 3)
+        sprint.completed = round(completed, 3)
+        sprint.velocity = round(completed, 3)
 
     async def _link_sprint_tasks(
         self,
