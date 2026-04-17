@@ -94,12 +94,99 @@ ALLOWED_CORS_HEADERS = [
     "Content-Type",
     "Accept",
 ]
+ALEMBIC_VERSION_MIN_LENGTH = 64
+ALEMBIC_VERSION_TARGET_LENGTH = 255
 
 
 def _quote_sqlite_identifier(identifier: str) -> str:
     if not identifier or not identifier.replace("_", "").isalnum():
         raise ValueError(f"Unsafe SQLite identifier: {identifier!r}")
     return f'"{identifier}"'
+
+
+def _get_engine_backend_name() -> str | None:
+    engine_url = getattr(engine, "url", None)
+    if engine_url is None:
+        return None
+    return engine_url.get_backend_name()
+
+
+async def _ensure_postgres_alembic_runtime_state() -> None:
+    """
+    Verify that PostgreSQL runtime schema state is tracked by Alembic.
+
+    Startup must fail fast when migration tracking is broken to avoid
+    introducing further schema drift via runtime code paths.
+    """
+    if _get_engine_backend_name() != "postgresql":
+        return
+
+    async with engine.begin() as conn:
+        schema_name = await conn.scalar(
+            text(
+                """
+                SELECT n.nspname
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE c.relname = 'alembic_version'
+                  AND c.relkind IN ('r', 'p')
+                ORDER BY
+                  CASE WHEN n.nspname = current_schema() THEN 0 ELSE 1 END,
+                  n.nspname
+                LIMIT 1
+                """
+            )
+        )
+        if not schema_name:
+            raise RuntimeError(
+                "Alembic runtime state is invalid: table alembic_version is missing. "
+                "Run 'alembic upgrade head' before starting the API."
+            )
+
+        safe_schema = str(schema_name).replace('"', '""')
+        alembic_table_qualified = f'"{safe_schema}"."alembic_version"'
+
+        version_num_length = await conn.scalar(
+            text(
+                """
+                SELECT character_maximum_length
+                FROM information_schema.columns
+                WHERE table_schema = :schema_name
+                  AND table_name = 'alembic_version'
+                  AND column_name = 'version_num'
+                """
+            ),
+            {"schema_name": str(schema_name)},
+        )
+        if isinstance(version_num_length, int) and version_num_length < ALEMBIC_VERSION_MIN_LENGTH:
+            await conn.execute(
+                text(
+                    f"ALTER TABLE {alembic_table_qualified} "
+                    f"ALTER COLUMN version_num TYPE VARCHAR({ALEMBIC_VERSION_TARGET_LENGTH})"
+                )
+            )
+            logger.warning(
+                "Startup self-heal applied: widened alembic_version.version_num from %s to %s",
+                version_num_length,
+                ALEMBIC_VERSION_TARGET_LENGTH,
+            )
+
+        version_row_count = int(
+            await conn.scalar(text(f"SELECT COUNT(*) FROM {alembic_table_qualified}")) or 0
+        )
+        if version_row_count != 1:
+            raise RuntimeError(
+                "Alembic runtime state is invalid: alembic_version must contain exactly one row "
+                f"(found {version_row_count})."
+            )
+
+        current_revision = await conn.scalar(text(f"SELECT version_num FROM {alembic_table_qualified}"))
+        if not current_revision:
+            raise RuntimeError(
+                "Alembic runtime state is invalid: alembic_version.version_num is empty."
+            )
+
+        logger.info("Alembic runtime state verified (schema=%s revision=%s)", schema_name, current_revision)
 
 
 def _is_https_request(request: Request) -> bool:
@@ -308,16 +395,22 @@ async def _ensure_system_roles() -> None:
 
 
 async def _ensure_tables():
-    # Dev-friendly: auto-create tables if missing (SQLite / simple schemas)
+    # Keep auto-bootstrap only for SQLite. PostgreSQL must be migration-managed.
     try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        backend_name = _get_engine_backend_name()
+        if backend_name == "sqlite":
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+        elif backend_name == "postgresql":
+            await _ensure_postgres_alembic_runtime_state()
+
         await _ensure_postgres_sync_tasks_schema()
         await _ensure_sqlite_columns()
         await _ensure_system_roles()
         logger.info("Database schema ensured successfully")
     except Exception as exc:
         logger.error("Database initialization failed during startup: %s", exc)
+        raise
 
     # Skip auto-connect if SKIP_SERVICE_AUTOCONNECT is set
     if settings.SKIP_SERVICE_AUTOCONNECT:
