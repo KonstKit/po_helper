@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -15,7 +14,7 @@ import {
   Tabs,
   Chip,
 } from '@mui/material';
-import { Save as SaveIcon, Science as TestIcon, Analytics as AnalyticsIcon, AutoAwesome as AutoAwesomeIcon } from '@mui/icons-material';
+import { Save as SaveIcon, Science as TestIcon, AutoAwesome as AutoAwesomeIcon } from '@mui/icons-material';
 import { getJiraSettings, putJiraSettings, getConfluenceSettings, putConfluenceSettings, testJiraConnection, testConfluenceConnection, testGithubConnection, testGitlabConnection, testTestrailConnection, getGithubSettings, putGithubSettings, getGitlabSettings, putGitlabSettings, getTestrailSettings, putTestrailSettings } from '../services/api';
 import { analytics } from '../services/analytics';
 import { detectTimezone, detectCurrency, loadSmartDefaults, SmartDefaults } from '../utils/smartDefaults';
@@ -90,7 +89,6 @@ function TabPanel(props: TabPanelProps) {
 }
 
 const Settings = () => {
-  const navigate = useNavigate();
   const [tabValue, setTabValue] = useState(0);
   const [jiraSettings, setJiraSettings] = useState<JiraSettings>({
     baseUrl: DEFAULT_JIRA_BASE_URL,
@@ -789,22 +787,6 @@ const saveJiraSettings = async () => {
             </Grid>
             <Grid item xs={12}>
               <Divider sx={{ my: 3 }} />
-              <Typography variant="subtitle1" gutterBottom>
-                Usage Analytics
-              </Typography>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Track onboarding progress, time-to-value metrics, and feature adoption
-              </Typography>
-              <Button
-                variant="outlined"
-                startIcon={<AnalyticsIcon />}
-                onClick={() => navigate('/usage-analytics')}
-                sx={{ mt: 1 }}
-              >
-                View Analytics Dashboard
-              </Button>
-            </Grid>
-            <Grid item xs={12}>
               <Button variant="contained" startIcon={<SaveIcon />} onClick={saveGeneralSettings}>
                 Save General Settings
               </Button>

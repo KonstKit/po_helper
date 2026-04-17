@@ -1,15 +1,20 @@
+import binascii
 import base64
 import hashlib
 import os
 from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from app.core.config import settings
 
 AES_GCM_PREFIX = "encgcm:"
 LEGACY_FERNET_PREFIX = "enc:"
+BASE64_DECODE_ERRORS = (binascii.Error, ValueError, TypeError)
+AES_DECRYPTION_ERRORS = (InvalidTag, ValueError, TypeError, UnicodeDecodeError)
+FERNET_DECRYPTION_ERRORS = (InvalidToken, ValueError, TypeError, UnicodeDecodeError)
 
 def _iter_encryption_secrets(include_legacy: bool = True) -> list[str]:
     secrets: list[str] = []
@@ -59,7 +64,7 @@ def decrypt_str_with_metadata(ciphertext: Optional[str]) -> tuple[Optional[str],
         token = ciphertext[len(AES_GCM_PREFIX) :]
         try:
             data = base64.urlsafe_b64decode(token.encode("utf-8"))
-        except Exception:
+        except BASE64_DECODE_ERRORS:
             return None, False
         nonce, encrypted = data[:12], data[12:]
 
@@ -68,7 +73,7 @@ def decrypt_str_with_metadata(ciphertext: Optional[str]) -> tuple[Optional[str],
                 aesgcm = AESGCM(_derive_key(current_secret))
                 plaintext = aesgcm.decrypt(nonce, encrypted, associated_data=None)
                 return plaintext.decode("utf-8"), False
-            except Exception:
+            except AES_DECRYPTION_ERRORS:
                 pass
 
         for secret in _iter_encryption_secrets(include_legacy=True):
@@ -78,7 +83,7 @@ def decrypt_str_with_metadata(ciphertext: Optional[str]) -> tuple[Optional[str],
                 aesgcm = AESGCM(_derive_key(secret))
                 plaintext = aesgcm.decrypt(nonce, encrypted, associated_data=None)
                 return plaintext.decode("utf-8"), True
-            except Exception:
+            except AES_DECRYPTION_ERRORS:
                 continue
         return None, False
 
@@ -88,7 +93,7 @@ def decrypt_str_with_metadata(ciphertext: Optional[str]) -> tuple[Optional[str],
             try:
                 fernet = Fernet(base64.urlsafe_b64encode(_derive_key(current_secret)))
                 return fernet.decrypt(token.encode("utf-8")).decode("utf-8"), False
-            except Exception:
+            except FERNET_DECRYPTION_ERRORS:
                 pass
         for secret in _iter_encryption_secrets(include_legacy=True):
             if current_secret and secret == current_secret:
@@ -96,7 +101,7 @@ def decrypt_str_with_metadata(ciphertext: Optional[str]) -> tuple[Optional[str],
             try:
                 fernet = Fernet(base64.urlsafe_b64encode(_derive_key(secret)))
                 return fernet.decrypt(token.encode("utf-8")).decode("utf-8"), True
-            except Exception:
+            except FERNET_DECRYPTION_ERRORS:
                 continue
         return None, False
 
@@ -123,7 +128,7 @@ def decrypt_str(ciphertext: Optional[str]) -> Optional[str]:
         token = ciphertext[len(AES_GCM_PREFIX) :]
         try:
             data = base64.urlsafe_b64decode(token.encode("utf-8"))
-        except Exception:
+        except BASE64_DECODE_ERRORS:
             return None
         nonce, encrypted = data[:12], data[12:]
         for secret in _iter_encryption_secrets(include_legacy=True):
@@ -131,7 +136,7 @@ def decrypt_str(ciphertext: Optional[str]) -> Optional[str]:
                 aesgcm = AESGCM(_derive_key(secret))
                 plaintext = aesgcm.decrypt(nonce, encrypted, associated_data=None)
                 return plaintext.decode("utf-8")
-            except Exception:
+            except AES_DECRYPTION_ERRORS:
                 continue
         return None
 
@@ -141,7 +146,7 @@ def decrypt_str(ciphertext: Optional[str]) -> Optional[str]:
             try:
                 fernet = Fernet(base64.urlsafe_b64encode(_derive_key(secret)))
                 return fernet.decrypt(token.encode("utf-8")).decode("utf-8")
-            except (InvalidToken, Exception):
+            except FERNET_DECRYPTION_ERRORS:
                 continue
         return None
 
