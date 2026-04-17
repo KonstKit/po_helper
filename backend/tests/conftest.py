@@ -5,6 +5,10 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 
+from tests._flaky_quarantine import (
+    build_flaky_quarantine_skip_reason,
+    validate_flaky_quarantine_metadata,
+)
 from tests._sqlite_schema import reset_sqlite_schema
 
 # Ensure configuration exists before the app loads settings.
@@ -74,6 +78,42 @@ app.dependency_overrides[get_db] = _override_get_db
 app.dependency_overrides[get_current_user] = _override_get_current_user
 limiter.enabled = False
 limiter._headers_enabled = False
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-flaky-quarantine",
+        action="store_true",
+        default=False,
+        help="Execute tests marked with flaky_quarantine.",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    run_quarantined = bool(config.getoption("--run-flaky-quarantine"))
+    policy_errors: list[str] = []
+
+    for item in items:
+        marker = item.get_closest_marker("flaky_quarantine")
+        if marker is None:
+            continue
+
+        try:
+            metadata = validate_flaky_quarantine_metadata(marker.kwargs)
+        except ValueError as exc:
+            policy_errors.append(f"{item.nodeid}: {exc}")
+            continue
+
+        if not run_quarantined:
+            item.add_marker(
+                pytest.mark.skip(reason=build_flaky_quarantine_skip_reason(metadata))
+            )
+
+    if policy_errors:
+        details = "\n- ".join(policy_errors)
+        raise pytest.UsageError(
+            "Invalid flaky_quarantine marker configuration:\n- " + details
+        )
 
 
 @pytest_asyncio.fixture
