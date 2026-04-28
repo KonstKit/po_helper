@@ -12,7 +12,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: po_helper
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - po_helper_postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -29,7 +29,7 @@ services:
     container_name: po_helper_redis
     command: redis-server --port 6381
     ports:
-      - "6381:6381"
+      - "127.0.0.1:6381:6381"
     volumes:
       - po_helper_redis_data:/data
     healthcheck:
@@ -48,7 +48,7 @@ services:
     container_name: po_helper_backend
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file:
       - .env
       - backend/.env
@@ -58,6 +58,8 @@ services:
       - CELERY_BROKER_URL=redis://redis:6381/0
       - CELERY_RESULT_BACKEND=redis://redis:6381/0
       - ENVIRONMENT=development
+      - ALLOW_UNAUTHENTICATED_DEMO_API=false
+      - BACKEND_BIND_HOST=0.0.0.0
     depends_on:
       postgres:
         condition: service_healthy
@@ -75,7 +77,7 @@ services:
       dockerfile: docker/Dockerfile.frontend
     container_name: po_helper_frontend
     ports:
-      - "3000:80"
+      - "127.0.0.1:3000:80"
     environment:
       - VITE_API_BASE_URL=http://localhost:8000
     depends_on:

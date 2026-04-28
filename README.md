@@ -93,6 +93,8 @@ cp .env.example .env
 nano .env
 ```
 
+For a single-user local demo, keep `BACKEND_BIND_HOST=127.0.0.1`, keep `ALLOW_UNAUTHENTICATED_DEMO_API=false`, and set a dedicated `ENCRYPTION_SECRET` for persisted Jira/Confluence tokens.
+
 ### 3. Run with Docker
 ```bash
 # Start all services
@@ -159,7 +161,7 @@ source venv/bin/activate  # Windows: venv\\Scripts\\activate
 pip install -r requirements.txt
 
 # Run development server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+BACKEND_BIND_HOST=127.0.0.1 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 ### Frontend Development
@@ -172,6 +174,8 @@ npm install
 # Start development server
 npm run dev
 ```
+
+If you need frontend-specific local overrides, copy `frontend/.env.example` to `frontend/.env` and keep `VITE_ALLOW_UNAUTHENTICATED_DEMO_API=false` unless you are intentionally running a strict localhost-only demo.
 
 ### Frontend Typecheck/Tests in Docker (no local Node/npm)
 If you don't have `node`/`npm` available on the host, you can run frontend checks inside Docker.
@@ -210,7 +214,7 @@ POST /api/v1/projects/
 ### 2. Sync Jira Data
 ```bash
 # Sync project data
-curl -X POST "http://localhost:8000/api/v1/jira/projects/ECOM/sync"
+curl -X POST -H "Authorization: Bearer <token>" "http://localhost:8000/api/v1/jira/projects/ECOM/sync"
 ```
 
 ### 3. Get Analytics
@@ -236,6 +240,9 @@ The application tracks and visualizes:
 ## рџ”’ Security
 
 - JWT-based authentication
+- Local demo defaults bind the backend to `127.0.0.1` and keep Jira/Confluence sync behind login
+- `ALLOW_UNAUTHENTICATED_DEMO_API` is demo-only and must stay disabled outside strict localhost usage
+- Persisted Jira/Confluence tokens require a dedicated `ENCRYPTION_SECRET`
 - API rate limiting
 - SQL injection protection
 - XSS prevention

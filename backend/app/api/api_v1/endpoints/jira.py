@@ -2,15 +2,18 @@ import asyncio
 from typing import Optional, Dict, Any
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, BackgroundTasks, Query, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from time import perf_counter
+from app.api.deps import require_integration_access
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.crypto import encrypt_integration_secret
 from app.core.metrics import metrics
 from app.services.jira_sync import perform_project_sync
 from app.tasks.jira_tasks import sync_jira_project
 from app.models.settings import IntegrationSetting
-from app.core.crypto import encrypt_str
+from app.models import User
 from app.services.jira import JiraAuthError, JiraUnexpectedResponse
 from app.services.jira_service import jira_service
 from app.services.sync_tracking import reserve_project_sync_task_lease
@@ -22,6 +25,30 @@ import logging
 router = APIRouter()
 logger = logging.getLogger(__name__)
 JIRA_PROJECT_BOARDS_SLOW_THRESHOLD_SECONDS = 3.0
+
+
+class JiraConnectRequest(BaseModel):
+    base_url: str
+    api_token: str
+    email: Optional[str] = None
+    save: bool = False
+    use_pat: bool = True
+
+
+class JiraPatConnectRequest(BaseModel):
+    base_url: str
+    api_token: str
+    save: bool = True
+
+
+def _encrypt_saved_token(token: str) -> str:
+    try:
+        encrypted = encrypt_integration_secret(token)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if encrypted is None:
+        raise HTTPException(status_code=503, detail="Failed to persist Jira credentials.")
+    return encrypted
 
 
 def _normalize_http_base_url(base_url: str, provider: str) -> str:
@@ -84,20 +111,18 @@ async def _call_jira(func, *args, **kwargs):
 
 @router.post("/connect")
 async def connect_to_jira(
-    base_url: str = Query(..., description="Jira base URL"),
-    email: Optional[str] = Query(None, description="Jira email (optional for PAT)"),
-    api_token: str = Query("", description="Jira API token or PAT"),
-    save: bool = Query(False, description="Save credentials to database"),
-    use_pat: bool = Query(True, description="Use Personal Access Token mode"),
+    payload: JiraConnectRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(require_integration_access),
 ):
     """Connect to Jira instance and validate credentials."""
+    del current_user
     with handle_api_error(
         operation="connect_to_jira", exception_map={JiraAuthError: 401, JiraUnexpectedResponse: 502}
     ):
-        normalized_base_url = _normalize_http_base_url(base_url, "jira")
-        resolved_use_pat = bool(use_pat)
-        connect_email = None if resolved_use_pat else (email or None)
+        normalized_base_url = _normalize_http_base_url(payload.base_url, "jira")
+        resolved_use_pat = bool(payload.use_pat)
+        connect_email = None if resolved_use_pat else (payload.email or None)
 
         logger.info(
             "Connecting to Jira: base_url=%s use_pat=%s has_email=%s",
@@ -107,7 +132,11 @@ async def connect_to_jira(
         )
 
         await _call_jira(
-            jira_service.connect, normalized_base_url, connect_email, api_token, use_pat=resolved_use_pat
+            jira_service.connect,
+            normalized_base_url,
+            connect_email,
+            payload.api_token,
+            use_pat=resolved_use_pat,
         )
 
         # Validate by calling /myself
@@ -115,7 +144,7 @@ async def connect_to_jira(
         await _call_jira(jira_service.validate)
         logger.info("Jira validation successful")
 
-        if save:
+        if payload.save:
             # Persist credentials in DB
             result = await db.execute(
                 select(IntegrationSetting).where(IntegrationSetting.kind == "jira")
@@ -130,21 +159,30 @@ async def connect_to_jira(
                     if (jira_service.base_url or normalized_base_url)
                     else None
                 )
-                row.email = None if resolved_use_pat else (email or None)
-                row.api_token = encrypt_str(api_token) if api_token else row.api_token
+                row.email = None if resolved_use_pat else (payload.email or None)
+                row.api_token = (
+                    _encrypt_saved_token(payload.api_token)
+                    if payload.api_token
+                    else row.api_token
+                )
             logger.info("Jira credentials saved to database")
 
         return {"status": "connected", "message": "Successfully connected to Jira"}
 
 
 @router.get("/status")
-async def jira_status():
+async def jira_status(current_user: User | None = Depends(require_integration_access)):
+    del current_user
     return jira_service.status()
 
 
 @router.get("/projects")
-async def list_accessible_projects(q: Optional[str] = None):
+async def list_accessible_projects(
+    q: Optional[str] = None,
+    current_user: User | None = Depends(require_integration_access),
+):
     """List Jira projects accessible by current credentials (key, name, id)."""
+    del current_user
     with handle_api_error(
         operation="list_accessible_projects",
         exception_map={JiraAuthError: 403, JiraUnexpectedResponse: 502},
@@ -154,8 +192,12 @@ async def list_accessible_projects(q: Optional[str] = None):
 
 
 @router.get("/projects/{project_key}/check")
-async def check_project_key(project_key: str):
+async def check_project_key(
+    project_key: str,
+    current_user: User | None = Depends(require_integration_access),
+):
     """Check whether a project key exists and is accessible."""
+    del current_user
     try:
         data = await _call_jira(jira_service.get_project, project_key)
         return {"exists": True, "project": data}
@@ -164,8 +206,12 @@ async def check_project_key(project_key: str):
 
 
 @router.get("/projects/{project_key}/boards")
-async def list_boards(project_key: str):
+async def list_boards(
+    project_key: str,
+    current_user: User | None = Depends(require_integration_access),
+):
     """List Agile boards for a given project key."""
+    del current_user
     start = perf_counter()
     boards_count = 0
     status = "ok"
@@ -187,8 +233,12 @@ async def list_boards(project_key: str):
 
 
 @router.get("/projects/{project_key}")
-async def get_jira_project(project_key: str):
+async def get_jira_project(
+    project_key: str,
+    current_user: User | None = Depends(require_integration_access),
+):
     """Get project details from Jira"""
+    del current_user
     with handle_api_error(
         operation="get_jira_project", status_code=404, context={"project_key": project_key}
     ):
@@ -197,8 +247,13 @@ async def get_jira_project(project_key: str):
 
 
 @router.get("/projects/{project_key}/issues")
-async def get_project_issues(project_key: str, max_results: int = 100):
+async def get_project_issues(
+    project_key: str,
+    max_results: int = 100,
+    current_user: User | None = Depends(require_integration_access),
+):
     """Get all issues for a project from Jira"""
+    del current_user
     with handle_api_error(
         operation="get_project_issues",
         context={"project_key": project_key, "max_results": max_results},
@@ -210,11 +265,15 @@ async def get_project_issues(project_key: str, max_results: int = 100):
 
 @router.post("/projects/{project_key}/sync")
 async def sync_project_data(
-    project_key: str, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
+    project_key: str,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(require_integration_access),
 ):
     """Sync project data from Jira to database.
     Be tolerant: if fetching project meta fails (e.g., restricted), still try to sync issues.
     """
+    del current_user
     # Try fetching project info, but don't fail the whole sync if it errors
     logger = logging.getLogger(__name__)
     jira_project = None
@@ -342,16 +401,24 @@ async def sync_project_data(
 
 
 @router.get("/sprints/{board_id}/active")
-async def get_active_sprints(board_id: int):
+async def get_active_sprints(
+    board_id: int,
+    current_user: User | None = Depends(require_integration_access),
+):
     """Get active sprints for a board"""
+    del current_user
     with handle_api_error(operation="get_active_sprints", context={"board_id": board_id}):
         sprints = await _call_jira(jira_service.get_active_sprints, board_id)
         return {"total": len(sprints), "sprints": sprints}
 
 
 @router.get("/issues/{issue_key}/worklogs")
-async def get_issue_worklogs(issue_key: str):
+async def get_issue_worklogs(
+    issue_key: str,
+    current_user: User | None = Depends(require_integration_access),
+):
     """Get worklogs for an issue"""
+    del current_user
     with handle_api_error(operation="get_issue_worklogs", context={"issue_key": issue_key}):
         worklogs = await _call_jira(jira_service.get_worklogs, issue_key)
         return {"total": len(worklogs), "worklogs": worklogs}
@@ -359,20 +426,32 @@ async def get_issue_worklogs(issue_key: str):
 
 @router.post("/connect_pat")
 async def connect_to_jira_pat(
-    base_url: str,
-    api_token: str,
-    save: bool = True,
+    payload: JiraPatConnectRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(require_integration_access),
 ):
     """Convenience endpoint to connect with PAT (Bearer) explicitly and persist credentials."""
+    del current_user
     return await connect_to_jira(
-        base_url=base_url, email=None, api_token=api_token, save=save, use_pat=True, db=db
+        payload=JiraConnectRequest(
+            base_url=payload.base_url,
+            api_token=payload.api_token,
+            email=None,
+            save=payload.save,
+            use_pat=True,
+        ),
+        db=db,
+        current_user=None,
     )
 
 
 @router.get("/debug/{project_key}")
-async def debug_jira_project(project_key: str):
+async def debug_jira_project(
+    project_key: str,
+    current_user: User | None = Depends(require_integration_access),
+):
     """Debug endpoint to check Jira permissions and data availability for a project."""
+    del current_user
     results: Dict[str, Any] = {"project_key": project_key, "checks": {}, "errors": []}
 
     # Check 1: Can we get the project?

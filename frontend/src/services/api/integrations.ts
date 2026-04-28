@@ -37,15 +37,15 @@ export const connectJira = async (payload: {
   save?: boolean;
   usePat?: boolean;
 }): Promise<{ status: string; message?: string }> => {
-  const params: Record<string, unknown> = {
+  const body: Record<string, unknown> = {
     base_url: payload.baseUrl,
     api_token: payload.apiToken,
   };
-  if (payload.email !== undefined) params.email = payload.email;
-  if (payload.save !== undefined) params.save = payload.save;
-  if (payload.usePat !== undefined) params.use_pat = payload.usePat;
+  if (payload.email !== undefined) body.email = payload.email;
+  if (payload.save !== undefined) body.save = payload.save;
+  if (payload.usePat !== undefined) body.use_pat = payload.usePat;
 
-  const { data } = await api.post("/v1/jira/connect", undefined, { params });
+  const { data } = await api.post("/v1/jira/connect", body);
   return data;
 };
 

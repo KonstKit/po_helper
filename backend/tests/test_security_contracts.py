@@ -195,3 +195,72 @@ def test_production_logging_uses_json_formatter(monkeypatch):
     finally:
         root_logger.handlers[:] = original_handlers
         root_logger.setLevel(original_level)
+
+
+def test_runtime_security_requires_dedicated_encryption_secret_in_production(monkeypatch):
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "SECRET_KEY", "shared-secret")
+    monkeypatch.setattr(settings, "ENCRYPTION_SECRET", None)
+
+    with pytest.raises(RuntimeError, match="strong dedicated ENCRYPTION_SECRET is required"):
+        app_main._validate_runtime_security_settings()
+
+
+def test_runtime_security_rejects_shared_encryption_secret_in_production(monkeypatch):
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "SECRET_KEY", "shared-secret")
+    monkeypatch.setattr(settings, "ENCRYPTION_SECRET", "shared-secret")
+
+    with pytest.raises(RuntimeError, match="strong dedicated ENCRYPTION_SECRET is required"):
+        app_main._validate_runtime_security_settings()
+
+
+def test_runtime_security_rejects_placeholder_encryption_secret_in_production(monkeypatch):
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "SECRET_KEY", "shared-secret")
+    monkeypatch.setattr(settings, "ENCRYPTION_SECRET", "generate-another-secret-key-here")
+
+    with pytest.raises(RuntimeError, match="strong dedicated ENCRYPTION_SECRET is required"):
+        app_main._validate_runtime_security_settings()
+
+
+def test_runtime_security_accepts_strong_encryption_secret_in_production(monkeypatch):
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "SECRET_KEY", "shared-secret")
+    monkeypatch.setattr(settings, "ENCRYPTION_SECRET", "B4ckendEnc!Secret_2026_LocalDemo#001234")
+    monkeypatch.setattr(settings, "ALLOW_UNAUTHENTICATED_DEMO_API", False)
+
+    app_main._validate_runtime_security_settings()
+
+
+def test_runtime_security_rejects_demo_bypass_on_non_loopback_bind(monkeypatch):
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    monkeypatch.setattr(settings, "ALLOW_UNAUTHENTICATED_DEMO_API", True)
+    monkeypatch.setattr(settings, "BACKEND_BIND_HOST", "0.0.0.0")
+    monkeypatch.setattr(settings, "CORS_ORIGINS", ["http://127.0.0.1:3000"])
+
+    with pytest.raises(RuntimeError, match="BACKEND_BIND_HOST"):
+        app_main._validate_runtime_security_settings()
+
+
+def test_runtime_security_rejects_demo_bypass_with_non_local_cors(monkeypatch):
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    monkeypatch.setattr(settings, "ALLOW_UNAUTHENTICATED_DEMO_API", True)
+    monkeypatch.setattr(settings, "BACKEND_BIND_HOST", "127.0.0.1")
+    monkeypatch.setattr(settings, "CORS_ORIGINS", ["https://demo.example.com"])
+
+    with pytest.raises(RuntimeError, match="local-only CORS origins"):
+        app_main._validate_runtime_security_settings()
+
+
+def test_runtime_security_allows_local_demo_bypass_with_loopback_bind(monkeypatch):
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    monkeypatch.setattr(settings, "ALLOW_UNAUTHENTICATED_DEMO_API", True)
+    monkeypatch.setattr(settings, "BACKEND_BIND_HOST", "127.0.0.1")
+    monkeypatch.setattr(
+        settings,
+        "CORS_ORIGINS",
+        ["http://localhost:3000", "http://127.0.0.1:5173"],
+    )
+
+    app_main._validate_runtime_security_settings()

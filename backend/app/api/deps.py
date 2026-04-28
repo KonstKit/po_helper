@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import ipaddress
 import logging
 from typing import Any, Optional
+from urllib.parse import urlparse
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +26,63 @@ from app.models import Project, Role, User
 from app.utils import handle_api_error
 
 logger = logging.getLogger(__name__)
+
+
+def _clear_auth_context() -> None:
+    set_token_scopes(None)
+    set_token_tenant_id(None)
+    set_actor_id(None)
+
+
+def _is_loopback_host(host: str | None) -> bool:
+    normalized = (host or "").strip().strip("[]").lower()
+    if not normalized:
+        return False
+    if normalized == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
+
+
+def _extract_host_without_port(host: str | None) -> str | None:
+    normalized = (host or "").strip()
+    if not normalized:
+        return None
+    if normalized.startswith("["):
+        closing = normalized.find("]")
+        if closing != -1:
+            return normalized[1:closing]
+        return normalized[1:]
+    if normalized.count(":") == 1:
+        return normalized.split(":", 1)[0]
+    return normalized
+
+
+def _is_local_origin(origin: str | None) -> bool:
+    if not origin:
+        return True
+    try:
+        parsed = urlparse(origin)
+    except ValueError:
+        return False
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    return _is_loopback_host(parsed.hostname)
+
+
+def _is_local_demo_request(request: Request) -> bool:
+    client_host = request.client.host if request.client else None
+    if not _is_loopback_host(client_host):
+        return False
+
+    host_header = request.headers.get("host")
+    request_host = request.url.hostname
+    if not _is_loopback_host(_extract_host_without_port(host_header) or request_host):
+        return False
+
+    return _is_local_origin(request.headers.get("origin"))
 
 
 def _normalize_token_scopes(scopes: Any) -> Optional[tuple[str, ...]]:
@@ -194,11 +253,20 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
     authorization: Optional[str] = Header(default=None, convert_underscores=False),
 ) -> User:
-    """Resolve the current user from the Authorization header.
+    """Resolve the current user from the Authorization header."""
+    return await _resolve_current_user(
+        db,
+        authorization=authorization,
+        allow_debug_demo_fallback=True,
+    )
 
-    Falls back to a demo user in development environments when no token is supplied.
-    Eagerly loads user roles for permission checking.
-    """
+
+async def _resolve_current_user(
+    db: AsyncSession,
+    *,
+    authorization: Optional[str],
+    allow_debug_demo_fallback: bool,
+) -> User:
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization.split(" ", 1)[1]
         with handle_api_error(operation="decode_token", status_code=status.HTTP_401_UNAUTHORIZED):
@@ -206,7 +274,6 @@ async def get_current_user(
         email = payload.get("sub")
         if not email:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-        # Eagerly load roles for permission checking
         result = await db.execute(
             select(User).options(selectinload(User.roles)).where(User.email == email)
         )
@@ -217,19 +284,64 @@ async def get_current_user(
         set_token_tenant_id(_normalize_tenant_id(payload.get("tenant_id")))
         set_actor_id(user.id)
         return user
-    # In non-debug environments, require a valid token; do not auto-create demo users.
-    if settings.DEBUG:
+
+    _clear_auth_context()
+
+    if allow_debug_demo_fallback and settings.DEBUG:
         user = await _get_or_create_demo_user(db)
-        # Eagerly load roles for permission checking
         result = await db.execute(
             select(User).options(selectinload(User.roles)).where(User.id == user.id)
         )
         user = result.scalar_one()
-        set_token_scopes(None)
-        set_token_tenant_id(None)
         set_actor_id(user.id)
         return user
+
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
+
+async def get_current_user_strict(
+    db: AsyncSession = Depends(get_db),
+    authorization: Optional[str] = Header(default=None, convert_underscores=False),
+) -> User:
+    """Resolve the current user without DEBUG/demo fallback."""
+    return await _resolve_current_user(
+        db,
+        authorization=authorization,
+        allow_debug_demo_fallback=False,
+    )
+
+
+async def require_integration_access(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    authorization: Optional[str] = Header(default=None, convert_underscores=False),
+) -> User | None:
+    """
+    Require a real authenticated user for integration endpoints unless the
+    explicit unauthenticated local-demo bypass is enabled.
+    """
+    if (
+        settings.ALLOW_UNAUTHENTICATED_DEMO_API
+        and not authorization
+        and request is not None
+        and _is_local_demo_request(request)
+    ):
+        _clear_auth_context()
+        return None
+
+    if settings.ALLOW_UNAUTHENTICATED_DEMO_API and not authorization:
+        logger.warning(
+            "Rejected unauthenticated integration access outside local-demo request boundary: client=%s host=%s origin=%s",
+            request.client.host if request and request.client else None,
+            request.headers.get("host") if request else None,
+            request.headers.get("origin") if request else None,
+        )
+
+    return await _resolve_current_user(
+        db,
+        authorization=authorization,
+        allow_debug_demo_fallback=False,
+    )
 
 
 async def ensure_project_access(

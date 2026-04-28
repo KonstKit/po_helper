@@ -34,7 +34,7 @@
 Префикс: `/api/v1`.
 
 Confluence (`backend/app/api/api_v1/endpoints/confluence.py`):
-- `POST /confluence/connect?base_url=&email=&api_token=` — подключение и валидация (REST `latest`/`v2`).
+- `POST /confluence/connect` — подключение и валидация (JSON body, REST `latest`/`v2`).
 - `GET  /confluence/status` — состояние подключения (configured, base_url, auth_mode).
 - `GET  /confluence/search?cql=...&limit=...` — CQL‑поиск, список страниц (id, title, type, url, version, last_updated).
 - `GET  /confluence/pages/{page_id}` — метаданные + HTML (storage) + labels.
@@ -95,15 +95,22 @@ cd backend
 # .venv\Scripts\python -m pip install -r requirements.txt
 
 # Запуск
+.venv\Scripts\Activate.ps1
+$env:BACKEND_BIND_HOST = "127.0.0.1"
 .venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 Проверка: `GET /health`, документация: `GET /api/v1/docs`.
 
+Для local demo:
+- backend должен слушать только `127.0.0.1`;
+- `ALLOW_UNAUTHENTICATED_DEMO_API=false` по умолчанию;
+- для сохранения Jira/Confluence токенов нужен отдельный `ENCRYPTION_SECRET`.
+
 ## Быстрые сценарии проверки Confluence
 - Подключение (PAT):
-  - `POST /api/v1/confluence/connect?base_url=https://<org>.atlassian.net&api_token=<pat>`
+- `curl -X POST http://127.0.0.1:8000/api/v1/confluence/connect -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d "{\"base_url\":\"https://<org>.atlassian.net\",\"api_token\":\"<pat>\"}"`
 - Подключение (Basic):
-  - `POST /api/v1/confluence/connect?base_url=https://<org>.atlassian.net&email=user@org&api_token=<token>`
+- `curl -X POST http://127.0.0.1:8000/api/v1/confluence/connect -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d "{\"base_url\":\"https://<org>.atlassian.net\",\"email\":\"user@org\",\"api_token\":\"<token>\"}"`
 - Статус: `GET /api/v1/confluence/status`.
 - Поиск (CQL): `GET /api/v1/confluence/search?cql=text%20~%20%22PRD%22%20ORDER%20BY%20lastmodified%20DESC`.
 - Страница: `GET /api/v1/confluence/pages/{page_id}`.

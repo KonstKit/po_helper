@@ -2,6 +2,19 @@ from typing import Optional, List
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+MIN_STRONG_ENCRYPTION_SECRET_LENGTH = 32
+MIN_STRONG_ENCRYPTION_SECRET_UNIQUE_CHARS = 10
+WEAK_ENCRYPTION_SECRET_MARKERS = (
+    "change-me",
+    "changeme",
+    "replace-me",
+    "replace_this",
+    "placeholder",
+    "secret-key-here",
+    "change-in-production",
+    "generate-another-secret-key-here",
+)
+
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "PO Helper"
@@ -44,6 +57,9 @@ class Settings(BaseSettings):
         "http://localhost:8000",
         "http://localhost:8001",
     ]
+
+    BACKEND_BIND_HOST: str = "127.0.0.1"
+    ALLOW_UNAUTHENTICATED_DEMO_API: bool = False
 
     # Encryption
     ENCRYPTION_SECRET: Optional[str] = None  # if not set, falls back to SECRET_KEY
@@ -183,6 +199,29 @@ class Settings(BaseSettings):
     def is_staging(self) -> bool:
         return self.ENVIRONMENT == "staging"
 
+    @property
+    def has_dedicated_encryption_secret(self) -> bool:
+        secret = (self.ENCRYPTION_SECRET or "").strip()
+        fallback = (self.SECRET_KEY or "").strip()
+        return bool(secret) and secret != fallback
+
+    @property
+    def has_strong_encryption_secret(self) -> bool:
+        secret = (self.ENCRYPTION_SECRET or "").strip()
+        if not secret:
+            return False
+        if len(secret) < MIN_STRONG_ENCRYPTION_SECRET_LENGTH:
+            return False
+        if len(set(secret)) < MIN_STRONG_ENCRYPTION_SECRET_UNIQUE_CHARS:
+            return False
+
+        lowered = secret.lower()
+        return not any(marker in lowered for marker in WEAK_ENCRYPTION_SECRET_MARKERS)
+
+    @property
+    def has_strong_dedicated_encryption_secret(self) -> bool:
+        return self.has_dedicated_encryption_secret and self.has_strong_encryption_secret
+
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
     @field_validator("ENVIRONMENT", mode="before")
@@ -225,6 +264,22 @@ class Settings(BaseSettings):
         if isinstance(value, list):
             return [str(part).strip() for part in value if str(part).strip()]
         return []
+
+    @field_validator("ENCRYPTION_SECRET", mode="before")
+    @classmethod
+    def _normalize_encryption_secret(cls, value: str | None) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("BACKEND_BIND_HOST", mode="before")
+    @classmethod
+    def _normalize_backend_bind_host(cls, value: str | None) -> str:
+        if value is None:
+            return "127.0.0.1"
+        normalized = value.strip()
+        return normalized or "127.0.0.1"
 
 
 settings = Settings()
