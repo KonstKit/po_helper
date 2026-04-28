@@ -3,6 +3,7 @@
 
 $port = 8000
 $host = "127.0.0.1"
+$env:BACKEND_BIND_HOST = $host
 
 Write-Host "Checking for processes on port $port..." -ForegroundColor Yellow
 

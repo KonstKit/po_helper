@@ -16,6 +16,11 @@ BASE64_DECODE_ERRORS = (binascii.Error, ValueError, TypeError)
 AES_DECRYPTION_ERRORS = (InvalidTag, ValueError, TypeError, UnicodeDecodeError)
 FERNET_DECRYPTION_ERRORS = (InvalidToken, ValueError, TypeError, UnicodeDecodeError)
 
+
+def has_dedicated_encryption_secret() -> bool:
+    return settings.has_dedicated_encryption_secret
+
+
 def _iter_encryption_secrets(include_legacy: bool = True) -> list[str]:
     secrets: list[str] = []
     if settings.ENCRYPTION_SECRET:
@@ -114,6 +119,27 @@ def encrypt_str(plaintext: Optional[str]) -> Optional[str]:
     aesgcm = _get_aesgcm()
     if not aesgcm:
         return plaintext
+    nonce = os.urandom(12)
+    ciphertext = aesgcm.encrypt(nonce, plaintext.encode("utf-8"), associated_data=None)
+    token = base64.urlsafe_b64encode(nonce + ciphertext).decode("utf-8")
+    return f"{AES_GCM_PREFIX}{token}"
+
+
+def encrypt_integration_secret(plaintext: Optional[str]) -> Optional[str]:
+    if not plaintext:
+        return None
+    if not has_dedicated_encryption_secret():
+        raise RuntimeError(
+            "A dedicated ENCRYPTION_SECRET is required to persist Jira/Confluence tokens."
+        )
+
+    secret = settings.ENCRYPTION_SECRET
+    if not secret:
+        raise RuntimeError(
+            "A dedicated ENCRYPTION_SECRET is required to persist Jira/Confluence tokens."
+        )
+
+    aesgcm = AESGCM(_derive_key(secret))
     nonce = os.urandom(12)
     ciphertext = aesgcm.encrypt(nonce, plaintext.encode("utf-8"), associated_data=None)
     token = base64.urlsafe_b64encode(nonce + ciphertext).decode("utf-8")

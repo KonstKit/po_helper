@@ -128,6 +128,118 @@ export interface ConfluenceSyncResult {
   updated: number;
 }
 
+export interface ConfluenceSyncStreamEvent extends Partial<ConfluenceSyncResult> {
+  type: 'start' | 'progress' | 'complete' | 'error';
+  percent?: number;
+  message?: string;
+}
+
+export interface ConfluenceSyncStreamHandle {
+  mode: 'fetch' | 'eventsource';
+  close: () => void;
+}
+
+const resolveApiBaseForStreaming = (): string => {
+  const configured = (import.meta.env.VITE_API_URL || '').trim();
+  if (configured) {
+    return configured.replace(/\/+$/, '');
+  }
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return '';
+};
+
+const buildApiV1StreamingUrl = (endpoint: string, params: URLSearchParams): string => {
+  const base = resolveApiBaseForStreaming();
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  if (!base) {
+    return `/api/v1${normalizedEndpoint}?${params.toString()}`;
+  }
+  const apiPrefix = base.endsWith('/api') ? '/v1' : '/api/v1';
+  return `${base}${apiPrefix}${normalizedEndpoint}?${params.toString()}`;
+};
+
+const isUnauthenticatedDemoStreamEnabled = (): boolean =>
+  String(import.meta.env.VITE_ALLOW_UNAUTHENTICATED_DEMO_API || '').toLowerCase() === 'true';
+
+const parseSyncStreamEvent = (rawEvent: string): ConfluenceSyncStreamEvent | null => {
+  const dataLines = rawEvent
+    .split('\n')
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart());
+
+  if (dataLines.length === 0) {
+    return null;
+  }
+
+  const payload = JSON.parse(dataLines.join('\n'));
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  return payload as ConfluenceSyncStreamEvent;
+};
+
+const parseErrorDetail = (payload: unknown, fallback: string): Error => {
+  if (payload && typeof payload === 'object') {
+    const detail = (payload as { detail?: unknown }).detail;
+    if (typeof detail === 'string' && detail.trim()) {
+      return new Error(detail);
+    }
+  }
+  return new Error(fallback);
+};
+
+const consumeEventStream = async (
+  response: Response,
+  onEvent: (event: ConfluenceSyncStreamEvent) => void,
+): Promise<void> => {
+  if (!response.ok) {
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    throw parseErrorDetail(payload, `Sync request failed with status ${response.status}`);
+  }
+
+  if (!response.body) {
+    throw new Error('Streaming response body is not available.');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    buffer = buffer.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+    let boundaryIndex = buffer.indexOf('\n\n');
+    while (boundaryIndex !== -1) {
+      const rawEvent = buffer.slice(0, boundaryIndex).trim();
+      buffer = buffer.slice(boundaryIndex + 2);
+      boundaryIndex = buffer.indexOf('\n\n');
+
+      if (!rawEvent || rawEvent.startsWith(':')) {
+        continue;
+      }
+
+      const event = parseSyncStreamEvent(rawEvent);
+      if (event) {
+        onEvent(event);
+      }
+    }
+
+    if (done) {
+      break;
+    }
+  }
+};
+
 export const syncConfluence = async (opts?: {
   space?: string;
   q?: string;
@@ -147,6 +259,81 @@ export const syncConfluence = async (opts?: {
     timeout: 120000,
   });
   return data as ConfluenceSyncResult;
+};
+
+export const startConfluenceSyncStream = (
+  opts: {
+    space?: string;
+    q?: string;
+    limit?: number;
+    start?: number;
+    full?: boolean;
+  },
+  handlers: {
+    onEvent: (event: ConfluenceSyncStreamEvent) => void;
+    onError: (error: Error) => void;
+  }
+): ConfluenceSyncStreamHandle => {
+  const params = new URLSearchParams();
+  if (opts.space) params.set('space', opts.space);
+  if (opts.q) params.set('q', opts.q);
+  params.set('limit', String(opts.limit ?? 50));
+  params.set('full', opts.full === false ? 'false' : 'true');
+  if (opts.start !== undefined) params.set('start', String(opts.start));
+
+  const url = buildApiV1StreamingUrl('/confluence/sync-sse', params);
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+
+  if (token) {
+    const controller = new AbortController();
+
+    void (async () => {
+      try {
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            Accept: 'text/event-stream',
+            Authorization: `Bearer ${token}`,
+          },
+          signal: controller.signal,
+        });
+        await consumeEventStream(response, handlers.onEvent);
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        handlers.onError(error instanceof Error ? error : new Error('Confluence sync failed.'));
+      }
+    })();
+
+    return {
+      mode: 'fetch',
+      close: () => controller.abort(),
+    };
+  }
+
+  if (!isUnauthenticatedDemoStreamEnabled()) {
+    throw new Error('Authentication is required for Confluence sync.');
+  }
+
+  const eventSource = new EventSource(url);
+  eventSource.onmessage = (event) => {
+    try {
+      const parsed = JSON.parse(event.data) as ConfluenceSyncStreamEvent;
+      handlers.onEvent(parsed);
+    } catch {
+      handlers.onError(new Error('Received invalid sync stream payload.'));
+    }
+  };
+  eventSource.onerror = () => {
+    eventSource.close();
+    handlers.onError(new Error('SSE connection failed.'));
+  };
+
+  return {
+    mode: 'eventsource',
+    close: () => eventSource.close(),
+  };
 };
 
 // =============================================================================

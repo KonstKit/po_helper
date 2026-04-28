@@ -35,6 +35,7 @@ db_module = importlib.import_module("app.core.database")
 AsyncSessionLocal = db_module.AsyncSessionLocal
 get_db = db_module.get_db
 get_current_user = importlib.import_module("app.api.deps").get_current_user
+require_integration_access = importlib.import_module("app.api.deps").require_integration_access
 cache_enhanced = importlib.import_module("app.core.cache_enhanced")
 limiter = importlib.import_module("app.core.rate_limit").limiter
 
@@ -76,6 +77,7 @@ async def _override_get_current_user():
 
 app.dependency_overrides[get_db] = _override_get_db
 app.dependency_overrides[get_current_user] = _override_get_current_user
+app.dependency_overrides[require_integration_access] = _override_get_current_user
 limiter.enabled = False
 limiter._headers_enabled = False
 

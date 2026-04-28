@@ -1,6 +1,7 @@
 """Sprint Quality Report Generation endpoints."""
 
 from datetime import timezone
+from pathlib import Path
 
 from .common import (
     APIRouter,
@@ -41,6 +42,20 @@ from .common import (
 from .metrics import get_quality_summary
 
 router = APIRouter()
+
+
+def _resolve_report_download_path(filename: str) -> Path:
+    reports_dir = Path(report_service.reports_dir).resolve()
+    requested = Path(filename)
+
+    if requested.is_absolute() or requested.name != filename or filename in {".", ".."}:
+        raise HTTPException(status_code=400, detail="Invalid report filename")
+
+    resolved = (reports_dir / requested).resolve()
+    if reports_dir not in resolved.parents or not resolved.exists():
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    return resolved
 
 
 @router.get("/reports/data", response_model=SprintQualityReport)
@@ -219,12 +234,7 @@ async def generate_report(
 @router.get("/reports/download/{filename}")
 async def download_report(filename: str):
     """Download a generated report file."""
-    import os
-
-    filepath = os.path.join(report_service.reports_dir, filename)
-
-    if not os.path.exists(filepath):
-        raise HTTPException(status_code=404, detail="Report not found")
+    filepath = _resolve_report_download_path(filename)
 
     # Determine media type
     if filename.endswith(".pdf"):
@@ -237,7 +247,7 @@ async def download_report(filename: str):
         media_type = "application/octet-stream"
 
     return FileResponse(
-        path=filepath,
+        path=str(filepath),
         filename=filename,
         media_type=media_type,
     )

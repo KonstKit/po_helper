@@ -291,6 +291,7 @@ export {
   getPrdRequirements,
   // Sync
   syncConfluence,
+  startConfluenceSyncStream,
   getSpaceTree,
   syncSubtree,
   // ADR
@@ -306,6 +307,8 @@ export {
   type PrdRequirement,
   type PrdRequirementsResponse,
   type ConfluenceSyncResult,
+  type ConfluenceSyncStreamEvent,
+  type ConfluenceSyncStreamHandle,
   type SpaceTreeNode,
   type SpaceTreeResponse,
   type ADRResponse,

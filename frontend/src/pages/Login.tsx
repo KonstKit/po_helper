@@ -29,7 +29,6 @@ import {
   googleOAuthCallback,
   microsoftOAuthCallback,
   verifyMFALogin,
-  connectJira,
   loginWithPassword,
   OAuth2Providers,
 } from '../services/api';
@@ -54,10 +53,6 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [isJiraConfig, setIsJiraConfig] = useState(false);
-  const [jiraUrl, setJiraUrl] = useState('');
-  const [jiraEmail, setJiraEmail] = useState('');
-  const [jiraToken, setJiraToken] = useState('');
 
   // OAuth2 state
   const [oauthProviders, setOauthProviders] = useState<OAuth2Providers | null>(null);
@@ -242,93 +237,6 @@ const Login = () => {
     setError('');
   };
 
-  const handleJiraConnect = async () => {
-    try {
-      await connectJira({
-        baseUrl: jiraUrl,
-        email: jiraEmail || undefined,
-        apiToken: jiraToken,
-        save: false,
-        usePat: !jiraEmail,
-      });
-
-      setIsJiraConfig(false);
-      // Show success message
-    } catch (err: unknown) {
-      setError(getErrorMessage(err, 'Failed to connect to Jira'));
-    }
-  };
-
-  if (isJiraConfig) {
-    return (
-      <Container component="main" maxWidth="xs">
-        <Box
-          sx={{
-            marginTop: 8,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-          }}
-        >
-          <Paper elevation={3} sx={{ padding: 4, width: '100%' }}>
-            <Typography component="h1" variant="h5" align="center">
-              Configure Jira Connection
-            </Typography>
-            <Box component="form" onSubmit={(e) => { e.preventDefault(); handleJiraConnect(); }} sx={{ mt: 1 }}>
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                label="Jira URL"
-                placeholder="https://company.atlassian.net"
-                value={jiraUrl}
-                onChange={(e) => setJiraUrl(e.target.value)}
-              />
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                label="Jira Email"
-                type="email"
-                value={jiraEmail}
-                onChange={(e) => setJiraEmail(e.target.value)}
-              />
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                label="Jira API Token"
-                type="password"
-                value={jiraToken}
-                onChange={(e) => setJiraToken(e.target.value)}
-              />
-              {error && (
-                <Alert severity="error" sx={{ mt: 2 }}>
-                  {error}
-                </Alert>
-              )}
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                sx={{ mt: 3, mb: 2 }}
-              >
-                Connect to Jira
-              </Button>
-              <Button
-                fullWidth
-                variant="text"
-                onClick={() => setIsJiraConfig(false)}
-              >
-                Back to Login
-              </Button>
-            </Box>
-          </Paper>
-        </Box>
-      </Container>
-    );
-  }
-
   return (
     <Container component="main" maxWidth="xs">
       <Box
@@ -413,14 +321,9 @@ const Login = () => {
             {(oauthProviders?.google || oauthProviders?.microsoft) && (
               <Divider sx={{ my: 2 }} />
             )}
-
-            <Button
-              fullWidth
-              variant="outlined"
-              onClick={() => setIsJiraConfig(true)}
-            >
-              Configure Jira Connection
-            </Button>
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Configure Jira and Confluence after sign-in from Settings or onboarding.
+            </Alert>
             <Box mt={2} textAlign="center">
               <Link href="#" variant="body2">
                 Forgot password?

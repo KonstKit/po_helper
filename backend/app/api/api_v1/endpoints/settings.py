@@ -11,12 +11,25 @@ from app.schemas.settings import IntegrationSettings, IntegrationSettingsBase
 from app.services.jira_service import jira_service
 from app.services.jira import JiraAuthError, JiraUnexpectedResponse
 from app.services.confluence_service import confluence_service
-from app.core.crypto import encrypt_str, decrypt_str
+from app.core.crypto import decrypt_str, encrypt_integration_secret, encrypt_str
 from app.api.deps import require_permission
 from app.utils import transactional_session, handle_api_error
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _encrypt_external_integration_token(token: str, provider: str) -> str:
+    try:
+        encrypted = encrypt_integration_secret(token)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if encrypted is None:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to persist {provider} credentials due to encryption configuration.",
+        )
+    return encrypted
 
 
 async def _get_integration(db: AsyncSession, kind: str) -> IntegrationSetting | None:
@@ -77,7 +90,7 @@ async def put_jira_settings(
             None if use_pat else (payload.email if payload.email is not None else row.email)
         )
         if payload.api_token is not None and payload.api_token != "":
-            row.api_token = encrypt_str(payload.api_token)
+            row.api_token = _encrypt_external_integration_token(payload.api_token, "Jira")
     await db.refresh(row)
     # Update in-memory Jira client without blocking the event loop
     try:
@@ -249,7 +262,7 @@ async def put_confluence_settings(
         row.base_url = base_url
         row.email = payload.email if payload.email is not None else row.email
         row.api_token = (
-            encrypt_str(payload.api_token)
+            _encrypt_external_integration_token(payload.api_token, "Confluence")
             if (payload.api_token is not None and payload.api_token != "")
             else row.api_token
         )

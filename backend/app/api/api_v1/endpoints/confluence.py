@@ -2,12 +2,16 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from typing import Optional, AsyncGenerator, Any, cast
+from pydantic import BaseModel
+from app.api.deps import require_integration_access
 from app.services.confluence_service import confluence_service
 from bs4 import BeautifulSoup
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from app.core.crypto import encrypt_integration_secret
 from app.core.database import get_db
 from app.models.confluence import ConfluencePage
+from app.models import User
 from app.models.settings import IntegrationSetting
 from app.utils import transactional_session, handle_api_error
 from datetime import datetime, timezone
@@ -18,6 +22,24 @@ import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+class ConfluenceConnectRequest(BaseModel):
+    base_url: str
+    api_token: str
+    email: Optional[str] = None
+    is_cloud: Optional[bool] = None
+    save: bool = False
+
+
+def _encrypt_saved_token(token: str) -> str:
+    try:
+        encrypted = encrypt_integration_secret(token)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if encrypted is None:
+        raise HTTPException(status_code=503, detail="Failed to persist Confluence credentials.")
+    return encrypted
 
 
 def _normalize_http_base_url(base_url: str, provider: str) -> str:
@@ -38,12 +60,9 @@ async def _call_confluence(func, *args, **kwargs):
 
 @router.post("/connect")
 async def connect_confluence(
-    base_url: str,
-    email: Optional[str] = None,
-    api_token: str = "",
-    is_cloud: Optional[bool] = None,
-    save: bool = False,
+    payload: ConfluenceConnectRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(require_integration_access),
 ):
     """Connect to Confluence instance.
 
@@ -54,13 +73,18 @@ async def connect_confluence(
         is_cloud: True for Cloud, False for Data Center/Server, None for auto-detect (default)
         save: Whether to save credentials to database
     """
+    del current_user
     with handle_api_error(operation="connect_confluence"):
-        normalized_base_url = _normalize_http_base_url(base_url, "confluence")
+        normalized_base_url = _normalize_http_base_url(payload.base_url, "confluence")
         await _call_confluence(
-            confluence_service.connect, normalized_base_url, email, api_token, is_cloud=is_cloud
+            confluence_service.connect,
+            normalized_base_url,
+            payload.email,
+            payload.api_token,
+            is_cloud=payload.is_cloud,
         )
         await _call_confluence(confluence_service.validate)
-        if save:
+        if payload.save:
             result = await db.execute(
                 select(IntegrationSetting).where(IntegrationSetting.kind == "confluence")
             )
@@ -69,26 +93,33 @@ async def connect_confluence(
                 if not row:
                     row = IntegrationSetting(kind="confluence")
                     db.add(row)
-                # Persist normalized base_url after discovery (/wiki etc.)
-                from app.core.crypto import encrypt_str
-
                 row.base_url = (
                     (confluence_service.base_url or normalized_base_url).rstrip("/")
                     if (confluence_service.base_url or normalized_base_url)
                     else None
                 )
-                row.email = email or None
-                row.api_token = encrypt_str(api_token) if api_token else row.api_token
+                row.email = payload.email or None
+                row.api_token = (
+                    _encrypt_saved_token(payload.api_token)
+                    if payload.api_token
+                    else row.api_token
+                )
         return {"status": "connected", **confluence_service.status()}
 
 
 @router.get("/status")
-async def status():
+async def status(current_user: User | None = Depends(require_integration_access)):
+    del current_user
     return confluence_service.status()
 
 
 @router.get("/search")
-async def search_cql(cql: str, limit: int = 50):
+async def search_cql(
+    cql: str,
+    limit: int = 50,
+    current_user: User | None = Depends(require_integration_access),
+):
+    del current_user
     with handle_api_error(operation="search_cql"):
         results = await _call_confluence(confluence_service.search_content, cql, limit)
         items = []
@@ -111,7 +142,12 @@ async def search_cql(cql: str, limit: int = 50):
 
 
 @router.get("/spaces")
-async def list_spaces(q: Optional[str] = None, limit: int = 50):
+async def list_spaces(
+    q: Optional[str] = None,
+    limit: int = 50,
+    current_user: User | None = Depends(require_integration_access),
+):
+    del current_user
     with handle_api_error(operation="list_spaces"):
         items = await _call_confluence(confluence_service.list_spaces, q=q, limit=limit)
         return {"count": len(items), "results": items}
@@ -119,8 +155,13 @@ async def list_spaces(q: Optional[str] = None, limit: int = 50):
 
 @router.get("/pages")
 async def list_pages(
-    space: Optional[str] = None, q: Optional[str] = None, limit: int = 50, start: int = 0
+    space: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 50,
+    start: int = 0,
+    current_user: User | None = Depends(require_integration_access),
 ):
+    del current_user
     with handle_api_error(operation="list_pages"):
         items = await _call_confluence(
             confluence_service.list_pages, space=space, q=q, limit=limit, start=start
@@ -129,7 +170,13 @@ async def list_pages(
 
 
 @router.get("/spaces/{space_key}/tree")
-async def get_space_tree(space_key: str, limit: int = 100, max_pages: Optional[int] = None):
+async def get_space_tree(
+    space_key: str,
+    limit: int = 100,
+    max_pages: Optional[int] = None,
+    current_user: User | None = Depends(require_integration_access),
+):
+    del current_user
     with handle_api_error(operation="get_space_tree", context={"space_key": space_key}):
         tree = await _call_confluence(
             confluence_service.list_space_tree, space_key, page_limit=limit, max_pages=max_pages
@@ -246,6 +293,7 @@ async def sync_confluence(
     start: int = 0,
     full: bool = False,
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(require_integration_access),
 ):
     """Sync Confluence pages to local database.
 
@@ -256,6 +304,7 @@ async def sync_confluence(
         start: Starting offset (default: 0)
         full: If True, sync ALL pages; if False, only one batch (default: False)
     """
+    del current_user
     import logging
 
     logger = logging.getLogger(__name__)
@@ -336,8 +385,10 @@ async def sync_confluence_sse(
     start: int = 0,
     full: bool = True,
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(require_integration_access),
 ):
     """Sync Confluence pages with real-time progress updates via Server-Sent Events."""
+    del current_user
 
     async def generate_events() -> AsyncGenerator[str, None]:
         page_start = max(0, start)
@@ -464,9 +515,6 @@ async def sync_confluence_sse(
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "X-Accel-Buffering": "no",  # Disable Nginx buffering
             "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",  # Allow CORS for SSE
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
         },
     )
 
@@ -476,8 +524,10 @@ async def start_celery_sync(
     space: Optional[str] = None,
     q: Optional[str] = None,
     full: bool = True,
+    current_user: User | None = Depends(require_integration_access),
 ):
     """Start Confluence sync using Celery for robust background processing."""
+    del current_user
     with handle_api_error(
         operation="start_celery_sync", status_code=500, exception_map={ImportError: 503}
     ):
@@ -501,8 +551,12 @@ async def start_celery_sync(
 
 
 @router.get("/sync-celery-stream/{channel_id}")
-async def stream_celery_sync(channel_id: str):
+async def stream_celery_sync(
+    channel_id: str,
+    current_user: User | None = Depends(require_integration_access),
+):
     """Stream Celery sync progress via SSE."""
+    del current_user
     from app.core.cache import redis_client
 
     async def generate_events() -> AsyncGenerator[str, None]:
@@ -551,7 +605,13 @@ async def stream_celery_sync(channel_id: str):
 
 
 @router.post("/subtree/{page_id}/sync")
-async def sync_subtree(page_id: str, limit: int = 50, db: AsyncSession = Depends(get_db)):
+async def sync_subtree(
+    page_id: str,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(require_integration_access),
+):
+    del current_user
     try:
         ids = await _call_confluence(confluence_service.iter_subtree, page_id, limit=limit)
         created = 0
@@ -638,7 +698,9 @@ async def list_local_pages(
     limit: int = 50,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(require_integration_access),
 ):
+    del current_user
     with handle_api_error(operation="list_local_pages"):
         stmt = select(ConfluencePage)
         if space:
@@ -667,7 +729,11 @@ async def list_local_pages(
 
 
 @router.get("/pages/{page_id}")
-async def get_page(page_id: str):
+async def get_page(
+    page_id: str,
+    current_user: User | None = Depends(require_integration_access),
+):
+    del current_user
     with handle_api_error(operation="get_page", context={"page_id": page_id}):
         page = await _call_confluence(confluence_service.get_page_by_id, page_id)
         links = page.get("_links", {})
@@ -684,7 +750,11 @@ async def get_page(page_id: str):
 
 
 @router.get("/prd/{page_id}/requirements")
-async def extract_prd_requirements(page_id: str):
+async def extract_prd_requirements(
+    page_id: str,
+    current_user: User | None = Depends(require_integration_access),
+):
+    del current_user
     with handle_api_error(operation="extract_prd_requirements", context={"page_id": page_id}):
         page = await _call_confluence(
             confluence_service.get_page_by_id,
@@ -999,7 +1069,11 @@ def _extract_section_text(soup: BeautifulSoup, titles: list[str]) -> str:
 
 
 @router.get("/adr/{page_id}")
-async def extract_adr(page_id: str):
+async def extract_adr(
+    page_id: str,
+    current_user: User | None = Depends(require_integration_access),
+):
+    del current_user
     with handle_api_error(operation="extract_adr", context={"page_id": page_id}):
         page = await _call_confluence(
             confluence_service.get_page_by_id,
@@ -1021,7 +1095,11 @@ async def extract_adr(page_id: str):
 
 
 @router.get("/research/{page_id}")
-async def extract_research(page_id: str):
+async def extract_research(
+    page_id: str,
+    current_user: User | None = Depends(require_integration_access),
+):
+    del current_user
     with handle_api_error(operation="extract_research", context={"page_id": page_id}):
         page = await _call_confluence(
             confluence_service.get_page_by_id,

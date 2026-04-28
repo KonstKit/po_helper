@@ -2,8 +2,10 @@ import logging
 import os
 import json
 import sys
+import ipaddress
 from contextlib import asynccontextmanager
 from functools import partial
+from urllib.parse import urlparse
 
 import sentry_sdk
 from fastapi import FastAPI, Request
@@ -195,6 +197,54 @@ def _is_https_request(request: Request) -> bool:
         proto = forwarded_proto.split(",")[0].strip().lower()
         return proto == "https"
     return request.url.scheme == "https"
+
+
+def _is_loopback_host(host: str | None) -> bool:
+    normalized = (host or "").strip().strip("[]").lower()
+    if not normalized:
+        return False
+    if normalized == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
+
+
+def _is_local_origin(origin: str) -> bool:
+    try:
+        parsed = urlparse(origin)
+    except ValueError:
+        return False
+
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    return _is_loopback_host(parsed.hostname)
+
+
+def _validate_runtime_security_settings() -> None:
+    if (settings.is_production or settings.is_staging) and not settings.has_strong_dedicated_encryption_secret:
+        raise RuntimeError(
+            "A strong dedicated ENCRYPTION_SECRET is required in staging/production for Jira/Confluence token storage."
+        )
+
+    if (settings.is_production or settings.is_staging) and settings.ALLOW_UNAUTHENTICATED_DEMO_API:
+        raise RuntimeError(
+            "ALLOW_UNAUTHENTICATED_DEMO_API cannot be enabled in staging/production."
+        )
+
+    if settings.ALLOW_UNAUTHENTICATED_DEMO_API:
+        if not _is_loopback_host(settings.BACKEND_BIND_HOST):
+            raise RuntimeError(
+                "ALLOW_UNAUTHENTICATED_DEMO_API requires BACKEND_BIND_HOST to be a loopback address."
+            )
+
+        non_local_origins = [origin for origin in settings.CORS_ORIGINS if not _is_local_origin(origin)]
+        if non_local_origins:
+            raise RuntimeError(
+                "ALLOW_UNAUTHENTICATED_DEMO_API requires local-only CORS origins. "
+                f"Non-local origins: {non_local_origins}"
+            )
 
 
 def _setup_sentry() -> None:
@@ -495,6 +545,7 @@ async def lifespan(_app: FastAPI):
 
 
 _setup_sentry()
+_validate_runtime_security_settings()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, Typography, Grid, TextField, Button, Divider, Alert, Switch, FormControlLabel, ToggleButtonGroup, ToggleButton, Chip } from '@mui/material';
 import CircularProgressWithLabel from '../components/CircularProgressWithLabel';
 import EmptyState from '../components/EmptyState';
@@ -9,11 +9,14 @@ import {
   listConfluencePages,
   listConfluencePagesLocal,
   getPrdRequirements,
+  startConfluenceSyncStream,
   syncConfluence,
   getADR,
   getResearch,
   getSpaceTree,
   syncSubtree,
+  type ConfluenceSyncStreamEvent,
+  type ConfluenceSyncStreamHandle,
   type SpaceTreeNode,
 } from '../services/api';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -42,29 +45,6 @@ interface RequirementRow {
   priority: string;
 }
 
-const resolveApiBaseForSse = (): string => {
-  const configured = (import.meta.env.VITE_API_URL || '').trim();
-  if (configured) {
-    return configured.replace(/\/+$/, '');
-  }
-  // In Docker/proxy deployments SSE must use the same origin as the UI.
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return window.location.origin;
-  }
-  return '';
-};
-
-const buildApiV1SseUrl = (endpoint: string, params: URLSearchParams): string => {
-  const base = resolveApiBaseForSse();
-  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  if (!base) {
-    return `/api/v1${normalizedEndpoint}?${params.toString()}`;
-  }
-  const apiPrefix = base.endsWith('/api') ? '/v1' : '/api/v1';
-  return `${base}${apiPrefix}${normalizedEndpoint}?${params.toString()}`;
-};
-
-
 const Knowledge = () => {
   const [spaceQuery, setSpaceQuery] = useState('');
   const [spaces, setSpaces] = useState<ConfluenceSpace[]>([]);
@@ -85,6 +65,7 @@ const Knowledge = () => {
   const [tree, setTree] = useState<SpaceTreeNode[] | null>(null);
   const [expanded, setExpanded] = useState<string[]>([]);
   const [plainView, setPlainView] = useState<boolean>(false);
+  const syncStreamRef = useRef<ConfluenceSyncStreamHandle | null>(null);
 
   // Restore state on mount
   useEffect(() => {
@@ -140,6 +121,11 @@ const Knowledge = () => {
       console.warn('Failed to persist knowledge state', err);
     }
   }, [spaceQuery, spaces, spaceKey, pageQuery, pages, requirements, lastSync, autoSync, source, remoteStart, dbOffset, expanded, tree]);
+
+  useEffect(() => () => {
+    syncStreamRef.current?.close();
+    syncStreamRef.current = null;
+  }, []);
 
   const loadSpaces = async () => {
     try {
@@ -213,84 +199,111 @@ const Knowledge = () => {
     try {
       setLoading(true);
       setProgress({ loading: true, percent: 5, step: 'Initializing sync...' });
+      syncStreamRef.current?.close();
 
-      // Use Server-Sent Events for real-time progress
-      const params = new URLSearchParams();
-      if (spaceKey) params.append('space', spaceKey);
-      if (pageQuery) params.append('q', pageQuery);
-      params.append('limit', '50');
-      params.append('full', 'true');
+      let streamHandle: ConfluenceSyncStreamHandle | null = null;
+      let streamClosed = false;
+      let syncTimeout: ReturnType<typeof setTimeout> | null = null;
 
-      const eventSource = new EventSource(buildApiV1SseUrl('/confluence/sync-sse', params));
-
-      // Set timeout for SSE connection
-      let sseTimeout: ReturnType<typeof setTimeout>;
-      const resetTimeout = () => {
-        clearTimeout(sseTimeout);
-        sseTimeout = setTimeout(() => {
-          console.warn('SSE timeout - closing connection');
-          eventSource.close();
-          setMessage({ type: 'error', text: 'Sync timeout - please try again with smaller batches' });
-          setProgress({ loading: false, percent: 0, step: 'Timeout' });
-          setLoading(false);
-        }, 300000); // 5 minutes timeout
+      const clearSyncTimeout = () => {
+        if (syncTimeout) {
+          clearTimeout(syncTimeout);
+          syncTimeout = null;
+        }
       };
 
-      resetTimeout();
+      const closeSyncStream = () => {
+        if (streamClosed) {
+          return;
+        }
+        streamClosed = true;
+        clearSyncTimeout();
+        streamHandle?.close();
+        if (syncStreamRef.current === streamHandle) {
+          syncStreamRef.current = null;
+        }
+      };
 
-      eventSource.onmessage = (event) => {
-        resetTimeout(); // Reset timeout on each message
-        const data = JSON.parse(event.data);
+      const resetTimeout = () => {
+        clearSyncTimeout();
+        syncTimeout = setTimeout(() => {
+          console.warn('Sync stream timeout - closing connection');
+          closeSyncStream();
+          setMessage({ type: 'error', text: 'Sync timeout - please try again with smaller batches.' });
+          setProgress({ loading: false, percent: 0, step: 'Timeout' });
+          setLoading(false);
+        }, 300000);
+      };
+
+      const handleSyncEvent = (data: ConfluenceSyncStreamEvent) => {
+        resetTimeout();
 
         if (data.type === 'progress' || data.type === 'start') {
           setProgress({
             loading: true,
             percent: data.percent || 10,
-            step: data.message || 'Syncing...'
+            step: data.message || 'Syncing...',
           });
 
-          // Update last sync with current progress
           if (data.synced !== undefined) {
             setLastSync({
               synced: data.synced,
               created: data.created || 0,
-              updated: data.updated || 0
+              updated: data.updated || 0,
             });
           }
-        } else if (data.type === 'complete') {
+          return;
+        }
+
+        if (data.type === 'complete') {
+          closeSyncStream();
           setProgress({ loading: false, percent: 100, step: 'Complete' });
           setLastSync({
             synced: data.synced || 0,
             created: data.created || 0,
-            updated: data.updated || 0
+            updated: data.updated || 0,
           });
           setMessage({
             type: 'success',
-            text: `Synced ${data.synced} pages (created ${data.created}, updated ${data.updated}).`
+            text: `Synced ${data.synced || 0} pages (created ${data.created || 0}, updated ${data.updated || 0}).`,
           });
-          clearTimeout(sseTimeout);
-          eventSource.close();
           setLoading(false);
-        } else if (data.type === 'error') {
+          return;
+        }
+
+        if (data.type === 'error') {
+          closeSyncStream();
           setMessage({ type: 'error', text: data.message || 'Sync failed' });
           setProgress({ loading: false, percent: 0, step: 'Error' });
-          clearTimeout(sseTimeout);
-          eventSource.close();
           setLoading(false);
         }
       };
 
-      eventSource.onerror = (error) => {
-        console.error('SSE Error:', error);
-        clearTimeout(sseTimeout);
-        eventSource.close();
+      const handleStreamError = (error: Error) => {
+        console.error('Confluence sync stream error:', error);
+        closeSyncStream();
         setLoading(false);
         setProgress({ loading: false, percent: 0, step: 'Error' });
         setMessage({
           type: 'error',
-          text: 'SSE connection failed. Retry sync. Avoiding fallback to long /sync request to prevent 504 timeout.',
+          text: error.message || 'Sync stream failed.',
         });
       };
+
+      streamHandle = startConfluenceSyncStream(
+        {
+          space: spaceKey || undefined,
+          q: pageQuery || undefined,
+          limit: 50,
+          full: true,
+        },
+        {
+          onEvent: handleSyncEvent,
+          onError: handleStreamError,
+        }
+      );
+      syncStreamRef.current = streamHandle;
+      resetTimeout();
 
     } catch (e) {
       const detail = getErrorMessage(e, 'Sync failed');
