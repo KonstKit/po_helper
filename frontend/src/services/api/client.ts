@@ -151,29 +151,23 @@ api.interceptors.response.use(
     // Integration checks may return 401 from external systems and must not logout the user.
     if (error.response?.status === 401 && shouldInvalidateSession(error)) {
       if (typeof window !== 'undefined') {
-        // Synchronous cleanup so a 401 fired before App.tsx mounts the
-        // 'auth-error' listener (e.g. during initializeAppData on startup)
-        // still removes the stale token instead of letting the app keep
-        // sending it. We do the steps in this order to avoid the race
-        // that earlier required deferring all cleanup to the listener:
-        //   1. Snapshot the queue's owner marker BEFORE token removal
-        //      so analytics can still stamp the persisted queue with the
-        //      previous owner once the token is gone.
-        //   2. Remove the token so subsequent in-flight requests stop
-        //      using a credential the server has already rejected.
-        //   3. Dispatch 'auth-error' for downstream cleanup orchestration
-        //      (Redux logout, navigation, full storage wipe).
+        // Snapshot the analytics queue owner marker synchronously, BEFORE
+        // any cleanup, so the persisted pending batch keeps its previous
+        // owner stamp once performAuthErrorCleanup wipes the token.
         try {
           window.__poAnalyticsSnapshotOwner?.();
         } catch {
-          // Snapshot is best-effort; never let it block token removal.
+          // Snapshot is best-effort; never let it block the auth flow.
         }
-        try {
-          localStorage.removeItem('token');
-        } catch {
-          // localStorage can throw in private mode / quota; cleanup will
-          // still happen via the listener if it eventually runs.
-        }
+        // Token removal is intentionally deferred to performAuthErrorCleanup
+        // (utils/logout.ts). Removing it here causes a startup race: if a
+        // 401 fires before App.tsx mounts the 'auth-error' listener, the
+        // event is lost AND the token is already gone, so subsequent
+        // retries return plain "Not authenticated" 401s that
+        // shouldInvalidateSession() filters out — leaving Redux's
+        // isAuthenticated=true stuck until a hard refresh. App.tsx mounts
+        // the listener before initializeAppData() runs (see useEffect
+        // ordering there) so the event is observed and cleanup proceeds.
         window.dispatchEvent(
           new CustomEvent('auth-error', {
             detail: {

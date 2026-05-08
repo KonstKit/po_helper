@@ -86,21 +86,19 @@ function App() {
     && !onboardingDismissed;
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      return;
-    }
-
-    // Initialize app data once authentication is confirmed
-    dispatch(initializeAppData());
-  }, [dispatch, isAuthenticated]);
-
-  useEffect(() => {
     // Forced 401 from the axios interceptor. Route through the dedicated
     // auth-error cleanup so localStorage (cache, dashboard prefs, smart
     // defaults) and per-user analytics UI state do not leak to whoever
     // signs in next on this tab. The analytics backend transport queue
     // (pendingBatch + owner marker) is intentionally preserved so a
     // same-user re-auth still drains queued events.
+    //
+    // IMPORTANT: this useEffect must come BEFORE the initializeAppData
+    // dispatch below. React commits effects in declaration order, so
+    // declaring this listener first guarantees it is mounted before any
+    // bootstrap requests can fire. Otherwise, an expired-token 401 on
+    // startup would dispatch 'auth-error' with no listener attached and
+    // Redux's isAuthenticated=true would stay stuck.
     const handleAuthError = () => {
       performAuthErrorCleanup(dispatch, navigate);
     };
@@ -111,6 +109,15 @@ function App() {
       window.removeEventListener('auth-error', handleAuthError);
     };
   }, [dispatch, navigate]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    // Initialize app data once authentication is confirmed
+    dispatch(initializeAppData());
+  }, [dispatch, isAuthenticated]);
 
   const handleOnboardingComplete = async () => {
     setOnboardingDismissed(true);
