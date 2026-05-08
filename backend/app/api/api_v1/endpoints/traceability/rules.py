@@ -82,7 +82,7 @@ ACTION_NODE_TYPES:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -111,7 +111,12 @@ from app.schemas.traceability_rule import (
     RuleWebhookResponse,
 )
 from app.api.deps import ensure_project_access, require_permission
+from app.core.config import settings
 from app.services.audit_log import record_audit_event, record_audit_event_sync
+from app.services.traceability.engine.nodes.transform_node import (
+    SUPPORTED_TRANSFORM_TYPES,
+    is_supported_transform_type,
+)
 from app.utils import (
     transactional_session,
     handle_api_error,
@@ -233,8 +238,9 @@ def validate_flow(flow_json: FlowJSON) -> ValidationResult:
 
     # Rule 8: Validate node-specific configurations
     for node in nodes:
-        node_errors = _validate_node_configuration(node)
+        node_errors, node_warnings = _validate_node_configuration(node)
         errors.extend(node_errors)
+        warnings.extend(node_warnings)
 
     return ValidationResult(valid=len(errors) == 0, errors=errors, warnings=warnings)
 
@@ -281,9 +287,18 @@ def _detect_cycles(nodes, edges) -> list[str]:
     return []
 
 
-def _validate_node_configuration(node) -> list[ValidationErrorSchema]:
-    """Validate individual node configuration."""
-    errors = []
+def _validate_node_configuration(
+    node,
+) -> tuple[list[ValidationErrorSchema], list[ValidationWarningSchema]]:
+    """Validate individual node configuration.
+
+    Returns (errors, warnings). Most checks emit only errors; the transform
+    contract emits a warning when ``TRACEABILITY_TRANSFORM_STRICT`` is off
+    so legacy rules stay editable/executable during a rolling deploy that
+    has not yet applied Alembic revision 034.
+    """
+    errors: list[ValidationErrorSchema] = []
+    warnings: list[ValidationWarningSchema] = []
     node_type = node.type
     config = node.data.get("config", {})
     label = node.data.get("label", node.id)
@@ -334,6 +349,32 @@ def _validate_node_configuration(node) -> list[ValidationErrorSchema]:
                     message=f'Filter node "{label}" must specify an operator', node_id=node.id
                 )
             )
+
+    elif node_type == "transformNode":
+        # transform_type is optional in the payload; absence implies the default
+        # (passthrough). Only an explicit value outside the whitelist is rejected.
+        # Strict mode mirrors runtime behavior: when the flag is off, legacy
+        # values become a warning instead of a 400, so rules stored before
+        # migration 034 stay editable/executable during the rollout window.
+        if "transform_type" in config:
+            transform_type = config.get("transform_type")
+            if not is_supported_transform_type(transform_type):
+                supported = ", ".join(sorted(SUPPORTED_TRANSFORM_TYPES))
+                message = (
+                    f'Transform node "{label}" has unsupported transform_type '
+                    f'"{transform_type}"; supported values: {supported}'
+                )
+                if settings.TRACEABILITY_TRANSFORM_STRICT:
+                    errors.append(
+                        ValidationErrorSchema(message=message, node_id=node.id)
+                    )
+                else:
+                    warnings.append(
+                        ValidationWarningSchema(
+                            message=f"{message} (strict mode disabled, will pass through)",
+                            node_id=node.id,
+                        )
+                    )
 
     elif node_type == "decisionNode":
         condition_type = config.get("condition_type", "count_threshold")
@@ -392,7 +433,7 @@ def _validate_node_configuration(node) -> list[ValidationErrorSchema]:
                             )
                         )
 
-    return errors
+    return errors, warnings
 
 
 def _build_flow_validation_detail(
@@ -417,6 +458,38 @@ def _ensure_flow_valid_or_400(flow_json: FlowJSON) -> ValidationResult:
             detail=_build_flow_validation_detail(validation_result),
         )
     return validation_result
+
+
+def _normalize_unsupported_transform_types(flow_json: FlowJSON) -> None:
+    """Rewrite unsupported transform_type to passthrough in non-strict mode.
+
+    Without this, a rule saved during the rollout window
+    (TRACEABILITY_TRANSFORM_STRICT=False) would persist its unsupported
+    value as-is and start failing as soon as strict mode is turned back
+    on. Alembic revision 034 only rewrites rows that already existed, so
+    save-time normalization is needed for new/updated rules. Mutates
+    `flow_json.nodes` in place; no-op when strict mode is enabled.
+    """
+    if settings.TRACEABILITY_TRANSFORM_STRICT:
+        return
+    audit_timestamp = datetime.now(timezone.utc).isoformat()
+    for node in flow_json.nodes:
+        if node.type != "transformNode":
+            continue
+        data = node.data or {}
+        config = data.get("config") if isinstance(data, dict) else None
+        if not isinstance(config, dict) or "transform_type" not in config:
+            continue
+        value = config.get("transform_type")
+        if is_supported_transform_type(value):
+            continue
+        config["transform_type"] = "passthrough"
+        audit = config.setdefault("_legacy_transform_type_audit", {})
+        audit["previous_value"] = value
+        audit["rewritten_at"] = audit_timestamp
+        audit["rewritten_by"] = (
+            "api_v1/endpoints/traceability/rules.py:_normalize_unsupported_transform_types"
+        )
 
 
 # =============================================================================
@@ -566,6 +639,7 @@ async def create_rule(
     current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
     """Create a new traceability rule."""
+    _normalize_unsupported_transform_types(rule_data.flow_json)
     _ensure_flow_valid_or_400(rule_data.flow_json)
 
     existing_query = select(TraceabilityRule).where(TraceabilityRule.name == rule_data.name)
@@ -665,6 +739,7 @@ async def update_rule(
                 },
             ) from exc
 
+    _normalize_unsupported_transform_types(flow_for_validation)
     _ensure_flow_valid_or_400(flow_for_validation)
 
     update_data = rule_data.model_dump(exclude_unset=True)
