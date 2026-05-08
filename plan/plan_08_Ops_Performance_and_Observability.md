@@ -3,7 +3,7 @@ level: 2
 file_id: plan_08
 parent: plan_07
 children: []
-status: draft
+status: completed
 created: 2024-05-26
 ---
 

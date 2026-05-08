@@ -4,7 +4,7 @@ file_id: plan_07
 parent: plan_06
 children:
   - plan_08
-status: draft
+status: completed
 created: 2024-05-26
 ---
 
