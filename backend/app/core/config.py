@@ -222,6 +222,18 @@ class Settings(BaseSettings):
     def has_strong_dedicated_encryption_secret(self) -> bool:
         return self.has_dedicated_encryption_secret and self.has_strong_encryption_secret
 
+    # Usage analytics
+    ANALYTICS_BATCH_MAX_SIZE: int = 500
+    ANALYTICS_RETENTION_DAYS: int = 90
+    # Cap on the JSON-serialised size of a single event's `eventData`.
+    # Protects the persisted event_data column and downstream aggregations
+    # from oversized client payloads. 4 KiB is generous for a usage event.
+    ANALYTICS_EVENT_DATA_MAX_BYTES: int = 4096
+    # How far into the future a client-supplied timestamp may be (seconds).
+    # Allows for normal client/server clock skew while rejecting events
+    # that would poison time-windowed aggregations (e.g. retention, TTV).
+    ANALYTICS_MAX_FUTURE_SKEW_SECONDS: int = 300
+
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
     @field_validator("ENVIRONMENT", mode="before")
