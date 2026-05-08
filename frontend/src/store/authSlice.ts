@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { analytics } from '../services/analytics';
 
 interface User {
   id: number;
@@ -39,6 +40,16 @@ const authSlice = createSlice({
       state.isAuthenticated = true;
       state.loading = false;
       localStorage.setItem('token', action.payload.token);
+      // Detect cross-user signin on the same tab. If the previous session
+      // ended via auth-error (softResetForAuthError persisted its owner
+      // marker), compare it against the new token's owner; if different,
+      // wipe inherited UI analytics state. Same-user re-auth is a no-op.
+      analytics.dropInheritedStateIfOwnerChanged();
+      // Same-user re-auth and cold-start-with-queue paths leave a
+      // persisted pending batch but no active flush timer; arm it now
+      // so events do not sit indefinitely waiting for the next tracked
+      // interaction.
+      analytics.resumePendingFlushIfAny();
     },
     loginFailure: (state) => {
       state.loading = false;

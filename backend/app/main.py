@@ -18,12 +18,12 @@ from sqlalchemy import select, text
 from app.api.api_v1.api import api_router
 from app.api.ws import router as ws_router
 from app.core.config import settings
-from app.core.crypto import decrypt_str
 from app.core.database import AsyncSessionLocal, Base, engine
 from app.core.middleware import register_middlewares
 from app.models import Role, SYSTEM_ROLES
 from app.models.settings import IntegrationSetting
 from app.services.confluence_service import confluence_service
+from app.services.integration_secrets import load_integration_token
 from app.services.jira_service import jira_service
 
 try:
@@ -478,7 +478,13 @@ async def _ensure_tables():
                 rows = res.scalars().all()
                 for row in rows:
                     if row.kind == "jira" and (row.base_url and row.api_token):
-                        token = decrypt_str(row.api_token)
+                        token = await load_integration_token(db, row)
+                        if not token:
+                            logger.warning(
+                                "Skipping Jira auto-connect: stored token could not be decrypted (base_url=%s)",
+                                row.base_url,
+                            )
+                            continue
                         try:
                             use_pat = bool(
                                 getattr(settings, "JIRA_FORCE_PAT", False) or not row.email
@@ -506,7 +512,13 @@ async def _ensure_tables():
                                 "Auto-connect to Jira failed (base_url=%s): %s", row.base_url, exc
                             )
                     if row.kind == "confluence" and (row.base_url and row.api_token):
-                        token = decrypt_str(row.api_token)
+                        token = await load_integration_token(db, row)
+                        if not token:
+                            logger.warning(
+                                "Skipping Confluence auto-connect: stored token could not be decrypted (base_url=%s)",
+                                row.base_url,
+                            )
+                            continue
                         try:
                             # Create connection task with timeout
                             await asyncio.wait_for(

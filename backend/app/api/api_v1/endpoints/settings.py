@@ -13,6 +13,7 @@ from app.services.jira import JiraAuthError, JiraUnexpectedResponse
 from app.services.confluence_service import confluence_service
 from app.core.crypto import decrypt_str, encrypt_integration_secret, encrypt_str
 from app.api.deps import require_permission
+from app.services.integration_secrets import load_integration_token
 from app.utils import transactional_session, handle_api_error
 
 router = APIRouter()
@@ -100,7 +101,7 @@ async def put_jira_settings(
                 token_plain = payload.api_token
             elif row.api_token:
                 try:
-                    token_plain = decrypt_str(row.api_token)
+                    token_plain = await load_integration_token(db, row)
                 except Exception:
                     token_plain = None
             if token_plain:
@@ -171,7 +172,7 @@ async def test_jira_connection(
     token = payload.api_token
     if not token and row and row.api_token:
         try:
-            token = decrypt_str(row.api_token)
+            token = await load_integration_token(db, row)
         except Exception:
             token = None
     if token:
@@ -335,7 +336,7 @@ async def test_confluence_connection(
     token = payload.api_token
     if not token and row and row.api_token:
         try:
-            token = decrypt_str(row.api_token)
+            token = await load_integration_token(db, row)
         except Exception:
             token = None
     if token:
@@ -396,7 +397,7 @@ async def reload_confluence_settings(
         raise HTTPException(status_code=400, detail="Confluence settings not found or incomplete")
 
     with handle_api_error(operation="reload_confluence_settings"):
-        token = decrypt_str(row.api_token)
+        token = await load_integration_token(db, row)
         # Run connect with timeout
         import asyncio
 

@@ -11,12 +11,12 @@ from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.core.config import settings
-from app.core.crypto import decrypt_str
 from app.models import Project, Sprint, IntegrationSetting
 from app.models.traceability import SyncTask as SyncTaskModel
 from app.services.jira import JiraAuthError, JiraUnexpectedResponse
 from app.services.jira_service import jira_service
 from app.services.integration_config import get_connector_overrides
+from app.services.integration_secrets import load_integration_token
 from app.services.sync.issue_sync_service import IssueSyncService, IssueSyncResult
 from app.services.sync.worklog_sync_service import WorklogSyncService, WorklogSyncResult
 from app.services.sync.sprint_snapshot_service import SprintSnapshotService, SnapshotResult
@@ -417,7 +417,7 @@ class ProjectSyncOrchestrator:
                     if row and (
                         row.api_token or (overrides and overrides.settings.get("api_token"))
                     ):
-                        token = decrypt_str(row.api_token)
+                        token = await load_integration_token(db, row)
                         if overrides and overrides.settings.get("api_token"):
                             token = str(overrides.settings.get("api_token"))
                         email = (
@@ -430,13 +430,19 @@ class ProjectSyncOrchestrator:
                             base_url = str(overrides.settings.get("base_url"))
                         if overrides and overrides.settings.get("email"):
                             email = str(overrides.settings.get("email"))
-                        if base_url and token:
+                        if not (base_url and token):
+                            logger.warning(
+                                "Skipping Jira worker bootstrap: missing %s (project_id=%s)",
+                                "token" if not token else "base_url",
+                                project_id,
+                            )
+                        else:
                             jira_service.connect(base_url, email, token)
-                        logger.info(
-                            "Jira connected in worker using stored settings (base_url=%s, mode=%s)",
-                            base_url,
-                            "PAT" if email is None else "Basic",
-                        )
+                            logger.info(
+                                "Jira connected in worker using stored settings (base_url=%s, mode=%s)",
+                                base_url,
+                                "PAT" if email is None else "Basic",
+                            )
             except Exception as e:
                 logger.warning("Worker Jira bootstrap failed: %s", e)
 

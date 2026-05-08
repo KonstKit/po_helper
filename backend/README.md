@@ -106,6 +106,8 @@ $env:BACKEND_BIND_HOST = "127.0.0.1"
 - `ALLOW_UNAUTHENTICATED_DEMO_API=false` по умолчанию;
 - для сохранения Jira/Confluence токенов нужен отдельный `ENCRYPTION_SECRET`.
 
+Для `docker-compose.dev.yml` strict localhost demo backend запускается через host networking и всё равно биндуется на `127.0.0.1`. Если host networking в Docker Desktop недоступен, используйте локальный запуск через `start_server.ps1` / `start_server.bat`.
+
 ## Быстрые сценарии проверки Confluence
 - Подключение (PAT):
 - `curl -X POST http://127.0.0.1:8000/api/v1/confluence/connect -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d "{\"base_url\":\"https://<org>.atlassian.net\",\"api_token\":\"<pat>\"}"`

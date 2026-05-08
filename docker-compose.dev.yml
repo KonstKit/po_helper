@@ -1,7 +1,32 @@
-version: '3.8'
-
 # Development Docker Compose with adjusted ports
 # Redis port changed from 6379 to 6381 to avoid conflicts
+# Strict localhost demo mode:
+# - backend runs with host networking so uvicorn can bind 127.0.0.1 literally
+# - requires Docker Desktop host networking support to be enabled
+#
+# KNOWN LIMITATION: proxied browser → frontend container → backend path
+# does NOT work in this compose. The combination of `network_mode: host`
+# on the backend with `uvicorn --host 127.0.0.1` means the backend is
+# only listening on the host's loopback interface inside its own network
+# namespace. The bridge-networked frontend container cannot reach it
+# through the host-gateway address (or any other bridge IP), so
+# `nginx -> backend:8000` proxying for `/api/*` and `/api/v1/ws` returns
+# 502 even though the backend itself is up on the host.
+#
+# This is intentional for the strict-localhost demo: literal 127.0.0.1
+# binding is the security boundary. If you actually need to load the
+# UI through the frontend container in a Docker-only flow, you have
+# three escape hatches (in order of preference):
+#   1. Run the backend on the host as documented in README ("Backend
+#      Development"), and load http://localhost:3000 — the frontend
+#      container then proxies to your host backend via the host gateway.
+#   2. Drop `network_mode: host` from the backend service, restore
+#      `ports: 127.0.0.1:8000:8000`, and put it back on po_helper_network.
+#      This loses the literal-127.0.0.1 in-process bind but keeps the
+#      host port restricted to loopback.
+#   3. Bind uvicorn to 0.0.0.0 inside the host-networked container and
+#      protect the host with an external firewall rule. This also loses
+#      the literal-127.0.0.1 bind.
 
 services:
   postgres:
@@ -46,20 +71,19 @@ services:
       context: .
       dockerfile: docker/Dockerfile.backend
     container_name: po_helper_backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    ports:
-      - "127.0.0.1:8000:8000"
+    network_mode: host
+    command: uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
     env_file:
       - .env
       - backend/.env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/po_helper
-      - REDIS_URL=redis://redis:6381/0
-      - CELERY_BROKER_URL=redis://redis:6381/0
-      - CELERY_RESULT_BACKEND=redis://redis:6381/0
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/po_helper
+      - REDIS_URL=redis://127.0.0.1:6381/0
+      - CELERY_BROKER_URL=redis://127.0.0.1:6381/0
+      - CELERY_RESULT_BACKEND=redis://127.0.0.1:6381/0
       - ENVIRONMENT=development
       - ALLOW_UNAUTHENTICATED_DEMO_API=false
-      - BACKEND_BIND_HOST=0.0.0.0
+      - BACKEND_BIND_HOST=127.0.0.1
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,8 +92,6 @@ services:
     volumes:
       - ./backend/app:/app/app
     restart: unless-stopped
-    networks:
-      - po_helper_network
 
   frontend:
     build:
@@ -80,6 +102,24 @@ services:
       - "127.0.0.1:3000:80"
     environment:
       - VITE_API_BASE_URL=http://localhost:8000
+    # Backend uses network_mode: host (strict localhost demo, see top of
+    # file), so it is not on po_helper_network and the `backend` DNS name
+    # does not resolve from this container. We bridge that gap with two
+    # things together:
+    #   1. extra_hosts maps `backend` to the host gateway in /etc/hosts.
+    #   2. nginx.dev.conf overrides the baked-in nginx.conf so proxy_pass
+    #      uses a literal hostname (no variable). nginx only consults
+    #      /etc/hosts for literal hostnames; with a variable it would defer
+    #      resolution to Docker's embedded DNS at 127.0.0.11, which does
+    #      not read /etc/hosts.
+    # Relies on Docker Desktop / Docker Engine 20.10+ host-gateway support.
+    # On native Linux where the backend strictly binds to 127.0.0.1 the
+    # host gateway address may still be unreachable from the container; in
+    # that case run the backend in a bridge-networked profile instead.
+    extra_hosts:
+      - "backend:host-gateway"
+    volumes:
+      - ./docker/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - backend
     restart: unless-stopped
