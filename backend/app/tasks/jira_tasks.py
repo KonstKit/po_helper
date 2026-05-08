@@ -14,8 +14,8 @@ from app.core.database import AsyncSessionLocal
 from app.services.jira_sync import perform_project_sync
 from app.core.cache import redis_client as _redis_client
 from app.models import IntegrationSetting, Project
-from app.core.crypto import decrypt_str
 from app.core.config import settings
+from app.services.integration_secrets import load_integration_token
 from app.services.jira_service import jira_service
 from app.services.sync_tracking import reserve_project_sync_task_lease, finish_sync_task
 from app.utils import transactional_session
@@ -165,7 +165,13 @@ def sync_jira_project(
                     )
                     row = res.scalar_one_or_none()
                     if row and row.base_url and row.api_token:
-                        token = decrypt_str(row.api_token)
+                        token = await load_integration_token(db, row)
+                        if not token:
+                            logger.warning(
+                                "Skipping Celery Jira bootstrap: stored token could not be decrypted (base_url=%s)",
+                                row.base_url,
+                            )
+                            return
                         email = (
                             None
                             if getattr(settings, "JIRA_FORCE_PAT", True)

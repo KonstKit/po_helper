@@ -3,11 +3,11 @@ import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { Box, CircularProgress } from '@mui/material';
 import { AppDispatch, RootState } from './store/store';
-import { logout } from './store/authSlice';
 import { initializeAppData } from './store/dataThunks';
 import { storage } from './utils/storage';
 import { isDevelopment } from './utils/env';
 import { analytics } from './services/analytics';
+import { performAuthErrorCleanup } from './utils/logout';
 import { generateSmartDefaults, saveSmartDefaults } from './utils/smartDefaults';
 import Layout from './components/Layout';
 import BackendStatusAlert from './components/BackendStatusAlert';
@@ -95,16 +95,20 @@ function App() {
   }, [dispatch, isAuthenticated]);
 
   useEffect(() => {
+    // Forced 401 from the axios interceptor. Route through the dedicated
+    // auth-error cleanup so localStorage (cache, dashboard prefs, smart
+    // defaults) and per-user analytics UI state do not leak to whoever
+    // signs in next on this tab. The analytics backend transport queue
+    // (pendingBatch + owner marker) is intentionally preserved so a
+    // same-user re-auth still drains queued events.
     const handleAuthError = () => {
-      dispatch(logout());
-      navigate('/login');
+      performAuthErrorCleanup(dispatch, navigate);
     };
 
-    const listener = () => handleAuthError();
-    window.addEventListener('auth-error', listener);
+    window.addEventListener('auth-error', handleAuthError);
 
     return () => {
-      window.removeEventListener('auth-error', listener);
+      window.removeEventListener('auth-error', handleAuthError);
     };
   }, [dispatch, navigate]);
 

@@ -11,6 +11,17 @@ import axios from "axios";
 import { API_TIMEOUT_MS } from '../../constants/app';
 import { logError } from '../../utils/errorUtils';
 
+// Avoid a static import cycle (client → analytics → usageAnalyticsApi → client).
+// The analytics singleton registers a window-scoped callback in its
+// constructor; the interceptor invokes it via window to capture the
+// pending-batch owner marker before the token is removed.
+type AuthSnapshotFn = () => void;
+declare global {
+  interface Window {
+    __poAnalyticsSnapshotOwner?: AuthSnapshotFn;
+  }
+}
+
 /** Base URL for API v1 endpoints */
 export const API_BASE_URL = "/api/v1";
 
@@ -140,7 +151,29 @@ api.interceptors.response.use(
     // Integration checks may return 401 from external systems and must not logout the user.
     if (error.response?.status === 401 && shouldInvalidateSession(error)) {
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('token');
+        // Synchronous cleanup so a 401 fired before App.tsx mounts the
+        // 'auth-error' listener (e.g. during initializeAppData on startup)
+        // still removes the stale token instead of letting the app keep
+        // sending it. We do the steps in this order to avoid the race
+        // that earlier required deferring all cleanup to the listener:
+        //   1. Snapshot the queue's owner marker BEFORE token removal
+        //      so analytics can still stamp the persisted queue with the
+        //      previous owner once the token is gone.
+        //   2. Remove the token so subsequent in-flight requests stop
+        //      using a credential the server has already rejected.
+        //   3. Dispatch 'auth-error' for downstream cleanup orchestration
+        //      (Redux logout, navigation, full storage wipe).
+        try {
+          window.__poAnalyticsSnapshotOwner?.();
+        } catch {
+          // Snapshot is best-effort; never let it block token removal.
+        }
+        try {
+          localStorage.removeItem('token');
+        } catch {
+          // localStorage can throw in private mode / quota; cleanup will
+          // still happen via the listener if it eventually runs.
+        }
         window.dispatchEvent(
           new CustomEvent('auth-error', {
             detail: {

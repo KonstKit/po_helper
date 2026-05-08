@@ -16,13 +16,13 @@ from app.core.cache import redis_client as _redis_client
 from app.core.celery_async_runner import run_async
 from app.core.celery_app import celery_app
 from app.core.config import settings
-from app.core.crypto import decrypt_str
 from app.core.database import AsyncSessionLocal
 from app.core.db_utils import supports_for_update
 from app.models.confluence import ConfluencePage
 from app.models.settings import IntegrationSetting
 from app.models.traceability import Source, SyncTask as SyncTaskModel
 from app.services.confluence_service import confluence_service
+from app.services.integration_secrets import load_integration_token
 from app.services.traceability.artifact_sync import get_traceability_artifact_sync_service
 from app.services.traceability.post_sync import run_traceability_post_sync
 from app.services.sync_tracking import (
@@ -38,13 +38,14 @@ from app.utils import transactional_session
 logger = logging.getLogger(__name__)
 
 
-def _load_confluence_setting() -> Optional[IntegrationSetting]:
-    async def _fetch_setting() -> Optional[IntegrationSetting]:
+def _load_confluence_setting() -> Tuple[Optional[IntegrationSetting], Optional[str]]:
+    async def _fetch_setting() -> Tuple[Optional[IntegrationSetting], Optional[str]]:
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 select(IntegrationSetting).where(IntegrationSetting.kind == "confluence")
             )
-            return result.scalar_one_or_none()
+            row = result.scalar_one_or_none()
+            return row, await load_integration_token(db, row)
 
     return run_async(_fetch_setting())
 
@@ -54,13 +55,11 @@ def _ensure_confluence_connection() -> bool:
     if status.get("configured"):
         return True
 
-    row = _load_confluence_setting()
+    row, stored_token = _load_confluence_setting()
     base_url = row.base_url if row else settings.CONFLUENCE_BASE_URL
     email = row.email if row else settings.CONFLUENCE_EMAIL
-    token: Optional[str] = None
-    if row and row.api_token:
-        token = decrypt_str(row.api_token)
-    elif settings.CONFLUENCE_API_TOKEN:
+    token: Optional[str] = stored_token
+    if not token and settings.CONFLUENCE_API_TOKEN:
         token = settings.CONFLUENCE_API_TOKEN
 
     if not base_url or not token:

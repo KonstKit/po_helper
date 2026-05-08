@@ -20,6 +20,7 @@ import { Dispatch } from '@reduxjs/toolkit';
 import { NavigateFunction } from 'react-router-dom';
 import { logout as logoutAction } from '../store/authSlice';
 import { storage } from './storage';
+import { analytics } from '../services/analytics';
 
 /**
  * Keys to preserve across logout (non-sensitive, user-preference data)
@@ -68,9 +69,12 @@ const CLEAR_PATTERNS = [
  *
  * @returns Array of cleared keys (for logging/debugging)
  */
-function clearLocalStorage(): string[] {
+function clearLocalStorage(extraPreserve?: readonly string[]): string[] {
   const clearedKeys: string[] = [];
-  const preservedSet = new Set(PRESERVED_KEYS);
+  const preservedSet = new Set<string>(PRESERVED_KEYS);
+  if (extraPreserve) {
+    extraPreserve.forEach((key) => preservedSet.add(key));
+  }
 
   try {
     // Get all keys first (to avoid modification during iteration)
@@ -82,7 +86,10 @@ function clearLocalStorage(): string[] {
 
     // Clear keys
     for (const key of allKeys) {
-      // Skip preserved keys
+      // Skip preserved keys (PRESERVED_KEYS + caller-provided extras).
+      // CRITICAL_KEYS / CLEAR_PATTERNS are not skipped automatically; the
+      // caller must opt in by adding the key to extraPreserve so security-
+      // sensitive defaults stay aggressive on full logout.
       if (preservedSet.has(key)) {
         continue;
       }
@@ -140,17 +147,23 @@ export function performLogout(
     // Step 1: Clear cache storage
     storage.clearAll();
 
-    // Step 2: Clear localStorage
+    // Step 2: Drop in-memory analytics queue + persisted pending batch.
+    // Must happen before localStorage.clear so we don't race with the
+    // singleton's own writes, and explicit so we cover the path that does
+    // not hit the 'auth-error' listener (manual logout from UI).
+    analytics.resetForLogout();
+
+    // Step 3: Clear localStorage
     clearLocalStorage();
 
-    // Step 3: Clear sessionStorage
+    // Step 4: Clear sessionStorage
     clearSessionStorage();
 
-    // Step 4: Dispatch Redux logout action
+    // Step 5: Dispatch Redux logout action
     // This will clear auth state and trigger extraReducers in other slices
     dispatch(logoutAction());
 
-    // Step 5: Navigate to login
+    // Step 6: Navigate to login
     navigate(redirectPath);
   } catch (error) {
     console.error('[Logout] Error during logout:', error);
@@ -160,6 +173,66 @@ export function performLogout(
       navigate(redirectPath);
     } catch (navError) {
       console.error('[Logout] Error navigating to login:', navError);
+    }
+  }
+}
+
+/**
+ * Cleanup on a forced 401 / session expiry.
+ *
+ * Differs from `performLogout` in exactly one way: the analytics backend
+ * transport queue (`pendingBatch` + owner marker) is *preserved*. The
+ * common case here is "the same user's token expired"; if that user
+ * signs back in we want their queued events to flush. Owner-marker
+ * comparison protects against the rare different-user case.
+ *
+ * Everything else — local storage cleanup, session storage, Redux
+ * logout, navigation, plus per-user analytics UI state (events log,
+ * onboarding/TTV/feature-visit/first_view markers, sessionId) — is
+ * wiped exactly like `performLogout`.
+ */
+export function performAuthErrorCleanup(
+  dispatch: Dispatch,
+  navigate: NavigateFunction,
+  redirectPath: string = '/login',
+): void {
+  try {
+    storage.clearAll();
+    // UI-only analytics reset: keeps the in-memory pendingBatch + owner
+    // marker so a same-user re-auth still drains queued events.
+    analytics.softResetForAuthError();
+    // clearLocalStorage matches pattern /analytics_/ and will wipe the
+    // persisted analytics transport keys along with everything else.
+    // We explicitly preserve the keys that softResetForAuthError chose to
+    // keep, so a same-user re-auth does not get pushed back through
+    // onboarding or have their TTV baseline reset to "now".
+    clearLocalStorage([
+      'account_created_at',
+      'first_login_at',
+      'onboarding_progress',
+      'onboarding_completed',
+      'time_to_value_metrics',
+      // Carries the owner of the soft-reset session so the next login can
+      // detect cross-user signin and wipe the keys above. Same-user re-auth
+      // consumes and clears it via dropInheritedStateIfOwnerChanged().
+      'po_helper_analytics_previous_owner',
+    ]);
+    clearSessionStorage();
+    // Re-persist the singleton's authoritative in-memory pendingBatch.
+    // This is race-safe: if a successful flush spliced the queue during
+    // cleanup, we persist the already-shrunk version (no duplicate
+    // delivery on next session). If no flush occurred, we persist the
+    // original queue so re-auth can drain it.
+    analytics.persistPendingBatchToStorage();
+
+    dispatch(logoutAction());
+    navigate(redirectPath);
+  } catch (error) {
+    console.error('[AuthErrorCleanup] Error during cleanup:', error);
+    try {
+      navigate(redirectPath);
+    } catch (navError) {
+      console.error('[AuthErrorCleanup] Error navigating to login:', navError);
     }
   }
 }
