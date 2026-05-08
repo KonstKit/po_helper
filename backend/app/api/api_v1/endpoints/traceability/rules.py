@@ -460,7 +460,7 @@ def _ensure_flow_valid_or_400(flow_json: FlowJSON) -> ValidationResult:
     return validation_result
 
 
-def _normalize_unsupported_transform_types(flow_json: FlowJSON) -> None:
+def _normalize_unsupported_transform_types(flow_json: FlowJSON) -> bool:
     """Rewrite unsupported transform_type to passthrough in non-strict mode.
 
     Without this, a rule saved during the rollout window
@@ -469,9 +469,15 @@ def _normalize_unsupported_transform_types(flow_json: FlowJSON) -> None:
     on. Alembic revision 034 only rewrites rows that already existed, so
     save-time normalization is needed for new/updated rules. Mutates
     `flow_json.nodes` in place; no-op when strict mode is enabled.
+
+    Returns True if any node was rewritten, so callers (notably the
+    partial-update endpoint) can decide whether the normalized flow
+    needs to be persisted back to the database even when the client
+    only sent metadata fields.
     """
     if settings.TRACEABILITY_TRANSFORM_STRICT:
-        return
+        return False
+    rewritten = False
     audit_timestamp = datetime.now(timezone.utc).isoformat()
     for node in flow_json.nodes:
         if node.type != "transformNode":
@@ -490,6 +496,8 @@ def _normalize_unsupported_transform_types(flow_json: FlowJSON) -> None:
         audit["rewritten_by"] = (
             "api_v1/endpoints/traceability/rules.py:_normalize_unsupported_transform_types"
         )
+        rewritten = True
+    return rewritten
 
 
 # =============================================================================
@@ -739,10 +747,17 @@ async def update_rule(
                 },
             ) from exc
 
-    _normalize_unsupported_transform_types(flow_for_validation)
+    normalized_in_place = _normalize_unsupported_transform_types(flow_for_validation)
     _ensure_flow_valid_or_400(flow_for_validation)
 
     update_data = rule_data.model_dump(exclude_unset=True)
+
+    # Partial update path: client did not send flow_json but normalization
+    # rewrote stored legacy values. Persist the rewrite so a later strict
+    # mode flip does not break this rule (the alembic 034 backfill cannot
+    # catch rows that bypass it via metadata-only updates).
+    if normalized_in_place and rule_data.flow_json is None:
+        update_data["flow_json"] = flow_for_validation.model_dump()
 
     if "schedule_cron" in update_data and update_data["schedule_cron"]:
         if not _validate_cron_expression(update_data["schedule_cron"]):
