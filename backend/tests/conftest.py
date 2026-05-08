@@ -80,6 +80,15 @@ app.dependency_overrides[get_db] = _override_get_db
 app.dependency_overrides[get_current_user] = _override_get_current_user
 app.dependency_overrides[get_current_user_strict] = _override_get_current_user
 app.dependency_overrides[require_integration_access] = _override_get_current_user
+
+# Usage-analytics track endpoints use a custom dependency that tolerates a
+# missing User row (returns None → service records anonymously). Override
+# it in tests to the same DummyUser so existing happy-path assertions hold.
+_resolve_track_caller = importlib.import_module(
+    "app.api.api_v1.endpoints.usage_analytics"
+)._resolve_track_caller
+app.dependency_overrides[_resolve_track_caller] = _override_get_current_user
+
 limiter.enabled = False
 limiter._headers_enabled = False
 
