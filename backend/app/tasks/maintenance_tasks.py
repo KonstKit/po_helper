@@ -9,6 +9,7 @@ from app.core.celery_async_runner import run_async
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
+from app.models.analytics import AnalyticsEvent
 from app.models.traceability import Baseline, BaselineItem
 from app.services.analytics.export_service import cleanup_old_exports
 from app.services.sync_tracking import recover_stale_running_sync_tasks
@@ -52,6 +53,40 @@ def cleanup_baselines_task() -> int:
 
     deleted = run_async(_cleanup())
     logger.info("maintenance.cleanup_baselines deleted=%s", deleted)
+    return deleted
+
+
+async def cleanup_analytics_events(retention_days: int) -> int:
+    """Delete analytics events older than `retention_days`. Returns the
+    deleted row count. Exposed for direct testing; the celery task wrapper
+    below applies it on a schedule."""
+    if retention_days <= 0:
+        return 0
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            delete(AnalyticsEvent).where(AnalyticsEvent.occurred_at < cutoff)
+        )
+        await db.commit()
+        return int(result.rowcount or 0)
+
+
+@celery_app.task(name="maintenance.cleanup_analytics_events")
+def cleanup_analytics_events_task() -> int:
+    """Delete `analytics_event` rows older than ANALYTICS_RETENTION_DAYS.
+
+    Without this, the metric aggregation queries are already bounded by
+    the retention window, but the table itself grows indefinitely.
+    """
+    retention_days = int(getattr(settings, "ANALYTICS_RETENTION_DAYS", 0))
+    if retention_days <= 0:
+        logger.info(
+            "maintenance.cleanup_analytics_events skipped retention_days=%s",
+            retention_days,
+        )
+        return 0
+    deleted = run_async(cleanup_analytics_events(retention_days))
+    logger.info("maintenance.cleanup_analytics_events deleted=%s", deleted)
     return deleted
 
 

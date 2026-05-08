@@ -62,6 +62,10 @@ celery_app.conf.update(
             "task": "maintenance.cleanup_baselines",
             "schedule": crontab(minute=30, hour=2),
         },
+        "cleanup-analytics-events-daily": {
+            "task": "maintenance.cleanup_analytics_events",
+            "schedule": crontab(minute=45, hour=2),
+        },
         "recover-stale-sync-tasks-every-5-min": {
             "task": "maintenance.recover_stale_sync_tasks",
             "schedule": crontab(minute="*/5"),

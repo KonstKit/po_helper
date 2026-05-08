@@ -1,133 +1,193 @@
-"""
-Analytics endpoints for tracking user behavior and usage metrics
+"""HTTP endpoints for product usage analytics.
+
+Track endpoints accept events from authenticated clients and persist them.
+Metrics endpoints return aggregated dashboards (admin-only).
 """
 
-from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
+import hashlib
+import logging
+import time
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from slowapi.util import get_remote_address
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user_strict
+from app.core.config import settings
+from app.core.request_context import get_token_scopes, get_token_tenant_id
+from app.core.database import get_db
+from app.core.rate_limit import limiter
+from app.core.security import decode_token
+from app.models.rbac import Permissions
+from app.models.user import User
+
+logger = logging.getLogger(__name__)
+from app.schemas.analytics_event import (
+    AnalyticsEventBatchIn,
+    AnalyticsEventIn,
+    FeatureAdoptionMetricsOut,
+    OnboardingMetricsOut,
+    TimeToValueMetricsOut,
+    TrackResponse,
+    UsageSummaryOut,
+)
+from app.services import analytics_service
 
 router = APIRouter()
 
 
-def _usage_analytics_not_implemented() -> None:
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Usage analytics is not implemented yet",
+def _require_global_admin_strict():
+    """Admin-only guard that *also* rejects tenant-scoped tokens.
+
+    Stopgap until usage analytics is tenant-aware (no `tenant_id` column
+    on `analytics_event`, no per-tenant filtering in aggregations). Until
+    that work lands, a tenant-scoped admin token would otherwise be able
+    to read or delete cross-tenant aggregates here, because the rest of
+    the analytics pipeline is global. Fail closed.
+
+    Track endpoints intentionally do NOT use this guard: they only write
+    a row owned by the calling user; tenant-scoped users can still emit
+    their own telemetry. Only reads/deletes of the aggregated, global
+    dataset are gated to global operators.
+    """
+
+    async def _check(
+        current_user: User = Depends(get_current_user_strict),
+    ) -> User:
+        if get_token_tenant_id() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Usage analytics admin metrics are global-only "
+                    "until tenant-scoped analytics is implemented."
+                ),
+            )
+        token_scopes = get_token_scopes()
+        if (
+            token_scopes is not None
+            and Permissions.ADMIN not in token_scopes
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied. Required: {Permissions.ADMIN}",
+            )
+        if token_scopes is None and not current_user.has_permission(
+            Permissions.ADMIN
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied. Required: {Permissions.ADMIN}",
+            )
+        return current_user
+
+    return _check
+
+
+def _user_or_ip_key(request: Request) -> str:
+    """Rate-limit by authenticated user when the JWT is valid, IP otherwise.
+
+    The shared `limiter` keys by `request.client.host` by default, which
+    means every authenticated user behind the same NAT/proxy egress IP
+    shares one quota — and `/track*` would exhaust per-team. We key by the
+    JWT `sub` claim so each authenticated user gets their own bucket.
+
+    We MUST verify the token before deriving the bucket key. If we hashed
+    the raw bearer string, an unauthenticated client could vary a bogus
+    token on every request and trivially bypass the IP bucket. Decoding
+    here verifies signature + expiry exactly like `get_current_user` does.
+    """
+    auth = request.headers.get("Authorization", "")
+    if auth.lower().startswith("bearer ") and len(auth) > 7:
+        token = auth[7:]
+        try:
+            payload = decode_token(token)
+        except Exception:  # JWT invalid/expired — fall through to IP key.
+            return get_remote_address(request)
+        sub = payload.get("sub")
+        if sub:
+            digest = hashlib.sha256(str(sub).encode("utf-8")).hexdigest()[:16]
+            return f"analytics-user:{digest}"
+    return get_remote_address(request)
+
+
+def _enforce_batch_size(events_in: AnalyticsEventBatchIn) -> None:
+    max_size = settings.ANALYTICS_BATCH_MAX_SIZE
+    if len(events_in.events) > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Batch exceeds ANALYTICS_BATCH_MAX_SIZE={max_size}",
+        )
+
+
+@router.post("/track", response_model=TrackResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("100/minute", key_func=_user_or_ip_key)
+async def track_event(
+    request: Request,
+    event: AnalyticsEventIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_strict),
+) -> TrackResponse:
+    """Persist a single analytics event for the authenticated user."""
+    await analytics_service.record_event(db, event, user_id=current_user.id)
+    return TrackResponse(accepted=1, received_at=int(time.time() * 1000))
+
+
+@router.post(
+    "/track/batch",
+    response_model=TrackResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit("60/minute", key_func=_user_or_ip_key)
+async def track_events_batch(
+    request: Request,
+    payload: AnalyticsEventBatchIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_strict),
+) -> TrackResponse:
+    """Persist a batch of analytics events for the authenticated user."""
+    _enforce_batch_size(payload)
+    accepted = await analytics_service.record_events_batch(
+        db, payload.events, user_id=current_user.id
     )
+    return TrackResponse(accepted=accepted, received_at=int(time.time() * 1000))
 
 
-class AnalyticsEvent(BaseModel):
-    """Analytics event model"""
-
-    event_name: str
-    event_data: Optional[Dict[str, Any]] = None
-    timestamp: int
-    user_id: Optional[str] = None
-    session_id: Optional[str] = None
+@router.get("/metrics/onboarding", response_model=OnboardingMetricsOut)
+async def get_onboarding_metrics(
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(_require_global_admin_strict()),
+) -> OnboardingMetricsOut:
+    return await analytics_service.compute_onboarding_metrics(db)
 
 
-class OnboardingMetrics(BaseModel):
-    """Onboarding metrics model"""
-
-    started: bool
-    started_at: Optional[int] = None
-    completed: bool
-    completed_at: Optional[int] = None
-    current_step: Optional[int] = None
-    total_steps: int
-    skipped: bool
-    steps_completed: List[int]
+@router.get("/metrics/time-to-value", response_model=TimeToValueMetricsOut)
+async def get_time_to_value_metrics(
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(_require_global_admin_strict()),
+) -> TimeToValueMetricsOut:
+    return await analytics_service.compute_time_to_value(db)
 
 
-class UsageMetrics(BaseModel):
-    """Usage metrics aggregation"""
-
-    onboarding_completion_rate: float
-    avg_time_to_first_value: Optional[float] = None
-    feature_adoption_rate: float
-    active_users_count: int
-
-
-@router.post("/track", status_code=201)
-async def track_event(event: AnalyticsEvent) -> dict:
-    """
-    Track a single analytics event
-
-    In a production environment, this would:
-    - Store events in a database (PostgreSQL, ClickHouse, etc.)
-    - Send events to analytics platform (Mixpanel, Amplitude, etc.)
-    - Aggregate metrics for dashboards
-
-    For now, this is a placeholder that accepts events
-    """
-    _usage_analytics_not_implemented()
+@router.get("/metrics/feature-adoption", response_model=FeatureAdoptionMetricsOut)
+async def get_feature_adoption_metrics(
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(_require_global_admin_strict()),
+) -> FeatureAdoptionMetricsOut:
+    return await analytics_service.compute_feature_adoption(db)
 
 
-@router.post("/track/batch", status_code=201)
-async def track_events_batch(events: List[AnalyticsEvent]) -> dict:
-    """
-    Track multiple analytics events in batch
-
-    More efficient for sending multiple events at once
-    """
-    _usage_analytics_not_implemented()
+@router.get("/metrics/summary", response_model=UsageSummaryOut)
+async def get_usage_metrics_summary(
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(_require_global_admin_strict()),
+) -> UsageSummaryOut:
+    return await analytics_service.compute_summary(db)
 
 
-@router.get("/metrics/onboarding", response_model=dict)
-async def get_onboarding_metrics() -> dict:
-    """
-    Get aggregated onboarding metrics
-
-    Returns:
-    - Onboarding completion rate
-    - Average time to complete onboarding
-    - Step completion rates
-    - Drop-off points
-    """
-    _usage_analytics_not_implemented()
-
-
-@router.get("/metrics/time-to-value", response_model=dict)
-async def get_time_to_value_metrics() -> dict:
-    """
-    Get time-to-value metrics
-
-    Returns:
-    - Average time from account creation to first sync
-    - Average time to first project view
-    - Average time to first task view
-    """
-    _usage_analytics_not_implemented()
-
-
-@router.get("/metrics/feature-adoption", response_model=dict)
-async def get_feature_adoption_metrics() -> dict:
-    """
-    Get feature adoption metrics
-
-    Returns:
-    - Adoption rate per feature
-    - Most/least used features
-    - Feature engagement over time
-    """
-    _usage_analytics_not_implemented()
-
-
-@router.get("/metrics/summary", response_model=UsageMetrics)
-async def get_usage_metrics_summary() -> UsageMetrics:
-    """
-    Get summary of all usage metrics
-
-    High-level overview for monitoring
-    """
-    _usage_analytics_not_implemented()
-
-
-@router.delete("/events", status_code=204)
-async def clear_analytics_data() -> None:
-    """
-    Clear all analytics data (for testing/development)
-
-    WARNING: This should be protected in production
-    """
-    _usage_analytics_not_implemented()
+@router.delete("/events", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_analytics_data(
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(_require_global_admin_strict()),
+) -> None:
+    """Delete all analytics events. Admin-only."""
+    await analytics_service.clear_events(db)

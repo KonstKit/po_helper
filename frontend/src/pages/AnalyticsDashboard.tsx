@@ -79,9 +79,18 @@ const AnalyticsDashboard: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const clearData = () => {
-    if (window.confirm('Are you sure you want to clear all analytics data?')) {
-      analytics.clear();
+  const clearLocalCache = () => {
+    if (
+      window.confirm(
+        'Clear local analytics cache? This affects only client-side widgets ' +
+          'in this browser. Server-side telemetry and any unsent events ' +
+          'queued for the backend are not affected.',
+      )
+    ) {
+      // Use the UI-only cache reset, not the full clear() — clear() also
+      // drops the backend transport queue, which would silently lose any
+      // unsent telemetry and contradicts the button's stated contract.
+      analytics.clearLocalUiCache();
       loadMetrics();
     }
   };
@@ -95,17 +104,18 @@ const AnalyticsDashboard: React.FC = () => {
             Refresh
           </Button>
           <Button variant="outlined" onClick={exportData}>
-            Export Data
+            Export Local Cache
           </Button>
-          <Button variant="outlined" color="error" onClick={clearData}>
-            Clear Data
+          <Button variant="outlined" color="error" onClick={clearLocalCache}>
+            Clear Local Cache
           </Button>
         </Box>
       </Box>
 
       <Alert severity="info" sx={{ mb: 3 }}>
         This dashboard tracks user behavior metrics to help improve the onboarding experience and feature adoption.
-        All data is stored locally in your browser.
+        Local cache is used for client-side widgets in this browser. Server-side usage telemetry is stored
+        separately and follows the configured retention policy.
       </Alert>
 
       {/* KPI Summary */}
