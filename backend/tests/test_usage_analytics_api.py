@@ -479,6 +479,7 @@ async def test_strict_endpoints_reject_no_token():
         get_current_user_strict,
         require_integration_access,
     )
+    from app.api.api_v1.endpoints.usage_analytics import _resolve_track_caller
     from app.core.config import settings as app_settings
     from app.main import app
 
@@ -489,6 +490,9 @@ async def test_strict_endpoints_reject_no_token():
         ),
         require_integration_access: app.dependency_overrides.pop(
             require_integration_access, None
+        ),
+        _resolve_track_caller: app.dependency_overrides.pop(
+            _resolve_track_caller, None
         ),
     }
     saved_debug = app_settings.DEBUG
@@ -525,6 +529,61 @@ async def test_strict_endpoints_reject_no_token():
             assert r.status_code == 401, r.text
     finally:
         app_settings.DEBUG = saved_debug
+        for dep, original in saved.items():
+            if original is not None:
+                app.dependency_overrides[dep] = original
+
+
+@pytest.mark.asyncio
+async def test_track_accepts_valid_jwt_without_user_row(db_session):
+    """A valid JWT whose `sub` has no matching User row records anonymously
+    (user_id=None, session_id-keyed) instead of returning 404 — supports
+    lazy provisioning / external-auth flows."""
+    from httpx import AsyncClient
+    from app.api.deps import (
+        get_current_user,
+        get_current_user_strict,
+        require_integration_access,
+    )
+    from app.api.api_v1.endpoints.usage_analytics import _resolve_track_caller
+    from app.core.security import create_access_token
+    from app.main import app
+    from sqlalchemy import select
+
+    # Drop the conftest dummy override so the real _resolve_track_caller runs.
+    saved = {
+        get_current_user: app.dependency_overrides.pop(get_current_user, None),
+        get_current_user_strict: app.dependency_overrides.pop(
+            get_current_user_strict, None
+        ),
+        require_integration_access: app.dependency_overrides.pop(
+            require_integration_access, None
+        ),
+        _resolve_track_caller: app.dependency_overrides.pop(
+            _resolve_track_caller, None
+        ),
+    }
+    try:
+        token = create_access_token({"sub": "ghost-user@example.com"})
+        async with AsyncClient(app=app, base_url="http://test") as ghost_client:
+            r = await ghost_client.post(
+                f"{API_PREFIX}/track",
+                json={
+                    "eventName": "page_view",
+                    "eventData": {"page": "projects"},
+                    "timestamp": _now_ms(),
+                    "sessionId": "ghost-sess",
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert r.status_code == 201, r.text
+        rows = (
+            await db_session.execute(select(AnalyticsEvent))
+        ).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].user_id is None
+        assert rows[0].session_id == "ghost-sess"
+    finally:
         for dep, original in saved.items():
             if original is not None:
                 app.dependency_overrides[dep] = original
