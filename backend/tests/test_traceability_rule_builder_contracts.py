@@ -211,7 +211,7 @@ def test_decision_validation_threshold_range():
         },
     )
 
-    errors = rules_api._validate_node_configuration(node)
+    errors, _warnings = rules_api._validate_node_configuration(node)
 
     assert errors
     assert "between 0 and 100" in errors[0].message

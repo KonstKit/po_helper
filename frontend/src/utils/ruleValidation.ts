@@ -48,6 +48,8 @@ const DECISION_CONDITION_TYPES = new Set([
   'is_empty',
 ]);
 
+export const SUPPORTED_TRANSFORM_TYPES: ReadonlySet<string> = new Set(['passthrough']);
+
 const getNodeLabel = (node: Node): string =>
   String((node.data as Record<string, unknown>)?.label || node.id);
 
@@ -147,7 +149,9 @@ export function validateRule(nodes: Node[], edges: Edge[]): ValidationResult {
   });
 
   nodes.forEach((node) => {
-    errors.push(...validateNodeConfiguration(node));
+    const { errors: nodeErrors, warnings: nodeWarnings } = validateNodeConfiguration(node);
+    errors.push(...nodeErrors);
+    warnings.push(...nodeWarnings);
   });
 
   return {
@@ -159,9 +163,18 @@ export function validateRule(nodes: Node[], edges: Edge[]): ValidationResult {
 
 /**
  * Validates individual node configuration.
+ *
+ * Returns both errors and warnings. The transform contract is advisory
+ * here (warning only) so the frontend never disables Execute Rule for
+ * legacy `transform_type` values during a rolling deploy where the
+ * backend is running with `TRACEABILITY_TRANSFORM_STRICT=false`. The
+ * backend remains the authoritative gate on save/execute in strict mode.
  */
-function validateNodeConfiguration(node: Node): ValidationError[] {
+function validateNodeConfiguration(
+  node: Node,
+): { errors: ValidationError[]; warnings: ValidationWarning[] } {
   const errors: ValidationError[] = [];
+  const warnings: ValidationWarning[] = [];
   const config = getNodeConfig(node);
   const nodeLabel = getNodeLabel(node);
 
@@ -219,6 +232,25 @@ function validateNodeConfiguration(node: Node): ValidationError[] {
       }
       break;
 
+    case 'transformNode':
+      if ('transform_type' in config) {
+        const transformType = config.transform_type;
+        if (typeof transformType !== 'string' || !SUPPORTED_TRANSFORM_TYPES.has(transformType)) {
+          const supported = Array.from(SUPPORTED_TRANSFORM_TYPES).sort().join(', ');
+          // Advisory only on the client. The backend is authoritative:
+          // in strict mode it returns a 400 on save/execute, in non-strict
+          // mode (rollout escape hatch) it warns and passes through. A
+          // hard client error would let the FE disable Execute even when
+          // the backend would have allowed the run.
+          warnings.push({
+            type: 'warning',
+            message: `Transform node "${nodeLabel}" has unsupported transform_type "${String(transformType)}"; supported values: ${supported}. The backend rejects this in strict mode.`,
+            nodeId: node.id,
+          });
+        }
+      }
+      break;
+
     case 'decisionNode': {
       const conditionType = String(config.condition_type || 'count_threshold');
       if (!DECISION_CONDITION_TYPES.has(conditionType)) {
@@ -260,7 +292,7 @@ function validateNodeConfiguration(node: Node): ValidationError[] {
       break;
   }
 
-  return errors;
+  return { errors, warnings };
 }
 
 /**

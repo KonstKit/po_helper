@@ -234,6 +234,16 @@ class Settings(BaseSettings):
     # that would poison time-windowed aggregations (e.g. retention, TTV).
     ANALYTICS_MAX_FUTURE_SKEW_SECONDS: int = 300
 
+    # Traceability transform behavior contract (plan_69).
+    # When True (default), an unsupported `transform_type` on a transformNode
+    # raises a terminal execution error. Set to False during a rolling
+    # deploy where new code may run before Alembic revision
+    # 034_rewrite_legacy_transform_types has migrated existing flow_json
+    # rows; in that mode an unsupported value emits a warning and passes
+    # artifacts through, matching pre-plan_69 behavior. Flip back to True
+    # once the migration completes.
+    TRACEABILITY_TRANSFORM_STRICT: bool = True
+
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
     @field_validator("ENVIRONMENT", mode="before")
