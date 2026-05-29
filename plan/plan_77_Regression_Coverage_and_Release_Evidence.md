@@ -2,7 +2,7 @@
 level: 2
 file_id: plan_77
 parent: plan_67
-status: pending
+status: completed
 created: 2026-05-08 12:00
 children: [plan_78, plan_79]
 ---
@@ -39,9 +39,9 @@ This module is the final release gate. It converts implementation confidence int
 
 ## Subtask Breakdown
 
-- [ ] plan_78 - Backend Contract and Service Regression Coverage (complexity: standard)
+- [x] plan_78 - Backend Contract and Service Regression Coverage (complexity: standard)
   - Brief: Add focused backend tests for critical service and API behavior.
-- [ ] plan_79 - Frontend Panel and Visualization Regression Coverage (complexity: blocked-on-decision)
+- [x] plan_79 - Frontend Panel and Visualization Regression Coverage (complexity: blocked-on-decision)
   - Brief: Add frontend tests for panels, history, validation, visualization, and workflow controls.
 
 ---

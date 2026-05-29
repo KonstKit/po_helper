@@ -19,6 +19,11 @@ class ExecutionContext:
         self.processed_artifact_ids: Set[int] = set()
         self.errors: List[str] = []
         self.warnings: List[str] = []
+        # Manual-review candidates collected by queueReviewAction nodes. These
+        # are plain dicts (not ORM objects) so they survive an atomic rollback
+        # and are persisted as durable review items by the engine after the
+        # execution record is created. See plan_70.
+        self.review_candidates: List[Dict[str, Any]] = []
 
         self.incoming_edges: Dict[str, List[Dict[str, Any]]] = {}
         for edge in edges:
@@ -47,6 +52,10 @@ class ExecutionContext:
     def add_warning(self, message: str) -> None:
         """Добавить предупреждение."""
         self.warnings.append(message)
+
+    def add_review_candidate(self, candidate: Dict[str, Any]) -> None:
+        """Register an artifact to be persisted as a manual-review work item."""
+        self.review_candidates.append(candidate)
 
     def set_node_output_with_handle(
         self, node_id: str, handle: str, artifacts: List[Artifact]

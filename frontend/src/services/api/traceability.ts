@@ -49,6 +49,10 @@ import type {
   MatrixConfigUpdate,
   ExportTaskCreate,
   ExportTaskStatus,
+  // Review queue types
+  ReviewItem,
+  ReviewItemListResponse,
+  ListReviewItemsOptions,
 } from './types';
 import { normalizePaginatedResponse } from './pagination';
 
@@ -906,3 +910,66 @@ export const deleteExport = async (taskId: string): Promise<void> => {
 export const getExportDownloadUrl = (taskId: string): string => {
   return `/api/v1/traceability/exports/${taskId}/download`;
 };
+
+// =============================================================================
+// Manual Review Queue (plan_70)
+// =============================================================================
+
+/**
+ * List manual-review work items with optional filtering + pagination.
+ */
+export const listReviewItems = async (
+  options: ListReviewItemsOptions = {}
+): Promise<ReviewItemListResponse> => {
+  const params: Record<string, unknown> = {
+    skip: options.skip ?? 0,
+    limit: options.limit ?? 50,
+  };
+  if (options.projectId !== undefined) params.project_id = options.projectId;
+  if (options.status !== undefined) params.status = options.status;
+  if (options.priority !== undefined) params.priority = options.priority;
+  if (options.artifactId !== undefined) params.artifact_id = options.artifactId;
+  if (options.ruleId !== undefined) params.rule_id = options.ruleId;
+
+  const { data } = await api.get('/v1/traceability/review-items', { params });
+  return data as ReviewItemListResponse;
+};
+
+/**
+ * Fetch a single review item by id.
+ */
+export const getReviewItem = async (reviewItemId: number): Promise<ReviewItem> => {
+  const { data } = await api.get(`/v1/traceability/review-items/${reviewItemId}`);
+  return data as ReviewItem;
+};
+
+const reviewTransition = async (
+  reviewItemId: number,
+  action: 'claim' | 'resolve' | 'reject' | 'reopen',
+  note?: string
+): Promise<ReviewItem> => {
+  const body = note !== undefined ? { note } : undefined;
+  const { data } = await api.post(
+    `/v1/traceability/review-items/${reviewItemId}/${action}`,
+    body
+  );
+  return data as ReviewItem;
+};
+
+export const claimReviewItem = (reviewItemId: number): Promise<ReviewItem> =>
+  reviewTransition(reviewItemId, 'claim');
+
+export const resolveReviewItem = (
+  reviewItemId: number,
+  note?: string
+): Promise<ReviewItem> => reviewTransition(reviewItemId, 'resolve', note);
+
+export const rejectReviewItem = (
+  reviewItemId: number,
+  note?: string
+): Promise<ReviewItem> => reviewTransition(reviewItemId, 'reject', note);
+
+export const reopenReviewItem = (
+  reviewItemId: number,
+  note?: string
+): Promise<ReviewItem> => reviewTransition(reviewItemId, 'reopen', note);

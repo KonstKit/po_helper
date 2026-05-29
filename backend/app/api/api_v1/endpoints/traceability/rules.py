@@ -817,7 +817,55 @@ async def delete_rule(
     if rule.project_id is not None:
         await ensure_project_access(rule.project_id, db, current_user)
 
+    # Delete-cascade contract (plan_73 step 1B):
+    # - Unresolved (open) review items block deletion with 409.
+    # - Terminal review items preserve history by clearing the rule reference
+    #   (a rule-name snapshot is retained in metadata).
+    # - Artifact links and suggested links are NOT deleted.
+    # - Rule execution rows are removed via the existing ORM cascade.
+    from app.models.traceability_review import (
+        OPEN_REVIEW_STATUSES,
+        TERMINAL_REVIEW_STATUSES,
+        TraceabilityReviewItem,
+    )
+
+    open_count = await count_with_filters(
+        db,
+        TraceabilityReviewItem,
+        [
+            TraceabilityReviewItem.rule_id == rule_id,
+            TraceabilityReviewItem.status.in_(OPEN_REVIEW_STATUSES),
+        ],
+    )
+    if open_count:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Cannot delete rule {rule_id}: {open_count} unresolved review "
+                f"item(s) reference it. Resolve or reject them first."
+            ),
+        )
+
+    # Detach only terminal items (the open-count guard above already 409s if
+    # any open item exists). Filtering on status keeps a review item that is
+    # created/reopened concurrently — after the guard ran — from being silently
+    # detached here instead of blocking the delete.
+    terminal_items = (
+        await db.execute(
+            select(TraceabilityReviewItem).where(
+                TraceabilityReviewItem.rule_id == rule_id,
+                TraceabilityReviewItem.status.in_(TERMINAL_REVIEW_STATUSES),
+            )
+        )
+    ).scalars().all()
+
+    rule_name = rule.name
     async with transactional_session(db):
+        for item in terminal_items:
+            snapshot = dict(item.meta or {})
+            snapshot["deleted_rule"] = {"id": rule_id, "name": rule_name}
+            item.meta = snapshot
+            item.rule_id = None
         await record_audit_event(
             db,
             action="delete",
@@ -825,7 +873,7 @@ async def delete_rule(
             entity_id=rule.id,
             actor_id=current_user.id,
             project_id=rule.project_id,
-            payload={"name": rule.name},
+            payload={"name": rule_name, "review_items_detached": len(terminal_items)},
         )
         await db.delete(rule)
 

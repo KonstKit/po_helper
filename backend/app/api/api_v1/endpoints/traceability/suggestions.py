@@ -15,6 +15,7 @@ from app.models.traceability import SuggestedLink
 from app.api.deps import ensure_project_access, require_permission
 from app.services.text_similarity import get_similarity_service
 from app.services.traceability.link_service import LinkCreationMethod, LinkService
+from app.services.audit_log import record_audit_event
 from app.utils import get_or_404
 from app.core.cache_enhanced import CacheInvalidator
 from .common import _would_create_cycle, _link_exists
@@ -233,6 +234,16 @@ async def approve_suggestion(
         suggestion.reviewed_by = current_user.id
         suggestion.reviewed_at = datetime.now(timezone.utc)
         suggestion.review_note = "Rejected: would create a cycle"
+        await record_audit_event(
+            db,
+            action="suggestion_reject",
+            entity_type="suggested_link",
+            entity_id=suggestion.id,
+            actor_id=current_user.id,
+            project_id=suggestion.project_id,
+            outcome="cycle_prevented",
+            payload={"reason": "would create a cycle"},
+        )
         await db.commit()
 
         raise HTTPException(status_code=409, detail="Cannot approve: link would create a cycle")
@@ -261,6 +272,16 @@ async def approve_suggestion(
     suggestion.reviewed_by = current_user.id
     suggestion.reviewed_at = datetime.now(timezone.utc)
     suggestion.review_note = note
+
+    await record_audit_event(
+        db,
+        action="suggestion_approve",
+        entity_type="suggested_link",
+        entity_id=suggestion.id,
+        actor_id=current_user.id,
+        project_id=suggestion.project_id,
+        payload={"link_id": new_link.id, "link_type": new_link.link_type},
+    )
 
     await db.commit()
 
@@ -302,6 +323,16 @@ async def reject_suggestion(
     suggestion.reviewed_by = current_user.id
     suggestion.reviewed_at = datetime.now(timezone.utc)
     suggestion.review_note = note
+
+    await record_audit_event(
+        db,
+        action="suggestion_reject",
+        entity_type="suggested_link",
+        entity_id=suggestion.id,
+        actor_id=current_user.id,
+        project_id=suggestion.project_id,
+        payload={"note": note},
+    )
 
     await db.commit()
 
@@ -465,8 +496,29 @@ async def bulk_approve_suggestions(
             suggestion.review_note = note or "Bulk approved"
             results["approved"] += 1
 
+        except HTTPException:
+            # Authorization / not-found failures (e.g. ensure_project_access
+            # raising 403) must surface as the real HTTP status, not be masked
+            # as a per-item error string while the endpoint still returns 200.
+            raise
         except Exception as e:
             results["errors"].append({"id": sugg_id, "error": str(e)})
+
+    await record_audit_event(
+        db,
+        action="suggestion_bulk_approve",
+        entity_type="suggested_link",
+        entity_id=0,
+        actor_id=current_user.id,
+        outcome="partial" if results["errors"] else "success",
+        payload={
+            "requested": len(suggestion_ids),
+            "approved": results["approved"],
+            "already_processed": results["already_processed"],
+            "cycle_prevented": results["cycle_prevented"],
+            "error_count": len(results["errors"]),
+        },
+    )
 
     await db.commit()
 

@@ -23,6 +23,11 @@ os.environ["JIRA_EMAIL"] = ""
 os.environ["JIRA_API_TOKEN"] = ""
 os.environ["ENABLE_MATRIX_CACHE"] = "false"
 os.environ["REDIS_URL"] = ""
+# The committed .env sets CELERY_ENABLED=true pointing at a broker that is not
+# available in the test environment. Force the synchronous in-process path so
+# export / sync / automation endpoints run inline instead of dispatching to a
+# broker that would raise ConnectionError(redis:6381) and 500 the request.
+os.environ["CELERY_ENABLED"] = "false"
 os.environ["GOOGLE_CLIENT_ID"] = ""
 os.environ["GOOGLE_CLIENT_SECRET"] = ""
 os.environ["MICROSOFT_CLIENT_ID"] = ""
@@ -80,15 +85,6 @@ app.dependency_overrides[get_db] = _override_get_db
 app.dependency_overrides[get_current_user] = _override_get_current_user
 app.dependency_overrides[get_current_user_strict] = _override_get_current_user
 app.dependency_overrides[require_integration_access] = _override_get_current_user
-
-# Usage-analytics track endpoints use a custom dependency that tolerates a
-# missing User row (returns None → service records anonymously). Override
-# it in tests to the same DummyUser so existing happy-path assertions hold.
-_resolve_track_caller = importlib.import_module(
-    "app.api.api_v1.endpoints.usage_analytics"
-)._resolve_track_caller
-app.dependency_overrides[_resolve_track_caller] = _override_get_current_user
-
 limiter.enabled = False
 limiter._headers_enabled = False
 

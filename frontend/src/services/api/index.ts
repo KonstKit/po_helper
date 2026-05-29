@@ -277,6 +277,13 @@ export {
   listExports,
   deleteExport,
   getExportDownloadUrl,
+  // Review queue
+  listReviewItems,
+  getReviewItem,
+  claimReviewItem,
+  resolveReviewItem,
+  rejectReviewItem,
+  reopenReviewItem,
 } from './traceability';
 
 // Knowledge (Confluence)

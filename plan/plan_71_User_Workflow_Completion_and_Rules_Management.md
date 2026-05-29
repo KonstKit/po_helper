@@ -2,7 +2,7 @@
 level: 2
 file_id: plan_71
 parent: plan_67
-status: pending
+status: completed
 created: 2026-05-08 12:00
 children: [plan_72, plan_73]
 ---
@@ -39,9 +39,9 @@ This module turns the existing technical capability into a complete operator wor
 
 ## Subtask Breakdown
 
-- [ ] plan_72 - Suggestions Review End-to-End Workflow (complexity: blocked-on-decision)
+- [x] plan_72 - Suggestions Review End-to-End Workflow (complexity: blocked-on-decision)
   - Brief: Validate and harden generation, approval, rejection, and bulk approval.
-- [ ] plan_73 - Rules Management Page and Lifecycle (complexity: standard)
+- [x] plan_73 - Rules Management Page and Lifecycle (complexity: standard)
   - Brief: Provide standalone rules management outside the visual canvas.
 
 ---

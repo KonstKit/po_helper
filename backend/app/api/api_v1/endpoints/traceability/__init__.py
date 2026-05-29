@@ -28,6 +28,7 @@ from .sync_tasks import router as sync_tasks_router
 from .matrix import router as matrix_router
 from .validation import router as validation_router
 from .derivation import router as derivation_router
+from .review import router as review_router
 
 # Create combined router
 router = APIRouter()
@@ -47,5 +48,6 @@ router.include_router(sync_tasks_router, tags=["Traceability - Sync Tasks"])
 router.include_router(matrix_router, tags=["Traceability - RTM Matrix"])
 router.include_router(validation_router, tags=["Traceability - Validation"])
 router.include_router(derivation_router, tags=["Traceability - Derivation"])
+router.include_router(review_router, tags=["Traceability - Review Queue"])
 
 __all__ = ["router"]

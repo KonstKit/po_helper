@@ -7,13 +7,12 @@ Metrics endpoints return aggregated dashboards (admin-only).
 import hashlib
 import logging
 import time
-from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import _resolve_current_user, get_current_user_strict
+from app.api.deps import get_current_user_strict
 from app.core.config import settings
 from app.core.request_context import get_token_scopes, get_token_tenant_id
 from app.core.database import get_db
@@ -111,33 +110,6 @@ def _user_or_ip_key(request: Request) -> str:
     return get_remote_address(request)
 
 
-async def _resolve_track_caller(
-    db: AsyncSession = Depends(get_db),
-    authorization: Optional[str] = Header(default=None, convert_underscores=False),
-) -> Optional[User]:
-    """Resolve the caller for /track endpoints.
-
-    Requires a valid JWT (missing/invalid → 401), but tolerates the
-    "JWT decoded but no provisioned User row" case by returning None
-    instead of 404 — that lets the service layer fall back to anonymous,
-    session-keyed recording for users in lazy-provisioning / external-
-    auth flows that can produce a valid token before a User row exists.
-    """
-    try:
-        return await _resolve_current_user(
-            db,
-            authorization=authorization,
-            allow_debug_demo_fallback=False,
-        )
-    except HTTPException as exc:
-        # 404 = JWT was valid (signature + claims) but no matching User.
-        # Accept anonymously. Any other status (notably 401) is a real
-        # auth failure and must propagate.
-        if exc.status_code == status.HTTP_404_NOT_FOUND:
-            return None
-        raise
-
-
 def _enforce_batch_size(events_in: AnalyticsEventBatchIn) -> None:
     max_size = settings.ANALYTICS_BATCH_MAX_SIZE
     if len(events_in.events) > max_size:
@@ -153,17 +125,17 @@ async def track_event(
     request: Request,
     event: AnalyticsEventIn,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(_resolve_track_caller),
+    current_user: User = Depends(get_current_user_strict),
 ) -> TrackResponse:
-    """Persist a single analytics event for the authenticated caller.
+    """Persist a single analytics event for the authenticated user.
 
-    A valid JWT without a provisioned User row records the event with
-    user_id=None (session-keyed), so first-session telemetry under lazy
-    provisioning / external auth is preserved instead of 404'ing.
+    Returns 404 when a valid JWT has no provisioned User row. The frontend
+    treats 404 as transient (keeps the queue, retries) so events emitted
+    during a lazy-provisioning window are flushed once the User row
+    exists, without splitting one real attempt across two identities
+    (anonymous before provisioning, user-keyed after).
     """
-    await analytics_service.record_event(
-        db, event, user_id=current_user.id if current_user else None
-    )
+    await analytics_service.record_event(db, event, user_id=current_user.id)
     return TrackResponse(accepted=1, received_at=int(time.time() * 1000))
 
 
@@ -177,12 +149,12 @@ async def track_events_batch(
     request: Request,
     payload: AnalyticsEventBatchIn,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(_resolve_track_caller),
+    current_user: User = Depends(get_current_user_strict),
 ) -> TrackResponse:
-    """Persist a batch of analytics events for the authenticated caller."""
+    """Persist a batch of analytics events for the authenticated user."""
     _enforce_batch_size(payload)
     accepted = await analytics_service.record_events_batch(
-        db, payload.events, user_id=current_user.id if current_user else None
+        db, payload.events, user_id=current_user.id
     )
     return TrackResponse(accepted=accepted, received_at=int(time.time() * 1000))
 
