@@ -34,6 +34,8 @@ const Traceability = lazy(() => import('./pages/Traceability'));
 const TraceabilityFlowBuilder = lazy(() => import('./pages/TraceabilityFlowBuilder'));
 const TraceabilityExecutionHistory = lazy(() => import('./pages/TraceabilityExecutionHistory'));
 const TraceabilityVisualization = lazy(() => import('./pages/TraceabilityVisualization'));
+const RulesManagement = lazy(() => import('./pages/RulesManagement'));
+const ReviewQueue = lazy(() => import('./pages/ReviewQueue'));
 const SprintCapacity = lazy(() => import('./pages/SprintCapacity'));
 
 const LazyFallback = () => (
@@ -175,6 +177,8 @@ function App() {
               <Route path="traceability/flow-builder" element={<TraceabilityFlowBuilder />} />
               <Route path="traceability/history" element={<TraceabilityExecutionHistory />} />
               <Route path="traceability/visualization" element={<TraceabilityVisualization />} />
+              <Route path="traceability/rules" element={<RulesManagement />} />
+              <Route path="traceability/review" element={<ReviewQueue />} />
               <Route path="sprint-capacity" element={<SprintCapacity />} />
               <Route path="profile" element={<Profile />} />
               <Route path="*" element={<Navigate to="/" replace />} />

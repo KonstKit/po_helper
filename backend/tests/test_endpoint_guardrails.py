@@ -298,6 +298,10 @@ async def test_health_alerts_include_backlog_high_signal(
             "by_type": {},
         }
 
+    # The queue_backlog_threshold alert is only surfaced when Celery is enabled
+    # (health.py gates it on settings.CELERY_ENABLED). The test bootstrap forces
+    # CELERY_ENABLED=false (no broker), so this celery-specific test must opt in.
+    monkeypatch.setattr(settings, "CELERY_ENABLED", True)
     monkeypatch.setattr(
         "app.api.api_v1.endpoints.health._check_celery_queue_readiness",
         _queue_backlog_high,

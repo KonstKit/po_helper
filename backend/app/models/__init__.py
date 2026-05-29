@@ -30,6 +30,7 @@ from app.models.jira_field_mapping import JiraFieldMapping
 from app.models.audit import BusinessValueAudit
 from app.models.capacity import CapacitySettings, TeamHealthCheck, CFDSnapshot
 from app.models.traceability_rule import TraceabilityRule, TraceabilityRuleExecution
+from app.models.traceability_review import TraceabilityReviewItem
 from app.models.analytics import AnalyticsEvent
 
 __all__ = [
@@ -75,5 +76,6 @@ __all__ = [
     "CFDSnapshot",
     "TraceabilityRule",
     "TraceabilityRuleExecution",
+    "TraceabilityReviewItem",
     "AnalyticsEvent",
 ]

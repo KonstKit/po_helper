@@ -79,6 +79,8 @@ const navigationGroups: NavigationGroup[] = [
         children: [
           { text: 'D3 Visualization', icon: <VisualizationIcon />, path: '/traceability/visualization' },
           { text: 'Rule Builder', icon: <RuleBuilderIcon />, path: '/traceability/flow-builder' },
+          { text: 'Rules', icon: <AssignmentIcon />, path: '/traceability/rules' },
+          { text: 'Review Queue', icon: <QualityIcon />, path: '/traceability/review' },
           { text: 'Execution History', icon: <HistoryIcon />, path: '/traceability/history' },
         ],
       },

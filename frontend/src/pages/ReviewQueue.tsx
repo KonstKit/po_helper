@@ -1,0 +1,245 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  FormControl,
+  IconButton,
+  InputLabel,
+  LinearProgress,
+  MenuItem,
+  Paper,
+  Select,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  Tooltip,
+  Typography,
+} from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
+import { Refresh as RefreshIcon } from '@mui/icons-material';
+import {
+  claimReviewItem,
+  listReviewItems,
+  rejectReviewItem,
+  resolveReviewItem,
+} from '../services/api';
+import type { ReviewItem, ReviewItemStatus } from '../services/api';
+import { getErrorMessage } from '../utils/errorUtils';
+
+type StatusFilter = 'all' | ReviewItemStatus;
+
+const STATUS_OPTIONS: ReviewItemStatus[] = ['pending', 'claimed', 'resolved', 'rejected'];
+const STATUS_SET = new Set<string>(STATUS_OPTIONS);
+
+const statusColor = (
+  status: ReviewItemStatus
+): 'default' | 'warning' | 'info' | 'success' | 'error' => {
+  switch (status) {
+    case 'pending':
+      return 'warning';
+    case 'claimed':
+      return 'info';
+    case 'resolved':
+      return 'success';
+    case 'rejected':
+      return 'error';
+    default:
+      return 'default';
+  }
+};
+
+/**
+ * Manual review queue (plan_70). Operators triage artifacts a rule flagged for
+ * review: claim, resolve, or reject items with a durable, auditable lifecycle.
+ */
+const ReviewQueue: React.FC = () => {
+  const [items, setItems] = useState<ReviewItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending');
+  const [projectId, setProjectId] = useState<string>('');
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  const fetchItems = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const parsedProject = projectId.trim() ? Number(projectId.trim()) : undefined;
+      const response = await listReviewItems({
+        status: statusFilter === 'all' ? undefined : statusFilter,
+        projectId:
+          parsedProject !== undefined
+          && Number.isInteger(parsedProject)
+          && parsedProject > 0
+            ? parsedProject
+            : undefined,
+        limit: 100,
+      });
+      setItems(response.items);
+      setTotal(response.total);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to load review items'));
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter, projectId]);
+
+  useEffect(() => {
+    void fetchItems();
+  }, [fetchItems]);
+
+  const handleStatusFilterChange = (event: SelectChangeEvent<string>) => {
+    const value = event.target.value;
+    setStatusFilter(value !== 'all' && STATUS_SET.has(value) ? (value as ReviewItemStatus) : 'all');
+  };
+
+  const runAction = async (id: number, fn: () => Promise<unknown>) => {
+    setBusyId(id);
+    setActionError(null);
+    try {
+      await fn();
+      await fetchItems();
+    } catch (err: unknown) {
+      setActionError(getErrorMessage(err, 'Action failed'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ width: '100%', mt: 2 }} data-testid="review-loading">
+        <LinearProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error" action={<Button onClick={() => void fetchItems()}>Retry</Button>}>
+          {error}
+        </Alert>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h4">Review Queue</Typography>
+        <Tooltip title="Refresh">
+          <IconButton onClick={() => void fetchItems()} aria-label="Refresh review items">
+            <RefreshIcon />
+          </IconButton>
+        </Tooltip>
+      </Box>
+
+      {actionError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setActionError(null)}>
+          {actionError}
+        </Alert>
+      )}
+
+      <Box sx={{ mb: 2, display: 'flex', gap: 2 }}>
+        <TextField
+          label="Project ID"
+          size="small"
+          value={projectId}
+          onChange={(e) => setProjectId(e.target.value)}
+          inputProps={{ 'aria-label': 'Project ID filter' }}
+          helperText="Required unless you are an admin"
+        />
+        <FormControl size="small" sx={{ minWidth: 160 }}>
+          <InputLabel>Status</InputLabel>
+          <Select value={statusFilter} label="Status" onChange={handleStatusFilterChange}>
+            <MenuItem value="all">All</MenuItem>
+            {STATUS_OPTIONS.map((s) => (
+              <MenuItem key={s} value={s}>
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Box>
+
+      {items.length === 0 ? (
+        <Alert severity="info">No review items match the current filters.</Alert>
+      ) : (
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Artifact</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Priority</TableCell>
+                <TableCell>Reason</TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {items.map((item) => {
+                const externalId =
+                  item.meta && typeof item.meta.external_id === 'string'
+                    ? item.meta.external_id
+                    : `#${item.artifact_id}`;
+                const isOpen = item.status === 'pending' || item.status === 'claimed';
+                return (
+                  <TableRow key={item.id} data-testid={`review-row-${item.id}`}>
+                    <TableCell>{externalId}</TableCell>
+                    <TableCell>
+                      <Chip label={item.status} color={statusColor(item.status)} size="small" />
+                    </TableCell>
+                    <TableCell>{item.priority}</TableCell>
+                    <TableCell>{item.reason ?? '—'}</TableCell>
+                    <TableCell align="right">
+                      {item.status === 'pending' && (
+                        <Button
+                          size="small"
+                          disabled={busyId === item.id}
+                          onClick={() => void runAction(item.id, () => claimReviewItem(item.id))}
+                        >
+                          Claim
+                        </Button>
+                      )}
+                      <Button
+                        size="small"
+                        color="success"
+                        disabled={!isOpen || busyId === item.id}
+                        onClick={() => void runAction(item.id, () => resolveReviewItem(item.id))}
+                      >
+                        Resolve
+                      </Button>
+                      <Button
+                        size="small"
+                        color="error"
+                        disabled={!isOpen || busyId === item.id}
+                        onClick={() => void runAction(item.id, () => rejectReviewItem(item.id))}
+                      >
+                        Reject
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      <Typography variant="caption" sx={{ mt: 2, display: 'block' }}>
+        {total} item(s) total
+      </Typography>
+    </Box>
+  );
+};
+
+export default ReviewQueue;

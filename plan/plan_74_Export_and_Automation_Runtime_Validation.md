@@ -2,7 +2,7 @@
 level: 2
 file_id: plan_74
 parent: plan_67
-status: pending
+status: completed
 created: 2026-05-08 12:00
 children: [plan_75, plan_76]
 ---
@@ -39,9 +39,9 @@ This module checks production behavior beyond static contracts: exports must ren
 
 ## Subtask Breakdown
 
-- [ ] plan_75 - Matrix Export Rendering and Download Validation (complexity: blocked-on-decision)
+- [x] plan_75 - Matrix Export Rendering and Download Validation (complexity: blocked-on-decision)
   - Brief: Verify CSV, spreadsheet, and PDF outputs with realistic matrix data.
-- [ ] plan_76 - Scheduled and Webhook Execution Validation (complexity: blocked-on-decision)
+- [x] plan_76 - Scheduled and Webhook Execution Validation (complexity: blocked-on-decision)
   - Brief: Validate automated execution paths and terminal status behavior.
 
 ---

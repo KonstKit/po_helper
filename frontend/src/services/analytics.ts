@@ -1023,13 +1023,38 @@ class AnalyticsService {
         this.scheduleFlush();
         return;
       }
+      // 404 = lazy-provisioning window: JWT valid but the User row does not
+      // exist yet. Preserve the backlog (no aggressive 200-event truncation)
+      // so events emitted before provisioning are flushed later under the same
+      // identity. But still BOUND it: a token that is never provisioned would
+      // otherwise grow pendingBatch (and its localStorage mirror) without limit
+      // and retry forever. Keep the most recent events at a generous cap, since
+      // this window is expected to resolve once the User row appears.
+      if (status === 404) {
+        const LAZY_PROVISION_CAP = 1000;
+        if (this.pendingBatch.length > LAZY_PROVISION_CAP) {
+          this.pendingBatch = this.pendingBatch.slice(-LAZY_PROVISION_CAP);
+        }
+        this.savePendingBatch();
+        console.error(
+          'Analytics flush 404 (lazy provisioning); preserving recent backlog:',
+          e,
+        );
+        this.scheduleFlush();
+        return;
+      }
       // Other 4xx (e.g. 422 from server-side validation, 400 from a malformed
       // payload): the batch is unrecoverable as-is. If we keep retrying, a
       // single poison event at the head of the queue blocks every later
       // flush forever. Drop the sent slice and let the rest of the queue
       // proceed. Better to lose one batch than freeze telemetry indefinitely.
       // 429 (rate limit) is transient — leave it on the retry path below.
-      if (typeof status === 'number' && status >= 400 && status < 500 && status !== 429) {
+      if (
+        typeof status === 'number'
+        && status >= 400
+        && status < 500
+        && status !== 429
+      ) {
         this.pendingBatch.splice(0, sentCount);
         this.savePendingBatch();
         console.error(

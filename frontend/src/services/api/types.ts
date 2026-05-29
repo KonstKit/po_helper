@@ -859,6 +859,44 @@ export interface GenerateSuggestionsResult {
   indexed_artifacts: number;
 }
 
+// --- Manual review queue (plan_70) ---
+export type ReviewItemStatus = 'pending' | 'claimed' | 'resolved' | 'rejected';
+
+export interface ReviewItem {
+  id: number;
+  tenant_id?: string | null;
+  project_id?: number | null;
+  artifact_id: number;
+  rule_id?: number | null;
+  rule_execution_id?: number | null;
+  node_id: string;
+  status: ReviewItemStatus;
+  priority: string;
+  reason?: string | null;
+  assigned_to_id?: number | null;
+  created_by_id?: number | null;
+  resolved_by_id?: number | null;
+  resolved_at?: string | null;
+  meta?: Record<string, unknown> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ReviewItemListResponse {
+  total: number;
+  items: ReviewItem[];
+}
+
+export interface ListReviewItemsOptions {
+  projectId?: number;
+  status?: ReviewItemStatus;
+  priority?: string;
+  artifactId?: number;
+  ruleId?: number;
+  skip?: number;
+  limit?: number;
+}
+
 // =============================================================================
 // Sync Health Types
 // =============================================================================

@@ -126,6 +126,24 @@ class RuleExecutionEngine:
             else None,
         )
         self.db.add(execution)
+        # Flush so the execution row gets an id we can attach to review items.
+        self.db.flush()
+
+        # Persist durable manual-review work items (plan_70). Candidates are
+        # plain dicts collected during the run, so they survive the atomic
+        # rollback above and are recorded alongside this execution.
+        review_summary = {"created": 0, "updated": 0}
+        if context.review_candidates:
+            from app.services.traceability.review_service import (
+                persist_review_candidates_sync,
+            )
+
+            review_summary = persist_review_candidates_sync(
+                self.db,
+                rule_id=rule_id,
+                execution_id=execution.id,
+                candidates=context.review_candidates,
+            )
 
         rule.total_executions += 1
         if not has_errors:
@@ -142,6 +160,8 @@ class RuleExecutionEngine:
             "links_created": links_created_count,
             "links_updated": links_updated_count,
             "artifacts_processed": artifacts_processed_count,
+            "review_items_created": review_summary["created"],
+            "review_items_updated": review_summary["updated"],
             "errors": context.errors,
             "warnings": context.warnings,
             "rolled_back": atomic and has_errors,
