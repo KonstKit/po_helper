@@ -266,6 +266,23 @@ def _calculate_impact_risk(
     return min(base_risk, 1.0)
 
 
+def _risk_level_from_score(risk_score: float) -> str:
+    """Bucket the 0-1 impact ``risk_score`` into the level the UI renders.
+
+    This endpoint historically returned only ``risk_score``; the frontend
+    Impact Analysis panel reads ``risk_level`` (low/medium/high/critical) for
+    its label, colour and icon and crashed (``undefined.toUpperCase()``)
+    when the field was absent. Always returning a level keeps the contract whole.
+    """
+    if risk_score >= 0.8:
+        return "critical"
+    if risk_score >= 0.6:
+        return "high"
+    if risk_score >= 0.35:
+        return "medium"
+    return "low"
+
+
 def _generate_impact_recommendations(
     artifact: Artifact,
     directly_affected: List[Dict],
@@ -431,7 +448,35 @@ async def get_impact_analysis(
         start, directly_affected, indirectly_affected, change_type, risk_score
     )
 
+    # --- Normalize to the frontend ImpactAnalysisResponse contract -----------
+    # The panel reads impact_type/distance/path on each affected item, a `stats`
+    # block (incl. affected_types), and string recommendations. Build those here
+    # so the response matches the typed contract the UI was written against
+    # (a missing `stats`/`risk_level` previously white-screened the page).
+    for _item in directly_affected:
+        _item["impact_type"] = "direct"
+        _item.setdefault("distance", 1)
+        _item["path"] = [start.id, _item["id"]]
+    for _item in indirectly_affected:
+        _item["impact_type"] = "indirect"
+        _item["path"] = [start.id, _item["id"]]
+
+    affected_types: Dict[str, int] = {}
+    for _item in directly_affected + indirectly_affected:
+        _t = _item.get("type") or "unknown"
+        affected_types[_t] = affected_types.get(_t, 0) + 1
+
+    recommendation_texts: List[str] = []
+    for _rec in recommendations:
+        if isinstance(_rec, dict):
+            _action = _rec.get("action", "")
+            _reason = _rec.get("reason")
+            recommendation_texts.append(f"{_action} — {_reason}" if _reason else _action)
+        else:
+            recommendation_texts.append(str(_rec))
+
     payload = {
+        "source_artifact_id": start.id,
         "artifact": {
             "id": start.id,
             "type": start.type,
@@ -441,13 +486,15 @@ async def get_impact_analysis(
         "change_type": change_type,
         "directly_affected": directly_affected,
         "indirectly_affected": indirectly_affected,
-        "summary": {
+        "risk_score": risk_score,
+        "risk_level": _risk_level_from_score(risk_score),
+        "recommendations": recommendation_texts,
+        "stats": {
+            "total_affected": len(directly_affected) + len(indirectly_affected),
             "direct_count": len(directly_affected),
             "indirect_count": len(indirectly_affected),
-            "total_affected": len(directly_affected) + len(indirectly_affected),
+            "affected_types": affected_types,
         },
-        "risk_score": risk_score,
-        "recommendations": recommendations,
     }
 
     # Store in cache

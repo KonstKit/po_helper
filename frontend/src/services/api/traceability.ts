@@ -378,10 +378,19 @@ export const rejectSuggestedLink = async (
 
 export const bulkApproveSuggestedLinks = async (
   suggestionIds: number[]
-): Promise<{ approved: number; created_links: number }> => {
-  const { data } = await api.post('/v1/traceability/suggested-links/bulk-approve', {
-    suggestion_ids: suggestionIds,
-  });
+): Promise<{
+  success: boolean;
+  message: string;
+  results: {
+    approved: number;
+    already_processed: number;
+    cycle_prevented: number;
+    errors: { id: number; error: string }[];
+  };
+}> => {
+  // The endpoint body is a bare JSON array of ids (FastAPI `List[int]`).
+  // Posting an object wrapper ({ suggestion_ids }) failed request validation (422).
+  const { data } = await api.post('/v1/traceability/suggested-links/bulk-approve', suggestionIds);
   return data;
 };
 
@@ -973,3 +982,47 @@ export const reopenReviewItem = (
   reviewItemId: number,
   note?: string
 ): Promise<ReviewItem> => reviewTransition(reviewItemId, 'reopen', note);
+
+// =============================================================================
+// Connector Configs (per-project overrides, e.g. Confluence space mapping)
+// =============================================================================
+
+export interface ConnectorConfig {
+  id: number;
+  project_id: number | null;
+  provider: string;
+  is_enabled: boolean;
+  settings_json?: Record<string, unknown> | null;
+  auth_ref?: string | null;
+  rate_limit_policy?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface ConnectorConfigCreate {
+  project_id: number;
+  provider: string;
+  is_enabled?: boolean;
+  settings_json?: Record<string, unknown>;
+}
+
+export const listConnectorConfigs = async (
+  projectId: number,
+  provider?: string
+): Promise<ConnectorConfig[]> => {
+  const params: Record<string, unknown> = { project_id: projectId };
+  if (provider) params.provider = provider;
+  const { data } = await api.get('/v1/traceability/connector-configs', { params });
+  return data as ConnectorConfig[];
+};
+
+export const createConnectorConfig = async (
+  payload: ConnectorConfigCreate
+): Promise<ConnectorConfig> => {
+  const { data } = await api.post('/v1/traceability/connector-configs', payload);
+  return data as ConnectorConfig;
+};
+
+export const deleteConnectorConfig = async (configId: number): Promise<void> => {
+  await api.delete(`/v1/traceability/connector-configs/${configId}`);
+};
