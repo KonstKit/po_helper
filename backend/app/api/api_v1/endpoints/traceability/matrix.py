@@ -7,6 +7,7 @@ Provides:
 - Async exports
 """
 
+import logging
 import os
 import uuid
 from typing import Any, Dict, List, Optional
@@ -43,6 +44,8 @@ from app.services.audit_log import record_audit_event
 from app.services.analytics.coverage_analytics_service import get_coverage_analytics
 from app.services.analytics.rtm_matrix_service import get_rtm_matrix
 from app.utils import get_by_id_or_404, transactional_session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -588,14 +591,28 @@ async def create_export_task(
         # Generate channel ID for SSE updates
         channel_id = f"{current_user.id}_{task_id[:8]}"
 
-        export_matrix_task.delay(
-            export_task_id=task_id,
-            project_id=payload.project_id,
-            format=payload.format,
-            filters=payload.filters.model_dump() if payload.filters else None,
-            include_details=payload.include_details,
-            channel_id=channel_id,
-        )
+        try:
+            export_matrix_task.delay(
+                export_task_id=task_id,
+                project_id=payload.project_id,
+                format=payload.format,
+                filters=payload.filters.model_dump() if payload.filters else None,
+                include_details=payload.include_details,
+                channel_id=channel_id,
+            )
+        except Exception as exc:
+            # Broker unavailable (e.g. Redis down): fail the task with a readable
+            # terminal status and return 503 instead of leaking a raw 500 / a
+            # task stuck forever in "pending". The user can retry once the queue
+            # is back.
+            logger.warning("Export enqueue failed (broker unavailable): %s", exc)
+            export_task.status = "failed"
+            export_task.error_message = "Export queue unavailable; please retry."
+            await db.commit()
+            raise HTTPException(
+                status_code=503,
+                detail="Export queue unavailable; please retry.",
+            ) from exc
     else:
         # Run synchronously for development without Celery
         await _run_sync_export(

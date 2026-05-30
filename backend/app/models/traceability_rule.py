@@ -88,6 +88,9 @@ class TraceabilityRuleExecution(Base):
 
     # Execution metadata
     status: Mapped[str] = mapped_column(String(20), nullable=False)
+    # What triggered this run: manual | webhook | scheduled | post_sync.
+    # Nullable for rows created before the column existed (plan_76).
+    trigger_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

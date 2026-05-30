@@ -329,8 +329,9 @@ export default function SuggestedLinksPanel({ projectId, onLinkCreated }: Sugges
 
           {/* Filters */}
           <FormControl size="small" sx={{ minWidth: 120 }}>
-            <InputLabel>Status</InputLabel>
+            <InputLabel id="suggested-links-status-label">Status</InputLabel>
             <Select
+              labelId="suggested-links-status-label"
               value={statusFilter}
               label="Status"
               onChange={handleStatusChange}

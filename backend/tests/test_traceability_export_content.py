@@ -143,3 +143,73 @@ async def test_unsupported_format_terminal_failure(db_session, matrix_project):
     # Failure must be terminal and carry a readable message.
     assert result["status"] == "failed"
     assert "message" in result and result["message"]
+
+
+@pytest.mark.asyncio
+async def test_include_details_emits_confidence_marker(db_session, matrix_project):
+    """include_details=True must surface link type + confidence in the cell."""
+    task = ExportTask(
+        task_id=f"test-details-{matrix_project}",
+        project_id=matrix_project,
+        export_type="matrix",
+        format="csv",
+        status="pending",
+        config_json={"filters": _DEFAULT_FILTERS, "include_details": True},
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    result = await process_export_task(db_session, task.task_id)
+    assert result["status"] == "completed"
+    with open(result["file_path"], encoding="utf-8") as f:
+        content = f.read()
+    # Link of type "tests" at confidence 0.9 → cell "tests (90%)".
+    assert "tests" in content
+    assert "(90%)" in content
+
+
+@pytest.mark.asyncio
+async def test_download_unknown_task_returns_404(client, auth_headers):
+    resp = await client.get(
+        "/api/v1/traceability/exports/does-not-exist/download", headers=auth_headers
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_download_not_ready_returns_400(client, db_session, matrix_project, auth_headers):
+    task = ExportTask(
+        task_id="pending-export-task",
+        project_id=matrix_project,
+        export_type="matrix",
+        format="csv",
+        status="pending",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    resp = await client.get(
+        "/api/v1/traceability/exports/pending-export-task/download", headers=auth_headers
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_export_uses_bounded_row_col_limits(db_session, matrix_project, monkeypatch):
+    """Large-matrix guard: get_rtm_matrix must be called with limits capped by
+    MAX_EXPORT_ROWS / MAX_EXPORT_COLS so a huge matrix cannot exhaust memory."""
+    import app.services.analytics.export_service as export_service
+
+    captured: dict = {}
+
+    async def _fake_matrix(**kwargs):
+        captured.update(kwargs)
+        return {"rows": [], "columns": [], "cells": {}, "coverage": {}}
+
+    monkeypatch.setattr(export_service, "get_rtm_matrix", _fake_matrix)
+
+    task_id = await _make_export(db_session, matrix_project, "csv", _DEFAULT_FILTERS)
+    await process_export_task(db_session, task_id)
+
+    assert captured["row_limit"] <= export_service.MAX_EXPORT_ROWS
+    assert captured["col_limit"] <= export_service.MAX_EXPORT_COLS

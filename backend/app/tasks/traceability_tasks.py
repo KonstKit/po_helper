@@ -20,15 +20,15 @@ from app.core.database import AsyncSessionLocal
 logger = logging.getLogger(__name__)
 
 
-async def _execute_rule_async(rule_id: int) -> Dict[str, Any]:
-    """Execute a traceability rule asynchronously."""
+async def _execute_rule_async(rule_id: int, trigger: str = "scheduled") -> Dict[str, Any]:
+    """Execute a traceability rule asynchronously (default trigger: scheduled)."""
     from app.services.traceability.engine import RuleExecutionEngine
     # Note: RuleExecutionEngine uses sync SQLAlchemy, need sync session
     from app.core.database import SessionLocal
 
     with SessionLocal() as sync_db:
         engine = RuleExecutionEngine(sync_db)
-        result = engine.execute_rule(rule_id)
+        result = engine.execute_rule(rule_id, trigger=trigger)
         return result
 
 
@@ -52,7 +52,7 @@ async def _execute_all_enabled_rules_async(project_id: Optional[int] = None) -> 
         for rule in rules:
             try:
                 engine = RuleExecutionEngine(db)
-                result = engine.execute_rule(rule.id)
+                result = engine.execute_rule(rule.id, trigger="scheduled")
                 results.append({
                     "rule_id": rule.id,
                     "rule_name": rule.name,
@@ -116,7 +116,7 @@ async def _execute_sync_complete_rules_async(
         engine = RuleExecutionEngine(db)
         for rule in rules:
             try:
-                result = engine.execute_rule(rule.id)
+                result = engine.execute_rule(rule.id, trigger="post_sync")
                 results.append(
                     {
                         "rule_id": rule.id,

@@ -133,8 +133,14 @@ async def process_export_task(
             filters.model_dump(exclude_none=True),
         )
 
-        # Get matrix data with hard limits to prevent memory exhaustion
-        # (MAX_EXPORT_ROWS x MAX_EXPORT_COLS = 5M cells max)
+        # Get matrix data with hard limits to prevent memory exhaustion.
+        # Row and column caps bound each dimension; the cell-budget cap then
+        # bounds their PRODUCT (defends against a future caps bump where
+        # rows x cols would exceed MAX_EXPORT_CELLS and exhaust memory).
+        row_limit = min(MAX_EXPORT_ROWS, 10000)
+        col_limit = min(MAX_EXPORT_COLS, 10000)
+        if row_limit * col_limit > MAX_EXPORT_CELLS:
+            col_limit = max(1, MAX_EXPORT_CELLS // row_limit)
         matrix_data = await get_rtm_matrix(
             db=db,
             project_id=task.project_id,
@@ -148,9 +154,9 @@ async def process_export_task(
             direction=filters.direction,
             include_orphans=filters.include_orphans,
             row_skip=0,
-            row_limit=min(MAX_EXPORT_ROWS, 10000),
+            row_limit=row_limit,
             col_skip=0,
-            col_limit=min(MAX_EXPORT_COLS, 10000),
+            col_limit=col_limit,
             include_link_details=include_details,
         )
 

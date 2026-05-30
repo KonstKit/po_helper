@@ -45,13 +45,17 @@ class RuleExecutionEngine:
         self.db = db
         self.registry = registry or build_default_registry()
 
-    def execute_rule(self, rule_id: int, atomic: bool = True) -> Dict[str, Any]:
+    def execute_rule(
+        self, rule_id: int, atomic: bool = True, trigger: str = "manual"
+    ) -> Dict[str, Any]:
         """Выполнить правило трассировки.
 
         Args:
             rule_id: ID правила для выполнения
             atomic: Если True, откатывает все созданные связи при ошибках.
                    Если False, сохраняет частичные результаты (legacy behavior).
+            trigger: What initiated this run — manual | webhook | scheduled |
+                   post_sync. Recorded on the execution row (plan_76).
 
         Returns:
             Результат выполнения с execution_id, status, links_created, errors, warnings
@@ -112,6 +116,7 @@ class RuleExecutionEngine:
         execution = TraceabilityRuleExecution(
             rule_id=rule_id,
             status="success" if not has_errors else "failed",
+            trigger_source=trigger,
             links_created=links_created_count,
             links_updated=links_updated_count,
             artifacts_processed=artifacts_processed_count,

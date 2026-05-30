@@ -151,6 +151,7 @@ const TraceabilityExecutionHistory: React.FC = () => {
               <TableCell width={50} />
               <TableCell>Rule Name</TableCell>
               <TableCell>Status</TableCell>
+              <TableCell>Trigger</TableCell>
               <TableCell>Links Created</TableCell>
               <TableCell>Executed At</TableCell>
               <TableCell>Errors</TableCell>
@@ -160,7 +161,7 @@ const TraceabilityExecutionHistory: React.FC = () => {
           <TableBody>
             {filteredExecutions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} align="center">
+                <TableCell colSpan={8} align="center">
                   <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
                     No executions found
                   </Typography>
@@ -190,6 +191,11 @@ const TraceabilityExecutionHistory: React.FC = () => {
                         color={getStatusColor(execution.status)}
                         size="small"
                       />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {execution.trigger_source ?? '—'}
+                      </Typography>
                     </TableCell>
                     <TableCell>
                       <Chip label={execution.links_created} color="primary" size="small" />
@@ -229,7 +235,7 @@ const TraceabilityExecutionHistory: React.FC = () => {
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
+                    <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={8}>
                       <Collapse in={expandedRow === execution.id} timeout="auto" unmountOnExit>
                         <Box sx={{ p: 2 }}>
                           <Typography variant="h6" gutterBottom>
