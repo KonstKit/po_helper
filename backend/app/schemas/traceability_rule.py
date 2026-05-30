@@ -125,6 +125,7 @@ class TraceabilityRuleExecutionResponse(BaseModel):
     id: int
     rule_id: int
     status: str
+    trigger_source: Optional[str] = None
     started_at: datetime
     completed_at: Optional[datetime]
     links_created: int
@@ -146,6 +147,7 @@ class TraceabilityRuleExecutionResponse(BaseModel):
             id=execution.id,
             rule_id=execution.rule_id,
             status=execution.status,
+            trigger_source=getattr(execution, "trigger_source", None),
             started_at=execution.started_at,
             completed_at=execution.completed_at,
             links_created=execution.links_created or 0,

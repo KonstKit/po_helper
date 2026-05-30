@@ -132,13 +132,89 @@ class LinkService:
             Created ArtifactLink
 
         Raises:
-            ValueError: If validation fails
-            IntegrityError: If link already exists
+            ValueError: If validation fails, the link would create a cycle, or a
+                matching link already exists.
+
+        Project scoping:
+            When ``project_id`` is not supplied the link is stored under
+            ``project_id or from_artifact.project_id`` — i.e. it falls back to
+            the source artifact's project. This is a deliberate behavioural
+            change: a caller that omitted ``project_id`` previously got a link
+            with a NULL ``project_id``; it now gets one scoped to the source
+            artifact, which aligns this service with the rule engine
+            (``source.project_id or target.project_id``). The ``or`` treats a
+            falsy ``project_id`` (None or 0) as "not supplied"; artifact/project
+            ids are >= 1, so 0 never occurs in practice. The same resolved value
+            is used for both the dedup check and the stored row.
+
+        Idempotency (sequential only):
+            Before inserting, an existence check scoped to the full uniqueness
+            tuple (tenant_id, project_id, from_artifact_id, to_artifact_id,
+            link_type) is run; if a match is found this raises
+            ``ValueError("Link already exists: ...")`` rather than inserting a
+            second row. This closes the *sequential* duplicate path (a caller
+            invoking twice, retry, or at-least-once redelivery) for ALL tenants
+            — including single-tenant/local installs where ``tenant_id`` is NULL
+            and the ``uq_artifact_link`` unique constraint does NOT dedupe (under
+            SQL NULL semantics a NULL ``tenant_id`` does not collide).
+
+            It is NOT a guard against truly *concurrent* inserts: the check is
+            read-then-write, so two parallel transactions can both pass the
+            SELECT and both INSERT. The ``IntegrityError`` fallback below catches
+            that race only when ``tenant_id`` is set (the constraint fires); for
+            the NULL-tenant case the constraint does not fire, so a concurrent
+            duplicate is still possible (e.g. two workers on Postgres; SQLite
+            serialises writes, so it is not exposed there). Closing that fully
+            would require a DB-level unique index treating NULL tenant/project as
+            sentinels (COALESCE) — intentionally out of scope here.
+
+            Like the rule engine's ``createLinkAction._create_link`` existence
+            check this prevents duplicates, but the dedup *granularity* differs:
+            the engine matches on (from, to, link_type) only, whereas this
+            matches the full (tenant_id, project_id, from, to, link_type) tuple.
+            The two coincide on single-tenant data; in a multi-tenant DB this
+            method correctly treats the same (from, to, type) under different
+            tenant/project as distinct, while the engine would collapse them.
+
+            We raise (rather than return the existing link) to keep the contract
+            identical to the pre-existing ``IntegrityError`` path, so
+            ``create_links_batch``'s "already exists" skip logic keeps working
+            unchanged.
         """
         # Validate artifacts exist
         from_artifact, to_artifact = await self._validate_artifacts(
             from_artifact_id, to_artifact_id
         )
+
+        # Resolve the project the link is stored under (see "Project scoping" in
+        # the docstring): an omitted/falsy project_id falls back to the source
+        # artifact's project. The same expression builds the stored row below, so
+        # the dedup check matches the uq_artifact_link tuple exactly.
+        effective_project_id = project_id or from_artifact.project_id
+
+        # Sequential-dedup guard — see "Idempotency (sequential only)" in the
+        # docstring. uq_artifact_link does not dedupe NULL-tenant rows, so this
+        # explicit existence check covers the retry/redelivery case for every
+        # tenant. It is read-then-write, so it does not by itself stop a truly
+        # concurrent NULL-tenant insert (the IntegrityError backstop only fires
+        # when tenant_id is set). Use .first() (not scalar_one_or_none) so a
+        # pre-existing duplicate from an earlier unguarded insert does not itself
+        # raise MultipleResultsFound.
+        existing_result = await self.db.execute(
+            select(ArtifactLink)
+            .where(
+                ArtifactLink.tenant_id == tenant_id,
+                ArtifactLink.project_id == effective_project_id,
+                ArtifactLink.from_artifact_id == from_artifact_id,
+                ArtifactLink.to_artifact_id == to_artifact_id,
+                ArtifactLink.link_type == link_type,
+            )
+            .limit(1)
+        )
+        if existing_result.scalars().first() is not None:
+            raise ValueError(
+                f"Link already exists: {from_artifact_id} -[{link_type}]-> {to_artifact_id}"
+            )
 
         # Check for cycles in DAG link types
         if link_type in [lt.value for lt in DAG_LINK_TYPES]:
@@ -157,7 +233,7 @@ class LinkService:
         # Create link
         link = ArtifactLink(
             tenant_id=tenant_id,
-            project_id=project_id or from_artifact.project_id,
+            project_id=effective_project_id,
             created_by_id=created_by_id,
             created_via=created_via,
             source_system=source_system,
@@ -235,6 +311,14 @@ class LinkService:
 
         Returns:
             Tuple of (created_links, errors)
+
+        Note:
+            Deduplication is inherited from ``create_link``: its tenant-agnostic
+            existence check raises ``ValueError("Link already exists: ...")``,
+            which is caught below. Because ``create_link`` flushes each row
+            before returning, a duplicate appearing twice *within the same
+            batch* is also caught (the second spec's existence query sees the
+            first spec's flushed row). No separate guard is needed here.
         """
         created = []
         errors = []

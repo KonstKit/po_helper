@@ -13,7 +13,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
-from app.core.database import SessionLocal
+from app.core.database import AsyncSessionLocal, SessionLocal
 from app.models.project import Project
 from app.models.traceability import Artifact, AuditLog
 from app.models.traceability_review import (
@@ -375,3 +375,69 @@ async def test_reject_then_reopen(client, seeded_item, auth_headers):
     )
     assert reopen.status_code == 200
     assert reopen.json()["status"] == REVIEW_STATUS_PENDING
+
+
+class _ManagerOnlyUser:
+    """A traceability manager who is NOT an administrator/superuser."""
+
+    id = 4242
+    email = "manager@example.com"
+    username = "manager"
+    full_name = "Manager"
+    is_active = True
+    is_superuser = False
+    mfa_enabled = False
+
+    def has_permission(self, permission: str) -> bool:
+        # Has manage/view, but explicitly NOT admin.
+        return permission in {"traceability:view", "traceability:manage"}
+
+    def has_role(self, _role: str) -> bool:
+        return False
+
+
+@pytest.mark.asyncio
+async def test_reopen_forbidden_for_non_admin_manager(db_session, client, auth_headers):
+    """RBAC: reopening a terminal item requires administrator rights. A plain
+    traceability manager (can claim/resolve/reject) must get 403 on reopen."""
+    from app.api.deps import get_current_user
+    from app.main import app
+
+    # Seed a resolved (terminal) item.
+    item = TraceabilityReviewItem(
+        project_id=None,
+        artifact_id=777,
+        node_id="review-1",
+        status=REVIEW_STATUS_RESOLVED,
+        priority="normal",
+    )
+    db_session.add(item)
+    await db_session.commit()
+    await db_session.refresh(item)
+
+    async def _manager():
+        return _ManagerOnlyUser()
+
+    original = app.dependency_overrides.get(get_current_user)
+    app.dependency_overrides[get_current_user] = _manager
+    try:
+        resp = await client.post(
+            f"/api/v1/traceability/review-items/{item.id}/reopen", headers=auth_headers
+        )
+        assert resp.status_code == 403
+    finally:
+        if original is not None:
+            app.dependency_overrides[get_current_user] = original
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+    # Item remains terminal (the forbidden transition did not apply).
+    async with AsyncSessionLocal() as s:
+        status = (
+            await s.execute(
+                select(TraceabilityReviewItem.status).where(
+                    TraceabilityReviewItem.id == item.id
+                )
+            )
+        ).scalar_one()
+        assert status == REVIEW_STATUS_RESOLVED

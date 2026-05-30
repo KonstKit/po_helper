@@ -1607,6 +1607,7 @@ export interface TraceabilityRuleExecution {
   rule_id: number;
   rule_name?: string;
   status: 'success' | 'failed' | 'running' | 'pending';
+  trigger_source?: string | null;
   started_at?: string;
   completed_at?: string | null;
   executed_at?: string;

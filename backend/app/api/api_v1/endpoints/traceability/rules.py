@@ -592,6 +592,7 @@ async def get_all_rule_executions(
             "rule_id": execution.rule_id,
             "rule_name": rule.name if rule else f"Rule #{execution.rule_id}",
             "status": execution.status,
+            "trigger_source": execution.trigger_source,
             "links_created": execution.links_created or 0,
             "links_updated": execution.links_updated or 0,
             "artifacts_processed": execution.artifacts_processed or 0,
@@ -959,7 +960,7 @@ def execute_rule(
         context={"rule_id": rule_id},
         exception_map={ValueError: 400},
     ):
-        result = engine.execute_rule(rule_id)
+        result = engine.execute_rule(rule_id, trigger="manual")
         record_audit_event_sync(
             db,
             action="execute",
@@ -1277,7 +1278,7 @@ def execute_rule_by_webhook(
         context={"rule_id": rule.id},
         exception_map={ValueError: 400},
     ):
-        result = engine.execute_rule(rule.id)
+        result = engine.execute_rule(rule.id, trigger="webhook")
         record_audit_event_sync(
             db,
             action="execute_webhook",
