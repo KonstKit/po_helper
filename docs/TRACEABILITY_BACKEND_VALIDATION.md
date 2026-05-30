@@ -75,9 +75,10 @@ A follow-up adversarial audit flagged real in-scope gaps that are now closed:
 
 ## Full-suite result
 
-Latest full run: **469 passed, 2 failed** in ~4.5 min. The only failures are the
-two out-of-scope, pre-existing Confluence-sync tests below (the
-`cannot unpack non-iterable bool object` bug in `confluence_tasks.py`).
+Latest full run: **494 passed, 0 failed** in ~7.4 min. The two previously
+out-of-scope Confluence-sync test failures (the `cannot unpack non-iterable
+bool object` mismatch in `test_confluence_tasks.py`) have since been fixed —
+see the resolved note under "Residual risks".
 
 ## Retention boundary (plan_78 Step 4)
 
@@ -192,8 +193,15 @@ flagged real issues, now fixed:
   SQLite/offline in-session; production PostgreSQL validation is handed off.
 - **Live Celery/broker** automation (beat schedule, worker dispatch) is handed
   off — see `TRACEABILITY_AUTOMATION_VALIDATION.md`.
-- **Out-of-scope pre-existing failures:** `test_confluence_tasks.py` (2 tests)
-  fail with `cannot unpack non-iterable bool object` in the Confluence sync path
-  — unrelated to traceability; pre-existing before this work.
+- **Confluence-sync tests (resolved):** `test_confluence_tasks.py` previously had
+  2 failures from a stale test contract — `_process_page` returns
+  `(created, page_row)`, but the tests still treated the result as a bare `bool`
+  (one `fake_process_page` returned `True`, so the caller's tuple-unpack raised
+  `cannot unpack non-iterable bool object`). The tests were updated to the tuple
+  contract; production code was already correct. Separately,
+  `ConfluencePage.updated_at` was `NOT NULL` with only `onupdate` (UPDATE-only),
+  so API-path inserts hit a `NotNullViolation`; it now carries
+  `server_default=func.now()` (and the deployed column got a matching
+  `DEFAULT now()`).
 - **Frontend green run** requires Node/npm or the Docker tooling container — see
   `TRACEABILITY_FRONTEND_VALIDATION.md`.
