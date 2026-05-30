@@ -127,6 +127,12 @@ class TaskManager:
                     task.message = task_dict.get("message", "")
                     task.result = task_dict.get("result")
                     task.error = task_dict.get("error")
+                    # Rehydrate the cancellation signal from the persisted status:
+                    # the in-memory Event does not survive serialization, so a
+                    # task cancelled by another process/before eviction would
+                    # otherwise come back with an unset token.
+                    if task.status == TaskStatus.CANCELLED:
+                        task.cancellation_token.set()
                     return task
             except Exception as e:
                 logger.debug(f"Failed to get task from Redis: {e}")
@@ -196,9 +202,19 @@ class TaskManager:
         return True
 
     def is_cancelled(self, task_id: str) -> bool:
-        """Check if task is cancelled."""
+        """Check if task is cancelled.
+
+        The in-memory ``cancellation_token`` (an ``asyncio.Event``) is NOT shared
+        across worker processes and is re-created (unset) every time a task is
+        rehydrated from Redis, so it cannot be the source of truth. The CANCELLED
+        status, however, IS persisted to Redis by ``cancel_task`` — checking it
+        makes cancellation observable across processes and after a local-cache
+        eviction (otherwise ``cancel_task`` returns True but the task never stops).
+        """
         task = self.get_task(task_id)
-        return task.cancellation_token.is_set() if task else False
+        if not task:
+            return False
+        return task.status == TaskStatus.CANCELLED or task.cancellation_token.is_set()
 
     async def run_async(
         self, task_id: str, func: Callable[..., Awaitable[Any]], *args, **kwargs

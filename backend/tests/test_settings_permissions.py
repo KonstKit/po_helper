@@ -137,6 +137,37 @@ async def test_github_requires_permission(client, override_user_dep):
     assert resp.status_code == 403
 
 
+@pytest.mark.parametrize("provider", ["gitlab", "testrail", "bitbucket"])
+@pytest.mark.asyncio
+async def test_optional_integration_get_requires_auth(client, override_user_dep, provider):
+    """GitLab/TestRail/Bitbucket settings must require auth, like Jira/Confluence/GitHub.
+
+    Regression: these get/put/test endpoints previously declared only
+    ``Depends(get_db)`` with no ``current_user``, so an unauthenticated caller
+    could read/overwrite integration credentials and trigger ``/test`` (which
+    decrypts the stored token and issues a request to an arbitrary base_url —
+    secret-use leak + SSRF).
+    """
+    def _raise_unauth():
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    override_user_dep(_raise_unauth)
+    resp = await client.get(f"/api/v1/settings/{provider}")
+    assert resp.status_code == 401
+
+
+@pytest.mark.parametrize("provider", ["gitlab", "testrail", "bitbucket"])
+@pytest.mark.asyncio
+async def test_optional_integration_put_requires_permission(client, override_user_dep, provider):
+    """A user without SETTINGS_UPDATE cannot overwrite GitLab/TestRail/Bitbucket creds."""
+    override_user_dep(lambda: _LimitedUser())
+    resp = await client.put(
+        f"/api/v1/settings/{provider}",
+        json={"base_url": "https://attacker.example", "api_token": "token"},
+    )
+    assert resp.status_code == 403
+
+
 @pytest.mark.asyncio
 async def test_github_put_masks_and_encrypts(client, db_session):
     payload = {

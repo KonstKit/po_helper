@@ -447,14 +447,16 @@ async def _update_export_status(
 ) -> None:
     """Update ExportTask status in database."""
     async with AsyncSessionLocal() as db:
+        # Only stamp started_at when the task actually starts processing. Setting
+        # it for terminal states (e.g. "failed") would clobber the real start
+        # time that process_export_task already recorded, corrupting duration.
+        values: dict = {"status": status, "error_message": error_message}
+        if status == "processing":
+            values["started_at"] = datetime.now(timezone.utc)
         stmt = (
             update(ExportTask)
             .where(ExportTask.task_id == export_task_id)
-            .values(
-                status=status,
-                started_at=datetime.now(timezone.utc) if status == "processing" else None,
-                error_message=error_message,
-            )
+            .values(**values)
         )
         await db.execute(stmt)
         await db.commit()

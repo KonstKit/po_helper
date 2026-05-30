@@ -411,7 +411,11 @@ class AnalyticsService {
     try {
       const stored = localStorage.getItem(this.storageKey);
       if (stored) {
-        this.events = JSON.parse(stored);
+        // Guard against non-array JSON (e.g. {}, 0, a partial/legacy write):
+        // without this, this.events becomes a non-array and the next track()
+        // throws on this.events.push(...), breaking analytics for the session.
+        const parsed = JSON.parse(stored);
+        this.events = Array.isArray(parsed) ? parsed : [];
       }
     } catch (e) {
       console.error('Failed to load analytics events:', e);

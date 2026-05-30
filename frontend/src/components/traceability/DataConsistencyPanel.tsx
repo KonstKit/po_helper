@@ -534,7 +534,7 @@ const DataConsistencyPanel: React.FC<DataConsistencyPanelProps> = ({
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h6">Data Consistency Checks</Typography>
         <Stack direction="row" spacing={1}>
-          {checkResult && (checkResult.issues.broken_ref_count || checkResult.issues.duplicate_count) && (
+          {checkResult && (checkResult.issues.broken_ref_count > 0 || checkResult.issues.duplicate_count > 0) && (
             <>
               <Button
                 variant="outlined"
@@ -666,7 +666,7 @@ const DataConsistencyPanel: React.FC<DataConsistencyPanelProps> = ({
               renderCycleRow
             )}
 
-            {checkResult.issues.cycle_count && checkResult.issues.cycle_count > 0 && (
+            {checkResult.issues.cycle_count > 0 && (
               <Box pl={2}>
                 <Button
                   size="small"
