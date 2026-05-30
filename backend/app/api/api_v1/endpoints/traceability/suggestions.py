@@ -6,6 +6,7 @@ from typing import Optional, Dict, List, Any, TypedDict
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func as sql_func
 
@@ -30,12 +31,27 @@ class BulkApproveResult(TypedDict):
     errors: List[Dict[str, Any]]
 
 
+class GenerateSuggestionsRequest(BaseModel):
+    """Request body for ``POST /suggested-links/generate``.
+
+    These fields were previously declared as **query** parameters on the
+    endpoint, but the frontend (``generateSuggestedLinks``) sends them in the
+    JSON **body**. FastAPI therefore never read the body values: ``project_id``
+    stayed ``None`` and every generated suggestion was stored with
+    ``project_id = NULL`` — invisible to the project-scoped list view (which
+    filters by ``project_id``), so the panel always showed "No suggestions
+    found". Reading them from the body fixes that contract mismatch.
+    """
+
+    project_id: Optional[int] = None
+    min_similarity: float = Field(0.3, ge=0.1, le=1.0, description="Minimum similarity threshold")
+    max_per_artifact: int = Field(5, ge=1, le=20, description="Max suggestions per artifact")
+    artifact_types: Optional[List[str]] = Field(None, description="Artifact types to analyze")
+
+
 @router.post("/suggested-links/generate")
 async def generate_link_suggestions(
-    project_id: Optional[int] = None,
-    min_similarity: float = Query(0.3, ge=0.1, le=1.0, description="Minimum similarity threshold"),
-    max_per_artifact: int = Query(5, ge=1, le=20, description="Max suggestions per artifact"),
-    artifact_types: Optional[List[str]] = Query(None, description="Artifact types to analyze"),
+    payload: Optional[GenerateSuggestionsRequest] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
 ):
@@ -45,10 +61,20 @@ async def generate_link_suggestions(
     This analyzes artifact text (titles, descriptions) and finds similar
     artifacts that could be linked but aren't yet.
 
+    Parameters are read from the JSON request body (see
+    ``GenerateSuggestionsRequest``); an empty body is allowed and falls back to
+    defaults (global generation for an admin caller).
+
     Returns:
     - suggestions_created: Number of new suggestions generated
     - duplicates_skipped: Suggestions that already exist
     """
+    params = payload or GenerateSuggestionsRequest()
+    project_id = params.project_id
+    min_similarity = params.min_similarity
+    max_per_artifact = params.max_per_artifact
+    artifact_types = params.artifact_types
+
     if project_id is None and not current_user.has_permission(Permissions.ADMIN):
         raise HTTPException(status_code=403, detail="project_id is required")
     if project_id is not None:
@@ -79,6 +105,25 @@ async def generate_link_suggestions(
         suggestions,
         project_id=project_id,
     )
+
+    # Audit the generation — it is a mutating operation, so it gets an audit
+    # trail like approve/reject/bulk. entity_id=0 is the bulk / no-single-entity
+    # sentinel already used by the bulk-approve audit.
+    await record_audit_event(
+        db,
+        action="suggestions_generate",
+        entity_type="suggested_link",
+        entity_id=0,
+        actor_id=current_user.id,
+        project_id=project_id,
+        payload={
+            "created": stored,
+            "candidates": len(suggestions),
+            "min_similarity": min_similarity,
+            "artifact_types": artifact_types,
+        },
+    )
+    await db.commit()
 
     return {
         "suggestions_created": stored,

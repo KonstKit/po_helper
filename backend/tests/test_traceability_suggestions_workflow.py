@@ -238,3 +238,122 @@ async def test_stats_reflect_status_counts(client, db_session, two_artifacts, au
     assert body["total"] == 2
     assert body["by_status"].get("approved") == 1
     assert body["by_status"].get("pending") == 1
+
+
+# ---------------------------------------------------------------------------
+# Regression: generate must read project_id (+ tuning params) from the BODY.
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_generate_reads_project_id_and_params_from_request_body(
+    client, db_session, auth_headers, monkeypatch
+):
+    """``POST /suggested-links/generate`` must take ``project_id`` and the
+    tuning params from the JSON **body**.
+
+    They used to be declared as **query** parameters while the frontend sends
+    them in the body, so FastAPI ignored the body: ``project_id`` defaulted to
+    ``None`` and every suggestion was stored with ``project_id = NULL`` —
+    invisible to the project-scoped list view (``?project_id=<id>``), which is
+    why the panel always reported "No suggestions found". This stubs the
+    similarity service and asserts the body values actually reach it (the bug
+    would leave them at the query defaults ``project_id=None`` / ``0.3`` / ``5``).
+    """
+    import app.api.api_v1.endpoints.traceability.suggestions as suggestions_module
+    from app.models import Project
+    from app.services.text_similarity import SimilarityResult
+
+    # A real project the (superuser) test user can access, so ensure_project_access passes.
+    db_session.add(Project(id=4242, jira_key="BODYPID", name="Body Param Project"))
+    await db_session.commit()
+
+    captured: dict = {}
+
+    class _StubService:
+        def __init__(self) -> None:
+            # Defaults that the endpoint overwrites from the parsed body.
+            self.min_similarity = 0.3
+            self.max_suggestions_per_artifact = 5
+
+        async def generate_suggestions(
+            self, db, project_id=None, artifact_types=None, rebuild_index=True
+        ):
+            captured["generate_project_id"] = project_id
+            captured["artifact_types"] = artifact_types
+            # Snapshot the thresholds the endpoint set on the service from the body.
+            captured["min_similarity"] = self.min_similarity
+            captured["max_per_artifact"] = self.max_suggestions_per_artifact
+            return [
+                SimilarityResult(
+                    from_artifact_id=1,
+                    to_artifact_id=2,
+                    similarity_score=0.9,
+                    suggested_link_type="tests",
+                    reason="stub",
+                    method="tfidf",
+                )
+            ]
+
+        async def store_suggestions(self, db, suggestions, project_id=None, tenant_id=None):
+            captured["store_project_id"] = project_id
+            return len(suggestions)
+
+    monkeypatch.setattr(suggestions_module, "get_similarity_service", lambda: _StubService())
+
+    resp = await client.post(
+        "/api/v1/traceability/suggested-links/generate",
+        json={
+            "project_id": 4242,
+            "min_similarity": 0.15,
+            "max_per_artifact": 7,
+            "artifact_types": ["requirement", "test_case"],
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    # The fix: every body field flows through to the service / stored rows.
+    assert captured["generate_project_id"] == 4242
+    assert captured["store_project_id"] == 4242  # the NULL-project bug
+    assert captured["min_similarity"] == 0.15
+    assert captured["max_per_artifact"] == 7
+    assert captured["artifact_types"] == ["requirement", "test_case"]
+    assert resp.json()["min_similarity_used"] == 0.15
+
+    # The generation is audited (mutating op, like approve/reject/bulk), scoped
+    # to the project from the body. Read from a fresh session post-commit.
+    async with AsyncSessionLocal() as s:
+        audit = (
+            await s.execute(
+                select(AuditLog).where(AuditLog.action == "suggestions_generate")
+            )
+        ).scalars().first()
+    assert audit is not None
+    assert audit.project_id == 4242
+
+
+@pytest.mark.asyncio
+async def test_generate_with_empty_body_is_allowed_for_admin(
+    client, db_session, auth_headers, monkeypatch
+):
+    """An empty body must still work (admin global generation): the optional
+    body model falls back to defaults rather than 422-ing."""
+    import app.api.api_v1.endpoints.traceability.suggestions as suggestions_module
+
+    class _StubService:
+        def __init__(self) -> None:
+            self.min_similarity = 0.3
+            self.max_suggestions_per_artifact = 5
+
+        async def generate_suggestions(self, db, project_id=None, artifact_types=None, rebuild_index=True):
+            return []  # nothing to store -> early return
+
+        async def store_suggestions(self, db, suggestions, project_id=None, tenant_id=None):
+            return 0
+
+    monkeypatch.setattr(suggestions_module, "get_similarity_service", lambda: _StubService())
+
+    resp = await client.post(
+        "/api/v1/traceability/suggested-links/generate", headers=auth_headers
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["suggestions_created"] == 0
