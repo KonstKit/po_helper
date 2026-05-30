@@ -180,8 +180,16 @@ class RuleExecutionEngine:
         in_degree = {node["id"]: 0 for node in nodes}
 
         for edge in edges:
-            source = edge["source"]
-            target = edge["target"]
+            source = edge.get("source")
+            target = edge.get("target")
+            # Reject dangling edges (referencing a missing/unknown node, or an
+            # edge without source/target). Without this the graph lookups raise
+            # KeyError -> HTTP 500; a ValueError surfaces as a 400 like the
+            # cycle check, so an imported/malformed flow fails cleanly.
+            if source not in graph or target not in graph:
+                raise ValueError(
+                    f"Edge references unknown node(s): source={source!r}, target={target!r}"
+                )
             graph[source].append(target)
             in_degree[target] += 1
 

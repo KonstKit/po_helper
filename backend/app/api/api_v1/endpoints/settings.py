@@ -645,7 +645,10 @@ async def test_github_connection(
 
 # ---- GitLab settings ----
 @router.get("/gitlab", response_model=IntegrationSettings)
-async def get_gitlab_settings(db: AsyncSession = Depends(get_db)):
+async def get_gitlab_settings(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_VIEW)),
+):
     row = await _get_integration(db, "gitlab")
     if row:
         return {
@@ -667,7 +670,11 @@ async def get_gitlab_settings(db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/gitlab", response_model=IntegrationSettings)
-async def put_gitlab_settings(payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)):
+async def put_gitlab_settings(
+    payload: IntegrationSettingsBase,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE)),
+):
     row = await _get_integration(db, "gitlab")
     token_present = bool(payload.api_token or payload.webhook_secret) or bool(
         row.api_token if row else None
@@ -710,7 +717,9 @@ async def put_gitlab_settings(payload: IntegrationSettingsBase, db: AsyncSession
 
 @router.post("/gitlab/test")
 async def test_gitlab_connection(
-    payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
+    payload: IntegrationSettingsBase,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE)),
 ):
     row = await _get_integration(db, "gitlab")
     base_url = payload.base_url or (row.base_url if row and row.base_url else None)
@@ -798,7 +807,10 @@ async def test_gitlab_connection(
 
 # ---- TestRail settings ----
 @router.get("/testrail", response_model=IntegrationSettings)
-async def get_testrail_settings(db: AsyncSession = Depends(get_db)):
+async def get_testrail_settings(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_VIEW)),
+):
     row = await _get_integration(db, "testrail")
     if row:
         return {
@@ -819,7 +831,9 @@ async def get_testrail_settings(db: AsyncSession = Depends(get_db)):
 
 @router.put("/testrail", response_model=IntegrationSettings)
 async def put_testrail_settings(
-    payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
+    payload: IntegrationSettingsBase,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE)),
 ):
     row = await _get_integration(db, "testrail")
     if not row:
@@ -845,7 +859,9 @@ async def put_testrail_settings(
 
 @router.post("/testrail/test")
 async def test_testrail_connection(
-    payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
+    payload: IntegrationSettingsBase,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE)),
 ):
     row = await _get_integration(db, "testrail")
     base_url = payload.base_url or (row.base_url if row and row.base_url else None)
@@ -902,7 +918,10 @@ async def test_testrail_connection(
 
 # ---- Bitbucket settings ----
 @router.get("/bitbucket", response_model=IntegrationSettings)
-async def get_bitbucket_settings(db: AsyncSession = Depends(get_db)):
+async def get_bitbucket_settings(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_VIEW)),
+):
     """Get Bitbucket integration settings."""
     row = await _get_integration(db, "bitbucket")
     if row:
@@ -926,7 +945,9 @@ async def get_bitbucket_settings(db: AsyncSession = Depends(get_db)):
 
 @router.put("/bitbucket", response_model=IntegrationSettings)
 async def put_bitbucket_settings(
-    payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
+    payload: IntegrationSettingsBase,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE)),
 ):
     """Save Bitbucket integration settings.
 
@@ -977,7 +998,9 @@ async def put_bitbucket_settings(
 
 @router.post("/bitbucket/test")
 async def test_bitbucket_connection(
-    payload: IntegrationSettingsBase, db: AsyncSession = Depends(get_db)
+    payload: IntegrationSettingsBase,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE)),
 ):
     """Test Bitbucket connection with provided or stored credentials.
 
