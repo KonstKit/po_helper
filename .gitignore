@@ -93,3 +93,8 @@ codex/
 # Generated exports
 backend/exports/
 exports/rtm_matrix_*.pdf
+
+# Database dumps (may contain production data)
+*.dump
+*.sql.gz
+.last_db_backup_name
