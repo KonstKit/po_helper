@@ -128,6 +128,25 @@ class CreateLinkActionExecutor(NodeExecutor):
                 if bidirectional:
                     self._create_link(target, source, reverse_link_type or link_type, context)
 
+    @staticmethod
+    def _commit_references_key(commit: Artifact, key: str) -> bool:
+        """True if a commit artifact's text actually references the given Jira key.
+
+        ``jiraKeyExtractor`` flattens keys from *all* input commits into one set,
+        so a ``commitSource -> jiraKeyExtractor -> createLinkAction`` flow would
+        otherwise link EVERY commit to EVERY extracted key (a cartesian product).
+        Correlating each commit to the key in its own message/branch/title keeps
+        the links accurate (one commit only implements the issue it mentions).
+        """
+        if not key:
+            return False
+        meta = commit.meta or {}
+        haystack = " ".join(
+            str(meta.get(field, "") or "") for field in ("message", "branch", "description")
+        )
+        haystack = f"{haystack} {commit.title or ''}"
+        return key in haystack
+
     def _create_link(
         self,
         source: Artifact,
@@ -136,6 +155,15 @@ class CreateLinkActionExecutor(NodeExecutor):
         context: ExecutionContext,
         base_confidence: float = 0.90,
     ) -> None:
+        # Correlate commit -> jira_issue links to the commit that actually
+        # references the key (prevents the jiraKeyExtractor cartesian product).
+        if (
+            source.type == "commit"
+            and target.type == "jira_issue"
+            and not self._commit_references_key(source, target.external_id)
+        ):
+            return
+
         existing = (
             context.db.query(ArtifactLink)
             .filter(

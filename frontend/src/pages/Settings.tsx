@@ -21,6 +21,7 @@ import { detectTimezone, detectCurrency, loadSmartDefaults, SmartDefaults } from
 import { getErrorMessage } from '../utils/errorUtils';
 import { OptionalIntegrations } from '../components/OptionalIntegrations';
 import { IntegrationCard } from '../components/IntegrationCard';
+import { ConfluenceSpaceMapping } from '../components/ConfluenceSpaceMapping';
 import { HelpPanel } from '../components/HelpPanel';
 
 interface TabPanelProps {
@@ -356,6 +357,7 @@ const saveJiraSettings = async () => {
           <Tab label="Notifications" />
           <Tab label="Jira Integration" />
           <Tab label="Optional Integrations" />
+          <Tab label="Confluence Spaces" />
         </Tabs>
 
         <TabPanel value={tabValue} index={2}>
@@ -616,6 +618,10 @@ const saveJiraSettings = async () => {
               isLast
             />
           </OptionalIntegrations>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={4}>
+          <ConfluenceSpaceMapping />
         </TabPanel>
 
         <TabPanel value={tabValue} index={1}>

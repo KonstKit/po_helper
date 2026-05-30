@@ -272,7 +272,10 @@ export default function SuggestedLinksPanel({ projectId, onLinkCreated }: Sugges
                 Avg Similarity
               </Typography>
               <Typography variant="h5">
-                {Math.round(stats.avg_similarity_score * 100)}%
+                {Number.isFinite(stats.avg_similarity_score)
+                  ? Math.round(stats.avg_similarity_score * 100)
+                  : 0}
+                %
               </Typography>
             </CardContent>
           </Card>

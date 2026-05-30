@@ -58,6 +58,14 @@ const RISK_ICONS: Record<string, React.ReactNode> = {
   critical: <ErrorIcon sx={{ color: '#9C27B0' }} />,
 };
 
+// Defensive lookups: the API may omit/return an unknown risk_level. A missing
+// value previously crashed the whole panel (undefined.toUpperCase()), so never
+// dereference it raw — fall back to a neutral colour / the low-risk icon.
+const riskColorOf = (level?: string): string =>
+  (level && RISK_COLORS[level]) || '#9e9e9e';
+const riskIconOf = (level?: string): React.ReactNode =>
+  (level && RISK_ICONS[level]) || RISK_ICONS.low;
+
 const TYPE_ICONS: Record<string, React.ReactNode> = {
   requirement: <Description />,
   jira_issue: <BugReport />,
@@ -176,16 +184,16 @@ const ImpactAnalysisPanel: React.FC<ImpactAnalysisPanelProps> = ({
           <Card
             sx={{
               mb: 2,
-              bgcolor: `${RISK_COLORS[data.risk_level]}15`,
-              borderLeft: `4px solid ${RISK_COLORS[data.risk_level]}`,
+              bgcolor: `${riskColorOf(data.risk_level)}15`,
+              borderLeft: `4px solid ${riskColorOf(data.risk_level)}`,
             }}
           >
             <CardContent>
               <Stack direction="row" alignItems="center" spacing={2}>
-                {RISK_ICONS[data.risk_level]}
+                {riskIconOf(data.risk_level)}
                 <Box flex={1}>
                   <Typography variant="h6">
-                    Risk Level: {data.risk_level.toUpperCase()}
+                    Risk Level: {(data.risk_level ?? 'unknown').toUpperCase()}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Score: {Math.round(data.risk_score * 100)}%
@@ -200,7 +208,7 @@ const ImpactAnalysisPanel: React.FC<ImpactAnalysisPanelProps> = ({
                       borderRadius: 1,
                       bgcolor: '#e0e0e0',
                       '& .MuiLinearProgress-bar': {
-                        bgcolor: RISK_COLORS[data.risk_level],
+                        bgcolor: riskColorOf(data.risk_level),
                       },
                     }}
                   />
