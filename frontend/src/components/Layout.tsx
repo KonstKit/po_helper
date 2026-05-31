@@ -69,8 +69,12 @@ const ROUTE_TITLES: Record<string, string> = {
   '/profile': 'Profile',
 };
 
-// Routes where a project context is meaningless (no global selector shown).
-const PROJECT_AGNOSTIC = ['/settings', '/profile', '/jira-fields'];
+// The header project selector is shown ONLY on routes that actually consume the
+// global selection (codex P2). Showing it elsewhere (Quality, Tasks, Sprint
+// Capacity, Project Details, Knowledge) was misleading: those pages keep their
+// own/local project state, so changing it in the header did nothing visible.
+// Dashboard ('/') is handled as an exact match in `showProjectSelector` below.
+const PROJECT_SELECTOR_ROUTES = ['/analytics', '/traceability/visualization', '/traceability/review'];
 
 function resolveRouteTitle(pathname: string): string {
   if (/^\/projects\/[^/]+/.test(pathname)) return 'Project Details';
@@ -149,7 +153,9 @@ export default function Layout() {
   const location = useLocation();
   const user = useSelector((s: RootState) => s.auth.user);
   const pageTitle = resolveRouteTitle(location.pathname);
-  const showProjectSelector = !PROJECT_AGNOSTIC.some((p) => location.pathname.startsWith(p));
+  const showProjectSelector =
+    location.pathname === '/' ||
+    PROJECT_SELECTOR_ROUTES.some((p) => location.pathname.startsWith(p));
   const userName = user?.full_name || user?.username || user?.email || 'Account';
 
   // Load collapsed state from localStorage
