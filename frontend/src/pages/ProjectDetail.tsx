@@ -920,6 +920,12 @@ const ProjectDetail = () => {
           lastRowsRef.current = parsed;
         } else {
           logDebug("ProjectDetail: No cached tasks found");
+          // Codex P2 (round 4): a project with no cached tasks must not inherit
+          // the previous project's rows/fallback. The cache-restore effect owns
+          // rows + lastRowsRef, so clear both here for the no-cache case (the
+          // load effect no longer clears them, to preserve a real cache hit).
+          setRows([]);
+          lastRowsRef.current = [];
         }
       } catch (err) {
         console.warn("Failed to restore cached tasks", err);
@@ -966,15 +972,19 @@ const ProjectDetail = () => {
         prevProjectIdRef.current !== undefined && prevProjectIdRef.current !== id;
       prevProjectIdRef.current = id;
       if (isProjectSwitch) {
-        setRows([]);
-        lastRowsRef.current = [];
+        // NB: rows + lastRowsRef are owned by the cache-restore effect (it sets
+        // them to the new project's cache or clears them when there is none), so
+        // we must NOT clear them here — doing so wiped the new project's cached-
+        // task fallback (codex P2, round 4).
         setRisks(null);
         setBurndown(null);
         setSprintBurndown(null);
+        setSprintQuality(null);
+        setSprintCapacity(null);
         setBudgetHours(null);
         setValueMetrics(null);
         setTeamMembers([]);
-        // Also clear the board/sprint selectors, else the prior project's
+        // Clear the board/sprint selectors too, else the prior project's
         // boards/sprints render (and stay selectable) under the new header.
         setBoards([]);
         setSprints([]);

@@ -69,7 +69,7 @@ const ReviewQueue: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending');
   // Project comes from the single global selector in the header (UX review C5),
   // not a free-text "Project ID" field the user has to remember and type.
-  const { projectId, currentProject, projects, lastLoadedAt } = useSelectedProject();
+  const { projectId, currentProject, projects, ready } = useSelectedProject();
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const fetchItems = useCallback(async () => {
@@ -91,15 +91,16 @@ const ReviewQueue: React.FC = () => {
   }, [statusFilter, projectId]);
 
   useEffect(() => {
-    // Codex (rounds 2-3): don't fire an unscoped request before the global
-    // project context settles. `loading` is unreliable here (the selector hook
-    // fetches without toggling it), so gate on `lastLoadedAt`: wait until the
-    // list has loaded AND, if it has projects, until one is selected (projectId).
-    // Only fetch projectless once the list has loaded and is genuinely empty
-    // (no race then: there is no competing project-scoped request).
-    if (projectId == null && (lastLoadedAt == null || projects.length > 0)) return;
+    // Codex (rounds 2-4): wait until the global project context has SETTLED
+    // (loaded or failed) before any fetch. `ready` covers the failure path too,
+    // so a failed project-list load no longer hangs this page on its spinner.
+    // Once settled, if projects exist but none is selected yet, wait one tick for
+    // the restore to set currentProject; otherwise fetch (scoped, or unscoped
+    // only when there genuinely are no projects — no race then).
+    if (!ready) return;
+    if (projectId == null && projects.length > 0) return;
     void fetchItems();
-  }, [fetchItems, projectId, lastLoadedAt, projects.length]);
+  }, [fetchItems, ready, projectId, projects.length]);
 
   const handleStatusFilterChange = (event: SelectChangeEvent<string>) => {
     const value = event.target.value;
