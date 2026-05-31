@@ -28,6 +28,11 @@ export function useSelectedProject() {
   const projects = useSelector((s: RootState) => s.project.projects);
   const currentProject = useSelector((s: RootState) => s.project.currentProject);
   const loading = useSelector((s: RootState) => s.project.loading);
+  // Set by the `setProjects` reducer, so it is a reliable "the list has loaded"
+  // signal even though this hook fetches without toggling `loading`. Consumers
+  // (e.g. ReviewQueue) use it to avoid firing project-scoped requests before the
+  // global selection settles (codex).
+  const lastLoadedAt = useSelector((s: RootState) => s.project.lastLoadedAt);
 
   // Load the project list once if it has not been fetched yet. The module-level
   // in-flight guard prevents the header selector and the consuming page from each
@@ -82,6 +87,7 @@ export function useSelectedProject() {
     projectId: currentProject?.id ?? null,
     selectProject,
     loading,
+    lastLoadedAt,
   };
 }
 
