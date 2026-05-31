@@ -431,9 +431,12 @@ const ProjectDetailTabs = ({
       {/* Sprint analytics: skeleton while its (slowest) data loads. The board /
           sprint selectors above stay interactive throughout. */}
       {(sectionLoading.sprints || sectionLoading.sprintInsights) &&
-      !sprintBurndown &&
-      !sprintQuality &&
-      !sprintCapacity ? (
+      // Codex P3: keep the skeleton until ALL sprint-insight calls settle. Using
+      // "(any missing)" instead of "(all missing)" stops the section exiting the
+      // skeleton when burndown arrives before quality/capacity (which briefly
+      // rendered quality as 0/N/A and hid capacity). Once the loading flag
+      // clears, whatever arrived renders even if some values are legitimately null.
+      (!sprintBurndown || !sprintQuality || !sprintCapacity) ? (
         <>
           <Grid container spacing={2} mb={2}>
             {Array.from({ length: 6 }).map((_, i) => (
