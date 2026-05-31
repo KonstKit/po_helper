@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import type { RootState, AppDispatch } from '../store/store';
-import { setProjects, setCurrentProject } from '../store/projectSlice';
+import { setProjects, setCurrentProject, setError, setLastLoadedAt } from '../store/projectSlice';
 import { listProjects } from '../services/api/projects';
 import { readStoredJson, writeStoredJson } from '../utils/browserStorage';
 
@@ -33,6 +33,7 @@ export function useSelectedProject() {
   // (e.g. ReviewQueue) use it to avoid firing project-scoped requests before the
   // global selection settles (codex).
   const lastLoadedAt = useSelector((s: RootState) => s.project.lastLoadedAt);
+  const error = useSelector((s: RootState) => s.project.error);
 
   // Load the project list once if it has not been fetched yet. The module-level
   // in-flight guard prevents the header selector and the consuming page from each
@@ -46,9 +47,15 @@ export function useSelectedProject() {
         if (cancelled) return;
         const items = Array.isArray(res?.data) ? res.data : [];
         dispatch(setProjects(items as never));
+        dispatch(setError(null));
       })
       .catch(() => {
-        /* surfaced elsewhere; the selector simply stays empty */
+        if (cancelled) return;
+        // Mark the load as settled-with-error so project-scoped pages stop
+        // waiting on `ready` instead of hanging forever on a failed list load
+        // (codex P2). lastLoadedAt is the "settled" signal; error carries why.
+        dispatch(setError('Failed to load projects'));
+        dispatch(setLastLoadedAt(Date.now()));
       })
       .finally(() => {
         projectsFetchInFlight = false;
@@ -88,6 +95,11 @@ export function useSelectedProject() {
     selectProject,
     loading,
     lastLoadedAt,
+    error,
+    // True once the project list has settled (loaded OR failed). Project-scoped
+    // pages gate on this so they neither fire unscoped early nor hang forever on
+    // a failed list load (codex).
+    ready: lastLoadedAt != null,
   };
 }
 
