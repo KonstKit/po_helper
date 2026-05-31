@@ -13,6 +13,30 @@ const STORAGE_KEY = 'po_helper_selected_project_id';
 // (UX review M-1: previously each instance issued its own duplicate request).
 let projectsFetchInFlight = false;
 
+// Migration helper: older builds persisted the selected project under the
+// Dashboard's own keys. If the new key is absent we honour the old last/recent
+// selection once, so upgrading users don't land on the wrong project (codex P2).
+function readLegacyDashboardProjectId(): number | null {
+  try {
+    const last = localStorage.getItem('dashboard_last_project_id');
+    if (last) {
+      const n = Number(last);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    const recentRaw = localStorage.getItem('dashboard_recent_project_ids');
+    if (recentRaw) {
+      const arr = JSON.parse(recentRaw);
+      if (Array.isArray(arr) && arr.length > 0) {
+        const n = Number(arr[0]);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+    }
+  } catch {
+    /* ignore malformed legacy storage */
+  }
+  return null;
+}
+
 /**
  * Single source of truth for the globally-selected project (UX review C4).
  *
@@ -70,10 +94,18 @@ export function useSelectedProject() {
   // list is available and nothing is selected yet.
   useEffect(() => {
     if (currentProject || projects.length === 0) return;
-    const storedId = readStoredJson<number | null>(STORAGE_KEY, null);
+    // Prefer the new key; for users upgrading from the old per-page selection,
+    // fall back to the Dashboard's previous last/recent project keys before
+    // defaulting to the first project (codex P2).
+    const storedId =
+      readStoredJson<number | null>(STORAGE_KEY, null) ?? readLegacyDashboardProjectId();
     const match =
       (storedId != null && projects.find((p) => p.id === storedId)) || projects[0] || null;
-    if (match) dispatch(setCurrentProject(match));
+    if (match) {
+      dispatch(setCurrentProject(match));
+      // Migrate the resolved selection into the new key so this runs once.
+      writeStoredJson(STORAGE_KEY, match.id);
+    }
   }, [currentProject, projects, dispatch]);
 
   const selectProject = useCallback(
@@ -96,10 +128,12 @@ export function useSelectedProject() {
     loading,
     lastLoadedAt,
     error,
-    // True once the project list has settled (loaded OR failed). Project-scoped
-    // pages gate on this so they neither fire unscoped early nor hang forever on
-    // a failed list load (codex).
-    ready: lastLoadedAt != null,
+    // True once the project list has settled (loaded OR failed) OR we already
+    // have project context (a preloaded / rehydrated store where lastLoadedAt is
+    // still null). Project-scoped pages gate on this, so it must NOT stay false
+    // when projects/currentProject are already present (codex P1).
+    ready:
+      lastLoadedAt != null || error != null || projects.length > 0 || currentProject != null,
   };
 }
 
