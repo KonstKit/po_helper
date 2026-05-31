@@ -7,6 +7,12 @@ const bgDefault = '#F4F6F8';
 const bgPaper = '#FFFFFF';
 const textPrimary = '#1A1F36';
 const textSecondary = '#3C4758';
+// UX review L5: the theme previously left `text.disabled` to MUI's default
+// rgba(0,0,0,0.38) (~2.8:1 on white — fails WCAG AA), which is what rendered the
+// "light-gray captions under fields". This muted slate reads as secondary/hint
+// text but clears AA (~4.8:1 on #FFFFFF) for the captions and helper text that
+// fall back to it.
+const textDisabled = '#6B7280';
 const border = '#E6EBF2';
 
 const theme = createTheme({
@@ -19,7 +25,7 @@ const theme = createTheme({
     error: { main: '#C62828' },
     info: { main: '#1565C0' },
     background: { default: bgDefault, paper: bgPaper },
-    text: { primary: textPrimary, secondary: textSecondary },
+    text: { primary: textPrimary, secondary: textSecondary, disabled: textDisabled },
     divider: border,
   },
   shape: { borderRadius: 10 },

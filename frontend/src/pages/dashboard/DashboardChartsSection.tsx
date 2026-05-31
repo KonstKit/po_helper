@@ -56,7 +56,7 @@ const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({
           <Card data-testid={DASHBOARD_TEST_IDS.chartVelocity}>
             <CardContent>
               <Typography variant="h6" gutterBottom fontWeight={600}>
-                Weekly Velocity
+                Weekly Velocity (Hours)
                 {targetVelocity !== undefined && (
                   <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
                     (Target: {targetVelocity}h)

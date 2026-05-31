@@ -15,7 +15,7 @@ import {
 } from '../dashboard/dashboardContract';
 import { DASHBOARD_GUARDRAIL_TARGETS, isDashboardChartWarning } from '../dashboard/dashboardGuardrails';
 import authReducer from '../../store/authSlice';
-import projectReducer from '../../store/projectSlice';
+import projectReducer, { setCurrentProject } from '../../store/projectSlice';
 import taskReducer from '../../store/taskSlice';
 import sprintReducer from '../../store/sprintSlice';
 import {
@@ -37,7 +37,6 @@ import {
   activeSprintScenario,
   dateRangeScenarioTasks,
   emptyWindowScenarioTasks,
-  quickFilterProjectsScenario,
   velocitySparseScenario,
 } from './fixtures/dashboard-scenarios';
 
@@ -149,7 +148,8 @@ const preloadedState = {
   auth: { user: null, token: null, isAuthenticated: false, loading: false },
   project: {
     projects: [sampleProject],
-    currentProject: null,
+    // Widened so tests can preload a selected project (UX review C4 global selector).
+    currentProject: null as typeof sampleProject | null,
     loading: false,
     error: null,
     lastLoadedAt: null,
@@ -338,15 +338,18 @@ describe('Dashboard smoke scenarios', () => {
       preloadedState: customPreloadedState,
     });
 
-    return render(
-      <Provider store={store}>
-        <MemoryRouter
-          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-        >
-          <Dashboard />
-        </MemoryRouter>
-      </Provider>
-    );
+    return {
+      store,
+      ...render(
+        <Provider store={store}>
+          <MemoryRouter
+            future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+          >
+            <Dashboard />
+          </MemoryRouter>
+        </Provider>
+      ),
+    };
   };
 
   const openAdvancedFilters = async () => {
@@ -604,55 +607,6 @@ describe('Dashboard smoke scenarios', () => {
     expect(screen.queryAllByTestId(DASHBOARD_TEST_IDS.upcomingItem)).toHaveLength(0);
   }, 20000);
 
-  it('applies quick filter active and recent transitions deterministically', async () => {
-    mockedListProjects.mockResolvedValueOnce({
-      data: quickFilterProjectsScenario,
-      meta: {
-        total: quickFilterProjectsScenario.length,
-        page: 1,
-        per_page: 50,
-        total_pages: 1,
-        has_next: false,
-        has_prev: false,
-      },
-    });
-    localStorage.setItem(DASHBOARD_STORAGE_KEYS.quickFilter, 'recent');
-    localStorage.setItem(
-      DASHBOARD_STORAGE_KEYS.recentProjectIds,
-      JSON.stringify([quickFilterProjectsScenario[1].id, quickFilterProjectsScenario[0].id])
-    );
-    localStorage.setItem(DASHBOARD_STORAGE_KEYS.lastProjectId, String(quickFilterProjectsScenario[0].id));
-
-    renderDashboard({
-      ...preloadedState,
-      project: {
-        ...preloadedState.project,
-        projects: quickFilterProjectsScenario,
-        currentProject: null,
-      },
-    });
-
-    await waitFor(() => {
-      const lastCall = mockedListTasksPaginated.mock.calls.at(-1);
-      expect(lastCall?.[0]).toMatchObject({ projectId: quickFilterProjectsScenario[1].id });
-    });
-
-    fireEvent.click(screen.getByText('Active Only'));
-    await waitFor(() => {
-      const lastCall = mockedListTasksPaginated.mock.calls.at(-1);
-      expect(lastCall?.[0]).toMatchObject({ projectId: quickFilterProjectsScenario[0].id });
-    });
-
-    fireEvent.click(screen.getByText('Recent'));
-    await waitFor(() => {
-      const lastCall = mockedListTasksPaginated.mock.calls.at(-1);
-      expect(lastCall?.[0]).toMatchObject({ projectId: quickFilterProjectsScenario[0].id });
-    });
-    expect(localStorage.getItem(DASHBOARD_STORAGE_KEYS.recentProjectIds)).toContain(
-      String(quickFilterProjectsScenario[0].id)
-    );
-  }, 20000);
-
   it('shows explicit velocity empty-state when sprint velocity data is missing', async () => {
     mockedGetVelocity.mockResolvedValueOnce(velocitySparseScenario);
     renderDashboard();
@@ -673,43 +627,6 @@ describe('Dashboard smoke scenarios', () => {
     const chartWarningCalls = warnSpy.mock.calls.filter((args) => isDashboardChartWarning(args));
     expect(chartWarningCalls).toHaveLength(0);
     warnSpy.mockRestore();
-  }, 15000);
-
-  it('restores recent project context on initial load', async () => {
-    mockedListProjects.mockResolvedValueOnce({
-      data: [sampleProject, sampleProjectSecondary],
-      meta: {
-        total: 2,
-        page: 1,
-        per_page: 50,
-        total_pages: 1,
-        has_next: false,
-        has_prev: false,
-      },
-    });
-
-    localStorage.setItem(DASHBOARD_STORAGE_KEYS.quickFilter, 'recent');
-    localStorage.setItem(
-      DASHBOARD_STORAGE_KEYS.recentProjectIds,
-      JSON.stringify([sampleProjectSecondary.id, sampleProject.id])
-    );
-    localStorage.setItem(DASHBOARD_STORAGE_KEYS.lastProjectId, String(sampleProject.id));
-
-    renderDashboard({
-      ...preloadedState,
-      project: {
-        ...preloadedState.project,
-        projects: [sampleProject, sampleProjectSecondary],
-        currentProject: null,
-      },
-    });
-
-    await waitFor(() =>
-      expect(mockedListTasksPaginated).toHaveBeenCalledWith(
-        { projectId: sampleProjectSecondary.id, skip: 0, limit: 500 },
-        { timeout: 30000 }
-      )
-    );
   }, 15000);
 
   it('migrates invalid persisted dashboard filters to canonical defaults', async () => {
@@ -801,16 +718,15 @@ describe('Dashboard smoke scenarios', () => {
       });
     });
 
-    localStorage.setItem(DASHBOARD_STORAGE_KEYS.quickFilter, 'recent');
-    localStorage.setItem(DASHBOARD_STORAGE_KEYS.recentProjectIds, JSON.stringify([sampleProject.id]));
-    localStorage.setItem(DASHBOARD_STORAGE_KEYS.lastProjectId, String(sampleProject.id));
-
-    renderDashboard({
+    // Project selection is global now (UX review C4): start on the "slow"
+    // project, then switch via the shared selector (Redux setCurrentProject)
+    // instead of the removed in-dashboard project dropdown.
+    const { store } = renderDashboard({
       ...preloadedState,
       project: {
         ...preloadedState.project,
         projects: [sampleProject, sampleProjectSecondary],
-        currentProject: null,
+        currentProject: sampleProject,
       },
     });
     await waitFor(() => expect(listTasksPaginated).toHaveBeenCalled());
@@ -819,8 +735,9 @@ describe('Dashboard smoke scenarios', () => {
       expect(mockedGetVelocity.mock.calls.some((call) => Number(call[0]) === sampleProject.id)).toBe(true)
     );
 
-    await openAdvancedFilters();
-    await selectDropdownOption(DASHBOARD_TEST_IDS.filterProject, sampleProjectSecondary.name);
+    await act(async () => {
+      store.dispatch(setCurrentProject(sampleProjectSecondary));
+    });
 
     await waitFor(() => {
       const lastCall = mockedListTasksPaginated.mock.calls.at(-1);

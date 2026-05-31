@@ -13,6 +13,7 @@ import {
   MenuItem,
   Paper,
   Select,
+  Skeleton,
   Tab,
   Tabs,
   TextField,
@@ -57,9 +58,22 @@ type BulkProgressState = {
 
 type RepoActionState = { type: "primary" | "remove"; id: number } | null;
 
+// Per-section loading flags driven by ProjectDetail's independent data loads.
+// Each section renders its own in-place skeleton while its flag is true.
+type SectionLoadingState = {
+  metrics: boolean;
+  tasks: boolean;
+  burndown: boolean;
+  team: boolean;
+  risks: boolean;
+  sprints: boolean;
+  sprintInsights: boolean;
+};
+
 type ProjectDetailTabsProps = {
   value: number;
   onChange: (event: React.SyntheticEvent, newValue: number) => void;
+  sectionLoading: SectionLoadingState;
   rows: TaskItem[];
   taskColumns: GridColDef[];
   taskPaginationModel: GridPaginationModel;
@@ -126,6 +140,7 @@ function TabPanel(props: TabPanelProps) {
 const ProjectDetailTabs = ({
   value,
   onChange,
+  sectionLoading,
   rows,
   taskColumns,
   taskPaginationModel,
@@ -171,17 +186,27 @@ const ProjectDetailTabs = ({
 
     <TabPanel value={value} index={0}>
       <Box height={500}>
-        <DataGrid
-          rows={rows}
-          columns={taskColumns}
-          checkboxSelection
-          disableRowSelectionOnClick
-          paginationMode="server"
-          rowCount={taskRowCount}
-          paginationModel={taskPaginationModel}
-          onPaginationModelChange={onTaskPaginationModelChange}
-          pageSizeOptions={[25, 50, 100]}
-        />
+        {sectionLoading.tasks && rows.length === 0 ? (
+          <Box>
+            <Skeleton variant="rectangular" width="100%" height={56} sx={{ mb: 1, borderRadius: 1 }} />
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Skeleton key={i} variant="rectangular" width="100%" height={40} sx={{ mb: 0.5, borderRadius: 1 }} />
+            ))}
+          </Box>
+        ) : (
+          <DataGrid
+            rows={rows}
+            columns={taskColumns}
+            loading={sectionLoading.tasks}
+            checkboxSelection
+            disableRowSelectionOnClick
+            paginationMode="server"
+            rowCount={taskRowCount}
+            paginationModel={taskPaginationModel}
+            onPaginationModelChange={onTaskPaginationModelChange}
+            pageSizeOptions={[25, 50, 100]}
+          />
+        )}
       </Box>
     </TabPanel>
 
@@ -190,6 +215,9 @@ const ProjectDetailTabs = ({
         <Typography variant="h6" gutterBottom>
           Project Burndown
         </Typography>
+        {sectionLoading.burndown && !burndown ? (
+          <Skeleton variant="rectangular" width="100%" height={340} sx={{ borderRadius: 1 }} />
+        ) : (
         <Line
           data={{
             labels: (burndown?.ideal_burndown || []).map(
@@ -223,6 +251,7 @@ const ProjectDetailTabs = ({
             plugins: { legend: { position: "top" } },
           }}
         />
+        )}
       </Box>
     </TabPanel>
 
@@ -230,6 +259,21 @@ const ProjectDetailTabs = ({
       <Typography variant="h6" gutterBottom>
         Team Members
       </Typography>
+      {sectionLoading.team && teamMembers.length === 0 && rows.length === 0 ? (
+        <Grid container spacing={2}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Grid item xs={12} sm={6} md={3} key={i}>
+              <Card>
+                <CardContent>
+                  <Skeleton variant="text" width="70%" height={28} />
+                  <Skeleton variant="text" width="50%" height={20} />
+                  <Skeleton variant="text" width="60%" height={16} />
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      ) : (
       <Grid container spacing={2}>
         {(teamMembers.length > 0
           ? teamMembers.map((m): TeamMemberDisplay => ({
@@ -288,12 +332,27 @@ const ProjectDetailTabs = ({
           </Grid>
         ))}
       </Grid>
+      )}
     </TabPanel>
 
     <TabPanel value={value} index={3}>
       <Typography variant="h6" gutterBottom>
         Risk Assessment
       </Typography>
+      {sectionLoading.risks && !risks ? (
+        <Box>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} sx={{ mb: 2 }}>
+              <CardContent>
+                <Box display="flex" alignItems="center" gap={2}>
+                  <Skeleton variant="rounded" width={80} height={32} />
+                  <Skeleton variant="text" width="60%" height={24} />
+                </Box>
+              </CardContent>
+            </Card>
+          ))}
+        </Box>
+      ) : (
       <Box>
         {(risks?.risks || []).map((risk: RiskItem, index: number) => (
           <Card key={index} sx={{ mb: 2 }}>
@@ -315,6 +374,7 @@ const ProjectDetailTabs = ({
           </Card>
         ))}
       </Box>
+      )}
     </TabPanel>
 
     <TabPanel value={value} index={4}>
@@ -368,6 +428,47 @@ const ProjectDetailTabs = ({
         </FormControl>
       </Box>
 
+      {/* Sprint analytics: skeleton while its (slowest) data loads. The board /
+          sprint selectors above stay interactive throughout. */}
+      {(sectionLoading.sprints || sectionLoading.sprintInsights) &&
+      !sprintBurndown &&
+      !sprintQuality &&
+      !sprintCapacity ? (
+        <>
+          <Grid container spacing={2} mb={2}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Grid item xs={12} sm={6} md={2} key={i}>
+                <Card>
+                  <CardContent>
+                    <Skeleton variant="text" width="70%" height={20} />
+                    <Skeleton variant="text" width="50%" height={32} />
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+          <Paper sx={{ p: 2, mb: 2 }}>
+            <Skeleton variant="text" width={120} height={28} sx={{ mb: 1 }} />
+            <Skeleton variant="rectangular" width="100%" height={300} sx={{ borderRadius: 1 }} />
+          </Paper>
+          <Paper sx={{ p: 2 }}>
+            <Skeleton variant="text" width={120} height={28} sx={{ mb: 1 }} />
+            <Grid container spacing={2}>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Grid item xs={12} sm={4} key={i}>
+                  <Card>
+                    <CardContent>
+                      <Skeleton variant="text" width="60%" height={20} />
+                      <Skeleton variant="text" width="40%" height={32} />
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          </Paper>
+        </>
+      ) : (
+      <>
       <Grid container spacing={2} mb={2}>
         {(() => {
           const current = sprints.find(
@@ -593,6 +694,8 @@ const ProjectDetailTabs = ({
           </Grid>
         </Grid>
       </Paper>
+      </>
+      )}
     </TabPanel>
 
     <TabPanel value={value} index={5}>

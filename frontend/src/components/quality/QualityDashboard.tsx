@@ -180,7 +180,7 @@ const DREGauge: React.FC<{ value?: number }> = ({ value }) => {
           }}
         >
           <Typography variant="h5" fontWeight="bold" color={color}>
-            {value.toFixed(0)}%
+            {Number.isFinite(value) ? value.toFixed(0) : '—'}%
           </Typography>
         </Box>
       </Box>

@@ -27,6 +27,7 @@ import {
   Checkbox,
   FormControlLabel,
   Stack,
+  Skeleton,
 } from "@mui/material";
 import type { SelectChangeEvent } from "@mui/material/Select";
 import { GridColDef, GridPaginationModel } from "@mui/x-data-grid";
@@ -132,6 +133,26 @@ const ProjectDetail = () => {
   const [budgetHours, setBudgetHours] = useState<BudgetHoursResponse | null>(null);
   const [valueMetrics, setValueMetrics] = useState<ValueMetricsResponse | null>(null);
   const [teamMembers, setTeamMembers] = useState<TeamMemberActivity[]>([]);
+  // Per-section loading flags so each section renders its own in-place skeleton
+  // instead of blocking the whole page behind a single overlay. The slow
+  // "sprint analytics" section in particular must not gate unrelated sections.
+  const [sectionLoading, setSectionLoading] = useState<{
+    metrics: boolean;
+    tasks: boolean;
+    burndown: boolean;
+    team: boolean;
+    risks: boolean;
+    sprints: boolean;
+    sprintInsights: boolean;
+  }>({
+    metrics: true,
+    tasks: true,
+    burndown: true,
+    team: true,
+    risks: true,
+    sprints: true,
+    sprintInsights: true,
+  });
   const [toast, setToast] = useState<{
     open: boolean;
     type: "success" | "error" | "info" | "warning";
@@ -653,20 +674,25 @@ const ProjectDetail = () => {
   };
 
   const loadSprintInsights = useCallback(async (sprintId: number) => {
+    setSectionLoading((s) => ({ ...s, sprintInsights: true }));
     try {
-      setSprintBurndown(await getSprintBurndown(sprintId));
-    } catch (err) {
-      void err;
-    }
-    try {
-      setSprintQuality(await getSprintQuality(sprintId));
-    } catch (err) {
-      void err;
-    }
-    try {
-      setSprintCapacity(await getSprintCapacity(sprintId));
-    } catch (err) {
-      void err;
+      try {
+        setSprintBurndown(await getSprintBurndown(sprintId));
+      } catch (err) {
+        void err;
+      }
+      try {
+        setSprintQuality(await getSprintQuality(sprintId));
+      } catch (err) {
+        void err;
+      }
+      try {
+        setSprintCapacity(await getSprintCapacity(sprintId));
+      } catch (err) {
+        void err;
+      }
+    } finally {
+      setSectionLoading((s) => ({ ...s, sprintInsights: false }));
     }
   }, []);
 
@@ -918,6 +944,16 @@ const ProjectDetail = () => {
     (async () => {
       setError(null);
       setLoading(true);
+      // Reset per-section skeletons so they reappear when switching projects.
+      setSectionLoading({
+        metrics: true,
+        tasks: true,
+        burndown: true,
+        team: true,
+        risks: true,
+        sprints: true,
+        sprintInsights: true,
+      });
       try {
         if (id) {
           logDebug("ProjectDetail: Starting to load project details");
@@ -931,135 +967,152 @@ const ProjectDetail = () => {
           if (!data) {
             throw new Error('Project not found');
           }
-          // Load thresholds and initial history
-          try {
-            const h = await getQualityHistory({
-              projectId: Number(id),
-              limit: 20,
-            });
-            setHist(h.history || []);
-          } catch (err) { void err; }
-          try {
-            logDebug("ProjectDetail: Loading tasks for project:", id);
-            setProgress({
-              loading: true,
-              percent: 20,
-              step: "Loading tasks...",
-            });
-            // Use paginated API for server-side pagination
-            const response = await listTasksByProjectPaginated(Number(id), {
-              skip: 0,
-              limit: 25, // Initial page size
-            });
-            logDebug("ProjectDetail: Tasks loaded:", response.data?.length, "of", response.meta.total);
-            if (response.data.length === 0 && lastRowsRef.current.length > 0) {
-              setToast({
-                open: true,
-                type: "warning",
-                msg: "No tasks returned from Jira; keeping cached data.",
+          // Project core data is available: render the page shell, stat cards
+          // and tabs immediately. The remaining sections load independently
+          // below and each shows its own in-place skeleton until ready, so a
+          // slow section (e.g. sprint analytics) never gates the whole screen.
+          setLoading(false);
+          setProgress({ loading: false, percent: 100, step: "Ready" });
+
+          // Load thresholds and initial history (drives the Quality tab chart).
+          void (async () => {
+            try {
+              const h = await getQualityHistory({
+                projectId: Number(id),
+                limit: 20,
               });
-            } else {
-              setRows(response.data);
-              setTaskRowCount(response.meta.total);
-              lastRowsRef.current = response.data;
-            }
-          } catch (e) {
-            console.error("ProjectDetail: Failed to load tasks:", e);
-          }
-          try {
-            setProgress({
-              loading: true,
-              percent: 35,
-              step: "Analyzing risks...",
-            });
-            setRisks(await getRisks(Number(id)));
-          } catch (err) { void err; }
-          try {
-            setProgress({
-              loading: true,
-              percent: 50,
-              step: "Loading burndown...",
-            });
-            setBurndown(await getBurndown(Number(id)));
-          } catch (err) { void err; }
-          try {
-            setProgress({
-              loading: true,
-              percent: 70,
-              step: "Loading budget hours...",
-            });
-            const b = await getProjectBudgetHours(Number(id));
-            setBudgetHours(b);
-          } catch (err) { void err; }
-          try {
-            setProgress({
-              loading: true,
-              percent: 72,
-              step: "Loading value metrics...",
-            });
-            const vm = await getProjectValueMetrics(Number(id));
-            setValueMetrics(vm);
-          } catch (err) { void err; }
-          try {
-            setProgress({
-              loading: true,
-              percent: 73,
-              step: "Loading team members...",
-            });
-            const tm = await getTeamMembersActivity(Number(id));
-            setTeamMembers(tm || []);
-          } catch (err) { void err; }
-          try {
-            if (data?.jira_key) {
-              setProgress({
-                loading: true,
-                percent: 75,
-                step: "Loading boards...",
+              setHist(h.history || []);
+            } catch (err) { void err; }
+          })();
+
+          // --- Independent section loads (run in parallel) -------------------
+          // Each toggles only its own loading flag so sections fill in as soon
+          // as their data arrives, rather than waiting on each other.
+
+          const loadTasksSection = (async () => {
+            try {
+              logDebug("ProjectDetail: Loading tasks for project:", id);
+              // Use paginated API for server-side pagination
+              const response = await listTasksByProjectPaginated(Number(id), {
+                skip: 0,
+                limit: 25, // Initial page size
               });
-              const b = await getBoardsForProject(data.jira_key);
-              setBoards(b.boards || []);
-              if ((b.boards || []).length) {
-                const primaryBoard =
-                  (b.boards || []).find((board) => board.type === "scrum") || b.boards[0];
-                const primaryBoardId = primaryBoard.id;
-                setBoardId(primaryBoardId);
-                boardIdRef.current = primaryBoardId;
+              logDebug("ProjectDetail: Tasks loaded:", response.data?.length, "of", response.meta.total);
+              if (response.data.length === 0 && lastRowsRef.current.length > 0) {
+                setToast({
+                  open: true,
+                  type: "warning",
+                  msg: "No tasks returned from Jira; keeping cached data.",
+                });
+              } else {
+                setRows(response.data);
+                setTaskRowCount(response.meta.total);
+                lastRowsRef.current = response.data;
               }
+            } catch (e) {
+              console.error("ProjectDetail: Failed to load tasks:", e);
+            } finally {
+              setSectionLoading((s) => ({ ...s, tasks: false }));
             }
-          } catch (err) { void err; }
-          try {
-            setProgress({
-              loading: true,
-              percent: 85,
-              step: "Loading sprints...",
-            });
-            const sp = await getProjectSprints(
-              Number(id),
-              10,
-              typeof boardIdRef.current === "number" ? boardIdRef.current : undefined,
-            );
-            const sprintList = sp.sprints || [];
-            setSprints(sprintList);
-            const activeSprintId =
-              getCanonicalSprintId(selectActiveSprint(sprintList)) ??
-              getCanonicalSprintId(sprintList[0]);
-            if (typeof activeSprintId === "number") {
-              setSelectedSprint(activeSprintId);
-              setProgress({
-                loading: true,
-                percent: 94,
-                step: "Loading sprint analytics...",
-              });
-              await loadSprintInsights(activeSprintId);
-            } else {
-              setSelectedSprint("");
-              setSprintBurndown(null);
-              setSprintQuality(null);
-              setSprintCapacity(null);
+          })();
+
+          const loadRisksSection = (async () => {
+            try {
+              setRisks(await getRisks(Number(id)));
+            } catch (err) { void err; }
+            finally {
+              setSectionLoading((s) => ({ ...s, risks: false }));
             }
-          } catch (e) {
-            console.error(e);
-          }
+          })();
+
+          const loadBurndownSection = (async () => {
+            try {
+              setBurndown(await getBurndown(Number(id)));
+            } catch (err) { void err; }
+            finally {
+              setSectionLoading((s) => ({ ...s, burndown: false }));
+            }
+          })();
+
+          // Budget hours, value metrics and ROI all feed the top stat cards.
+          const loadMetricsSection = (async () => {
+            try {
+              const b = await getProjectBudgetHours(Number(id));
+              setBudgetHours(b);
+            } catch (err) { void err; }
+            try {
+              const vm = await getProjectValueMetrics(Number(id));
+              setValueMetrics(vm);
+            } catch (err) { void err; }
+            setSectionLoading((s) => ({ ...s, metrics: false }));
+          })();
+
+          const loadTeamSection = (async () => {
+            try {
+              const tm = await getTeamMembersActivity(Number(id));
+              setTeamMembers(tm || []);
+            } catch (err) { void err; }
+            finally {
+              setSectionLoading((s) => ({ ...s, team: false }));
+            }
+          })();
+
+          // Boards -> sprints -> sprint analytics form one dependent chain, but
+          // it runs as its own parallel branch so the slow sprint-analytics
+          // fetch never blocks the unrelated sections above.
+          const loadSprintsSection = (async () => {
+            try {
+              if (data?.jira_key) {
+                const b = await getBoardsForProject(data.jira_key);
+                setBoards(b.boards || []);
+                if ((b.boards || []).length) {
+                  const primaryBoard =
+                    (b.boards || []).find((board) => board.type === "scrum") || b.boards[0];
+                  const primaryBoardId = primaryBoard.id;
+                  setBoardId(primaryBoardId);
+                  boardIdRef.current = primaryBoardId;
+                }
+              }
+            } catch (err) { void err; }
+            try {
+              const sp = await getProjectSprints(
+                Number(id),
+                10,
+                typeof boardIdRef.current === "number" ? boardIdRef.current : undefined,
+              );
+              const sprintList = sp.sprints || [];
+              setSprints(sprintList);
+              const activeSprintId =
+                getCanonicalSprintId(selectActiveSprint(sprintList)) ??
+                getCanonicalSprintId(sprintList[0]);
+              setSectionLoading((s) => ({ ...s, sprints: false }));
+              if (typeof activeSprintId === "number") {
+                setSelectedSprint(activeSprintId);
+                // loadSprintInsights manages the sprintInsights loading flag.
+                await loadSprintInsights(activeSprintId);
+              } else {
+                setSelectedSprint("");
+                setSprintBurndown(null);
+                setSprintQuality(null);
+                setSprintCapacity(null);
+                setSectionLoading((s) => ({ ...s, sprintInsights: false }));
+              }
+            } catch (e) {
+              console.error(e);
+              setSectionLoading((s) => ({ ...s, sprints: false, sprintInsights: false }));
+            }
+          })();
+
+          // Wait for all sections to settle before evaluating auto-sync below,
+          // but the UI has already rendered with per-section skeletons.
+          await Promise.allSettled([
+            loadTasksSection,
+            loadRisksSection,
+            loadBurndownSection,
+            loadMetricsSection,
+            loadTeamSection,
+            loadSprintsSection,
+          ]);
           // Auto-sync if last sync older than 12h
           try {
             const lastSync = data?.meta?.last_sync_at
@@ -1513,32 +1566,42 @@ const ProjectDetail = () => {
               <Typography color="textSecondary" gutterBottom>
                 Budget Hours
               </Typography>
-              <Typography variant="h5">
-                {budgetHours ? `${formatHours(budgetHours.total_spent_hours)}h` : "—"}
-              </Typography>
-              <Typography
-                variant="body2"
-                color={budgetHours?.overrun ? "error" : "text.secondary"}
-              >
-                {budgetHours
-                  ? `of ${formatHours(budgetHours.total_estimate_hours)}h ${budgetHours.overrun ? `(over by ${formatHours(budgetHours.overrun_hours)}h)` : ""}`
-                  : "—"}
-              </Typography>
-              {budgetHours && (
-                <Box mt={1}>
-                  <LinearProgress
-                    variant="determinate"
-                    value={Math.min(
-                      100,
-                      Math.round(
-                        (budgetHours.total_spent_hours /
-                          Math.max(1, budgetHours.total_estimate_hours)) *
+              {sectionLoading.metrics && !budgetHours ? (
+                <>
+                  <Skeleton variant="text" width="50%" height={36} />
+                  <Skeleton variant="text" width="70%" height={20} />
+                  <Skeleton variant="rectangular" width="100%" height={4} sx={{ mt: 1, borderRadius: 1 }} />
+                </>
+              ) : (
+                <>
+                  <Typography variant="h5">
+                    {budgetHours ? `${formatHours(budgetHours.total_spent_hours)}h` : "—"}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color={budgetHours?.overrun ? "error" : "text.secondary"}
+                  >
+                    {budgetHours
+                      ? `of ${formatHours(budgetHours.total_estimate_hours)}h ${budgetHours.overrun ? `(over by ${formatHours(budgetHours.overrun_hours)}h)` : ""}`
+                      : "—"}
+                  </Typography>
+                  {budgetHours && (
+                    <Box mt={1}>
+                      <LinearProgress
+                        variant="determinate"
+                        value={Math.min(
                           100,
-                      ),
-                    )}
-                    color={budgetHours.overrun ? "error" : "primary"}
-                  />
-                </Box>
+                          Math.round(
+                            (budgetHours.total_spent_hours /
+                              Math.max(1, budgetHours.total_estimate_hours)) *
+                              100,
+                          ),
+                        )}
+                        color={budgetHours.overrun ? "error" : "primary"}
+                      />
+                    </Box>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
@@ -1549,7 +1612,9 @@ const ProjectDetail = () => {
               <Typography color="textSecondary" gutterBottom>
                 ROI
               </Typography>
-              {valueMetrics ? (
+              {sectionLoading.metrics && !valueMetrics ? (
+                <Skeleton variant="rounded" width={96} height={32} />
+              ) : valueMetrics ? (
                 <Tooltip
                   title={`${valueMetrics.value_delivered} value / ${formatHours(valueMetrics.total_spent_hours)} hours`}
                 >
@@ -1585,6 +1650,7 @@ const ProjectDetail = () => {
       <ProjectDetailTabs
         value={value}
         onChange={handleChange}
+        sectionLoading={sectionLoading}
         rows={rows}
         taskColumns={taskColumns}
         taskPaginationModel={taskPaginationModel}

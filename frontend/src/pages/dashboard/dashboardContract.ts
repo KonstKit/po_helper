@@ -86,6 +86,7 @@ export const DASHBOARD_TEST_IDS = {
   header: 'dashboard-header',
   viewDetails: 'dashboard-view-details',
   filtersRoot: 'dashboard-filters',
+  kpiBanner: 'dashboard-kpi-banner',
   filterProject: 'dashboard-filter-project',
   filterDateRange: 'dashboard-filter-date-range',
   filterChartView: 'dashboard-filter-chart-view',
@@ -315,6 +316,25 @@ export const detectTaskScopeAnomaly = (scope: TaskScope | undefined): TaskScopeA
 
   return null;
 };
+
+/**
+ * Shape of a single KPI tile rendered by {@link DashboardKpiBanner}.
+ *
+ * Lives here (not in a component file) so derivations and the banner can share
+ * it without importing UI. The legacy `KPIBar` component that originally owned
+ * this type was removed in the UX-review pass (M8/M9) in favour of the flat
+ * teal `DashboardKpiBanner`.
+ */
+export interface KPIMetric {
+  label: string;
+  value: string | number;
+  unit?: string;
+  change?: number; // Percentage change (e.g., +5.2 or -3.1)
+  trend?: 'up' | 'down' | 'flat';
+  status?: 'success' | 'warning' | 'error' | 'neutral';
+  tooltip?: string;
+  onClick?: () => void;
+}
 
 export const parseNumberListFromStorage = (value: string | null): number[] => {
   if (!value) return [];
