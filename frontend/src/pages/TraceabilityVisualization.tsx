@@ -209,10 +209,17 @@ const TraceabilityVisualization: React.FC = () => {
   };
 
   const loadArtifactGraph = useCallback(
-    (artifactId: number) => {
+    (artifactId: number, opts?: { switchToGraphTab?: boolean }) => {
       setSelectedArtifactId(artifactId);
       const params = new URLSearchParams(searchParams);
       params.set('artifact', String(artifactId));
+      // Codex P2: when navigating in from another tab (e.g. Impact Analysis),
+      // pin tab=0 in the URL too — otherwise the URL-sync effect reads the old
+      // tab param and flips the tab back, so the Dependency Graph never shows.
+      if (opts?.switchToGraphTab) {
+        setTabValue(0);
+        params.set('tab', '0');
+      }
       setSearchParams(params);
     },
     [searchParams, setSearchParams]
@@ -410,8 +417,7 @@ const TraceabilityVisualization: React.FC = () => {
             artifactId={selectedArtifactId}
             artifactTitle={selectedArtifact?.title || undefined}
             onArtifactClick={(id) => {
-              loadArtifactGraph(id);
-              setTabValue(0);
+              loadArtifactGraph(id, { switchToGraphTab: true });
             }}
           />
         ) : (
