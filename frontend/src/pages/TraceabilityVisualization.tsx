@@ -84,6 +84,10 @@ const TraceabilityVisualization: React.FC = () => {
   // graph effect from seeding a selection from the previous project's options in
   // the render right after a switch (before the refetch clears them).
   const artifactOptionsForProjectRef = useRef<number | null>(null);
+  // Tracks the previously-active projectId so a project switch — from EITHER the
+  // local dropdown OR the global header selector — clears the previous project's
+  // artifact selection, not just the dropdown handler (codex P2).
+  const prevProjectIdRef = useRef<number | null>(null);
   const [selectedArtifactId, setSelectedArtifactId] = useState<number | null>(null);
   const [selectedArtifact, setSelectedArtifact] = useState<FullChainNode | null>(null);
   const [confidenceData, setConfidenceData] = useState<ConfidenceDistribution | null>(null);
@@ -92,16 +96,10 @@ const TraceabilityVisualization: React.FC = () => {
   const handleProjectChange = (event: SelectChangeEvent<string>) => {
     const next = Number(event.target.value);
     if (!Number.isFinite(next)) return;
+    // selectProject changes the global projectId; the load effect detects the
+    // switch and clears the previous artifact selection + URL param — so the SAME
+    // path now covers the global header selector too (codex P2).
     selectProject(next);
-    // Drop the previous project's artifact selection so the default graph for the
-    // newly-selected project autoloads cleanly.
-    setSelectedArtifactId(null);
-    setSelectedArtifact(null);
-    if (searchParams.get('artifact')) {
-      const params = new URLSearchParams(searchParams);
-      params.delete('artifact');
-      setSearchParams(params);
-    }
   };
 
   // Read artifact ID + tab from URL (URL takes priority over the autoloaded default).
@@ -129,6 +127,24 @@ const TraceabilityVisualization: React.FC = () => {
   // artifact yields a single isolated node, so it makes a poor default and a
   // poor pick (the dedicated Orphaned Artifacts tab handles those).
   useEffect(() => {
+    // On an actual project switch (incl. via the global header selector, which
+    // does NOT run handleProjectChange) drop the previous project's selected
+    // artifact + URL param, so the graph re-seeds for the new project instead of
+    // pinning the old artifact when the new project has no rows or a stale
+    // ?artifact= is present (codex P2). Initial mount (prev null) is not a
+    // switch, so a deep-linked artifact survives.
+    const isProjectSwitch =
+      prevProjectIdRef.current !== null && prevProjectIdRef.current !== projectId;
+    prevProjectIdRef.current = projectId;
+    if (isProjectSwitch) {
+      setSelectedArtifactId(null);
+      setSelectedArtifact(null);
+      if (searchParams.get('artifact')) {
+        const next = new URLSearchParams(searchParams);
+        next.delete('artifact');
+        setSearchParams(next);
+      }
+    }
     if (projectId == null) {
       setArtifactOptions([]);
       artifactOptionsForProjectRef.current = null;
@@ -159,6 +175,7 @@ const TraceabilityVisualization: React.FC = () => {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   // Auto-load a sensible default graph when a project is active and nothing has
