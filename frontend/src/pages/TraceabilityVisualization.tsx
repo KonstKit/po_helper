@@ -598,6 +598,7 @@ const TraceabilityVisualization: React.FC = () => {
         <SyncHealthDashboard
           projectId={projectIdForChildren}
           onProjectSelect={(id) => selectProject(id ?? null)}
+          allowAllProjects={false}
         />
       </TabPanel>
 
