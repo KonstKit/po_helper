@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Chip,
@@ -23,160 +23,31 @@ import {
   DASHBOARD_STORAGE_KEYS,
   DASHBOARD_TEST_IDS,
   DATE_RANGE_OPTIONS,
-  QUICK_FILTER_OPTIONS,
-  migrateDashboardStorageContract,
   parseChartViewOption,
   parseDateRangeOption,
-  parseNumberListFromStorage,
   type ChartViewOption,
   type DateRangeOption,
-  type QuickFilterOption,
 } from '../pages/dashboard/dashboardContract';
 
-interface Project {
-  id: number;
-  name: string;
-  status?: string;
-  state?: string;
-}
-
+// NOTE (UX review C4): this component used to own a project picker — quick-filter
+// chips ("All Projects" / "Active Only" / "Recent"), a selected-project chip and
+// a "Project" dropdown. Project selection is now global (see `useSelectedProject`
+// and the header selector), so the duplicate picker has been removed and only the
+// non-project view filters (date range + chart view) remain here.
 interface DashboardFiltersProps {
-  projectId: number | null;
-  onProjectChange: (id: number) => void;
-  projects: Project[];
   dateRange?: string;
   onDateRangeChange?: (range: string) => void;
   chartView?: string;
   onChartViewChange?: (view: string) => void;
 }
 
-const isActiveProject = (project: Project): boolean => {
-  const status = typeof project.status === 'string' ? project.status.toLowerCase() : '';
-  const state = typeof project.state === 'string' ? project.state.toLowerCase() : '';
-  return status === 'active' || state === 'active';
-};
-
-const sortProjectsByName = (projects: Project[]): Project[] =>
-  [...projects].sort((left, right) => left.name.localeCompare(right.name));
-
-const sortProjectsById = (projects: Project[]): Project[] =>
-  [...projects].sort((left, right) => left.id - right.id);
-
-const parseLastProjectId = (value: string | null): number | null => {
-  if (!value) return null;
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-};
-
 export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
-  projectId,
-  onProjectChange,
-  projects,
   dateRange = DASHBOARD_DEFAULTS.dateRange,
   onDateRangeChange,
   chartView = DASHBOARD_DEFAULTS.chartView,
   onChartViewChange,
 }) => {
   const [expanded, setExpanded] = useState(false);
-  const [quickFilter, setQuickFilter] = useState<QuickFilterOption>(
-    () => migrateDashboardStorageContract().quickFilter
-  );
-
-  const projectIds = useMemo(() => new Set(projects.map((project) => project.id)), [projects]);
-  const sortedById = useMemo(() => sortProjectsById(projects), [projects]);
-  const sortedByName = useMemo(() => sortProjectsByName(projects), [projects]);
-
-  const persistRecentProject = useCallback(
-    (selectedProjectId: number) => {
-      if (!projectIds.has(selectedProjectId)) return;
-
-      localStorage.setItem(DASHBOARD_STORAGE_KEYS.lastProjectId, String(selectedProjectId));
-
-      const recent = parseNumberListFromStorage(
-        localStorage.getItem(DASHBOARD_STORAGE_KEYS.recentProjectIds)
-      );
-      const deduped = [selectedProjectId, ...recent.filter((id) => id !== selectedProjectId)];
-      const bounded = deduped.slice(0, DASHBOARD_DEFAULTS.recentProjectsLimit);
-      localStorage.setItem(DASHBOARD_STORAGE_KEYS.recentProjectIds, JSON.stringify(bounded));
-    },
-    [projectIds]
-  );
-
-  useEffect(() => {
-    if (typeof projectId === 'number') {
-      persistRecentProject(projectId);
-    }
-  }, [projectId, persistRecentProject]);
-
-  useEffect(() => {
-    localStorage.setItem(DASHBOARD_STORAGE_KEYS.quickFilter, quickFilter);
-  }, [quickFilter]);
-
-  const resolveRecentProjectId = useCallback((): number | null => {
-    const recent = parseNumberListFromStorage(localStorage.getItem(DASHBOARD_STORAGE_KEYS.recentProjectIds));
-    const recentMatch = recent.find((id) => projectIds.has(id));
-    if (recentMatch) return recentMatch;
-
-    const lastProjectId = parseLastProjectId(localStorage.getItem(DASHBOARD_STORAGE_KEYS.lastProjectId));
-    if (lastProjectId && projectIds.has(lastProjectId)) return lastProjectId;
-
-    return sortedById[0]?.id ?? null;
-  }, [projectIds, sortedById]);
-
-  const resolveActiveProjectId = useCallback((): number | null => {
-    const activeProjects = sortedByName.filter(isActiveProject);
-    if (activeProjects.length > 0) {
-      const activeIds = new Set(activeProjects.map((project) => project.id));
-      if (typeof projectId === 'number' && activeIds.has(projectId)) {
-        return projectId;
-      }
-      return activeProjects[0].id;
-    }
-
-    const lastProjectId = parseLastProjectId(localStorage.getItem(DASHBOARD_STORAGE_KEYS.lastProjectId));
-    if (lastProjectId && projectIds.has(lastProjectId)) return lastProjectId;
-
-    return sortedById[0]?.id ?? null;
-  }, [projectId, projectIds, sortedById, sortedByName]);
-
-  const resolveAllProjectsSelection = useCallback((): number | null => {
-    if (typeof projectId === 'number' && projectIds.has(projectId)) {
-      return projectId;
-    }
-    return resolveRecentProjectId();
-  }, [projectId, projectIds, resolveRecentProjectId]);
-
-  const applyProjectSelection = useCallback(
-    (nextProjectId: number | null) => {
-      if (nextProjectId === null) return;
-      if (!projectIds.has(nextProjectId)) return;
-      if (nextProjectId !== projectId) {
-        onProjectChange(nextProjectId);
-      }
-      persistRecentProject(nextProjectId);
-    },
-    [projectId, projectIds, onProjectChange, persistRecentProject]
-  );
-
-  const handleQuickFilterChange = (filter: QuickFilterOption) => {
-    setQuickFilter(filter);
-
-    if (filter === 'all') {
-      applyProjectSelection(resolveAllProjectsSelection());
-      return;
-    }
-    if (filter === 'active') {
-      applyProjectSelection(resolveActiveProjectId());
-      return;
-    }
-    applyProjectSelection(resolveRecentProjectId());
-  };
-
-  const handleProjectSelectChange = (selectedProjectId: number) => {
-    if (!projectIds.has(selectedProjectId)) return;
-    onProjectChange(selectedProjectId);
-    persistRecentProject(selectedProjectId);
-  };
 
   const handleDateRangeSelectChange = (range: string) => {
     const normalized = parseDateRangeOption(range);
@@ -191,15 +62,11 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
   };
 
   const handleReset = () => {
-    const defaultQuickFilter = DASHBOARD_DEFAULTS.quickFilter;
-    setQuickFilter(defaultQuickFilter);
-    localStorage.setItem(DASHBOARD_STORAGE_KEYS.quickFilter, defaultQuickFilter);
     localStorage.setItem(DASHBOARD_STORAGE_KEYS.dateRange, DASHBOARD_DEFAULTS.dateRange);
     localStorage.setItem(DASHBOARD_STORAGE_KEYS.chartView, DASHBOARD_DEFAULTS.chartView);
 
     onDateRangeChange?.(DASHBOARD_DEFAULTS.dateRange);
     onChartViewChange?.(DASHBOARD_DEFAULTS.chartView);
-    applyProjectSelection(resolveRecentProjectId());
     setExpanded(false);
   };
 
@@ -209,17 +76,16 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
   const activeFiltersCount = [
     normalizedDateRange !== DASHBOARD_DEFAULTS.dateRange,
     normalizedChartView !== DASHBOARD_DEFAULTS.chartView,
-    quickFilter !== DASHBOARD_DEFAULTS.quickFilter,
   ].filter(Boolean).length;
 
   return (
     <Box mb={3}>
       <Paper sx={{ p: 2 }}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+        <Box display="flex" alignItems="center" justifyContent="space-between">
           <Box display="flex" alignItems="center" gap={1}>
             <FilterListIcon color="action" />
             <Typography variant="subtitle1" fontWeight={500}>
-              Quick Filters
+              Filters
             </Typography>
             {activeFiltersCount > 0 && (
               <Chip
@@ -246,40 +112,6 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
           </Box>
         </Box>
 
-        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-          {QUICK_FILTER_OPTIONS.map((filter) => (
-            <Chip
-              key={filter}
-              label={filter === 'all' ? 'All Projects' : filter === 'active' ? 'Active Only' : 'Recent'}
-              onClick={() => handleQuickFilterChange(filter)}
-              color={quickFilter === filter ? 'primary' : 'default'}
-              variant={quickFilter === filter ? 'filled' : 'outlined'}
-              sx={{ textTransform: 'capitalize' }}
-            />
-          ))}
-
-          {projectId && projects.length > 0 && (
-            <>
-              <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-              <Chip
-                label={projects.find((project) => project.id === projectId)?.name || 'Unknown Project'}
-                color="success"
-                variant="filled"
-                onDelete={
-                  projects.length > 1
-                    ? () => {
-                        const nextProject = sortedById.find((project) => project.id !== projectId);
-                        if (nextProject) {
-                          handleProjectSelectChange(nextProject.id);
-                        }
-                      }
-                    : undefined
-                }
-              />
-            </>
-          )}
-        </Stack>
-
         <Collapse in={expanded}>
           <Box mt={3}>
             <Divider sx={{ mb: 2 }} />
@@ -287,21 +119,6 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
               Advanced Options
             </Typography>
             <Stack spacing={2} mt={2}>
-              <FormControl fullWidth size="small" data-testid={DASHBOARD_TEST_IDS.filterProject}>
-                <InputLabel>Project</InputLabel>
-                <Select<number | ''>
-                  label="Project"
-                  value={projectId || ''}
-                  onChange={(event) => handleProjectSelectChange(Number(event.target.value))}
-                >
-                  {sortedById.map((project) => (
-                    <MenuItem key={project.id} value={project.id}>
-                      {project.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-
               {onDateRangeChange && (
                 <FormControl fullWidth size="small" data-testid={DASHBOARD_TEST_IDS.filterDateRange}>
                   <InputLabel>Date Range</InputLabel>

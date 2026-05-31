@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Typography, Grid, TextField, Button, Divider, Alert, Switch, FormControlLabel, ToggleButtonGroup, ToggleButton, Chip } from '@mui/material';
 import CircularProgressWithLabel from '../components/CircularProgressWithLabel';
-import EmptyState from '../components/EmptyState';
+import EmptyState from '../components/common/EmptyState';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import { ChevronRight as ChevronRightIcon, ExpandLess as ExpandLessIcon, MenuBook as MenuBookIcon } from '@mui/icons-material';
 import {
@@ -65,7 +65,15 @@ const Knowledge = () => {
   const [tree, setTree] = useState<SpaceTreeNode[] | null>(null);
   const [expanded, setExpanded] = useState<string[]>([]);
   const [plainView, setPlainView] = useState<boolean>(false);
+  // Becomes true once the initial auto-load (or state restore) has settled, so
+  // the empty-state never flashes before the first fetch has had a chance to run.
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
   const syncStreamRef = useRef<ConfluenceSyncStreamHandle | null>(null);
+  // True once an earlier session's pages/tree have been rehydrated from storage,
+  // so the auto-load effect can skip the initial fetch and avoid clobbering them.
+  const restoredDataRef = useRef(false);
+  // Guards the initial auto-load so it fires at most once per mount.
+  const didAutoLoadRef = useRef(false);
 
   // Restore state on mount
   useEffect(() => {
@@ -90,6 +98,11 @@ const Knowledge = () => {
         if (typeof s.dbOffset === 'number') setDbOffset(s.dbOffset);
         if (Array.isArray(s.expanded)) setExpanded(s.expanded);
         if (Array.isArray(s.tree)) setTree(s.tree);
+        // Remember whether the previous session already had data, so we don't
+        // auto-fetch (and overwrite) on a return visit.
+        if ((Array.isArray(s.pages) && s.pages.length > 0) || (Array.isArray(s.tree) && s.tree.length > 0)) {
+          restoredDataRef.current = true;
+        }
       }
     } catch (err) {
       console.warn('Failed to restore knowledge state', err);
@@ -194,6 +207,24 @@ const Knowledge = () => {
       setProgress({ loading: false, percent: 100, step: 'Ready' });
     }
   };
+
+  // Auto-load the first page of results on mount (M6). Runs once and only when
+  // nothing was restored from a previous session, so the table is populated
+  // without a manual "Find Pages" click. Uses the same paginated loader as the
+  // button (first page only) — deep tree/branch loading stays lazy/on-demand.
+  useEffect(() => {
+    if (didAutoLoadRef.current) return;
+    didAutoLoadRef.current = true;
+    // The restore effect (declared earlier) has already run for this mount; if
+    // it rehydrated pages/tree, skip the auto-fetch to avoid overwriting them.
+    if (restoredDataRef.current) {
+      setInitialLoadDone(true);
+      return;
+    }
+    void loadPages().finally(() => setInitialLoadDone(true));
+    // Intentionally run once on mount; loadPages is stable for the initial fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const doSync = async () => {
     try {
@@ -546,8 +577,9 @@ const Knowledge = () => {
     },
   ];
 
-  // Show empty state when no pages loaded yet
-  const showEmptyState = pages.length === 0 && !loading && !tree;
+  // Show empty state only after the initial load has settled and there is
+  // genuinely nothing to show — never while a fetch is in flight (M4).
+  const showEmptyState = initialLoadDone && pages.length === 0 && !loading && !tree;
 
   return (
     <Box>
@@ -557,24 +589,19 @@ const Knowledge = () => {
       {showEmptyState && (
         <Box sx={{ my: 4 }}>
           <EmptyState
-            icon={<MenuBookIcon sx={{ fontSize: 80 }} />}
-            title="Your Knowledge Base is Empty"
-            description="Connect Confluence to import your team's requirements, PRDs, and documentation"
-            primaryAction={{
-              label: 'Configure Confluence Integration',
-              onClick: () => window.location.href = '/settings',
-            }}
-            benefits={[
-              'Link requirements to Jira tasks',
-              'Traceability from docs to code',
-              'Track documentation coverage',
-              'Parse PRDs, ADRs, and Research notes',
+            icon={<MenuBookIcon />}
+            title="No knowledge entries yet"
+            description="Knowledge is populated by importing Confluence pages into the local database. Connect Confluence in Settings, then search and sync pages to bring in your team's PRDs, ADRs, and research notes."
+            steps={[
+              'Configure the Confluence connection in Settings',
+              'Enter a Space Key and search for pages',
+              'Click "Sync" to import pages into the local database',
             ]}
-            setupSteps={[
-              'Go to Settings and configure Confluence connection',
-              'Enter Space Key and search for pages',
-              'Click "Sync" to import pages into local database',
-            ]}
+            actions={
+              <Button variant="contained" onClick={() => { window.location.href = '/settings'; }}>
+                Configure Confluence Integration
+              </Button>
+            }
           />
         </Box>
       )}

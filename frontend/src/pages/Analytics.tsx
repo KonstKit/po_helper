@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Grid,
   Paper,
@@ -43,10 +43,15 @@ import type {
 } from '../services/api';
 import CircularProgressWithLabel from '../components/CircularProgressWithLabel';
 import { AnalyticsFilters } from '../components/AnalyticsFilters';
+import { useSelectedProject } from '../hooks/useSelectedProject';
 import { loadParallel } from '../utils/apiOptimization';
 import type { LoadingProgress } from '../hooks/useParallelLoading';
 
 const Analytics = () => {
+  // Project comes from the single global selector in the header (UX review C4):
+  // the choice made here carries to Dashboard/Quality/Review/Visualization and
+  // back, instead of Analytics keeping its own divergent project state.
+  const { projectId: globalProjectId, selectProject } = useSelectedProject();
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState<number | 'all'>('all');
   const [prMetricsRange, setPRMetricsRange] = useState<'14d' | '30d' | '90d' | 'all'>('30d');
@@ -82,6 +87,20 @@ const Analytics = () => {
       setProjects([]); // Set empty to prevent UI issues
     }
   })(); }, []);
+  // Mirror the global selection into Analytics' local state so the header
+  // selector drives this page too (one source of truth — UX review C4).
+  useEffect(() => {
+    if (globalProjectId != null && globalProjectId !== projectId) {
+      setProjectId(globalProjectId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [globalProjectId]);
+  // Pushing a change from Analytics' own dropdown back up to the global
+  // selector keeps the choice when the user navigates to another screen.
+  const handleProjectChange = useCallback((id: number | 'all') => {
+    setProjectId(id);
+    if (typeof id === 'number') selectProject(id);
+  }, [selectProject]);
   useEffect(() => { (async () => {
     if (typeof projectId === 'number') {
       setPRMetrics(null);
@@ -456,7 +475,7 @@ const Analytics = () => {
       {/* Filters with Progressive Disclosure */}
       <AnalyticsFilters
         projectId={projectId}
-        onProjectChange={setProjectId}
+        onProjectChange={handleProjectChange}
         projects={projects}
         timeRange={timeRange}
         onTimeRangeChange={setTimeRange}
@@ -480,7 +499,10 @@ const Analytics = () => {
               <Typography color="textSecondary" gutterBottom>
                 Average Velocity
               </Typography>
-              <Typography variant="h4">{velocity?.average_velocity ?? 0}</Typography>
+              {/* M3: "—" means no velocity data yet, not a real zero velocity. */}
+              <Typography variant="h4">
+                {velocity?.average_velocity != null ? velocity.average_velocity : '—'}
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -490,7 +512,12 @@ const Analytics = () => {
               <Typography color="textSecondary" gutterBottom>
                 Total Value Delivered
               </Typography>
-              <Typography variant="h4">{valueMetrics ? Math.round((valueMetrics.value_delivered || 0) * 10) / 10 : 0}</Typography>
+              {/* M3: "—" when value metrics are not configured/available yet. */}
+              <Typography variant="h4">
+                {valueMetrics?.value_delivered != null
+                  ? Math.round(valueMetrics.value_delivered * 10) / 10
+                  : '—'}
+              </Typography>
             </CardContent>
           </Card>
         </Grid>

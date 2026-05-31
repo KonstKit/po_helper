@@ -17,7 +17,6 @@ import {
 } from '@mui/material';
 import type { ChartOptions } from 'chart.js';
 import { type AppDispatch, type RootState } from '../store/store';
-import { setCurrentProject } from '../store/projectSlice';
 import { loadProjectData } from '../store/dataThunks';
 import type { Task } from '../store/taskSlice';
 import { categorizeStatus, isDoneStatus } from '../hooks/useTaskStatuses';
@@ -36,8 +35,9 @@ import {
 } from '../services/api';
 import DashboardSkeleton from '../components/DashboardSkeleton';
 import EmptyState from '../components/EmptyState';
-import KPIBar from '../components/KPIBar';
 import { DashboardFilters } from '../components/DashboardFilters';
+import { useSelectedProject } from '../hooks/useSelectedProject';
+import DashboardKpiBanner from './dashboard/DashboardKpiBanner';
 import DashboardHeader from './dashboard/DashboardHeader';
 import DashboardChartsSection from './dashboard/DashboardChartsSection';
 import DashboardInsightsSection from './dashboard/DashboardInsightsSection';
@@ -104,13 +104,6 @@ const doughnutChartOptions: ChartOptions<'doughnut'> = {
   },
 };
 
-interface DashboardProjectCandidate {
-  id: number;
-  name: string;
-  status?: string | null;
-  state?: string | null;
-}
-
 const nowMs = (): number => {
   if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
     return performance.now();
@@ -136,65 +129,17 @@ const isAbortLikeError = (error: unknown): boolean => {
   );
 };
 
-const isActiveProjectCandidate = (project: DashboardProjectCandidate): boolean => {
-  const status = typeof project.status === 'string' ? project.status.toLowerCase() : '';
-  const state = typeof project.state === 'string' ? project.state.toLowerCase() : '';
-  return status === 'active' || state === 'active';
-};
-
-const resolveInitialProjectId = (projects: DashboardProjectCandidate[]): number | null => {
-  if (projects.length === 0) return null;
-
-  const persistedState = migrateDashboardStorageContract();
-  const sortedById = [...projects].sort((left, right) => left.id - right.id);
-  const sortedByName = [...projects].sort((left, right) => left.name.localeCompare(right.name));
-  const projectIds = new Set(sortedById.map((project) => project.id));
-  const quickFilter = persistedState.quickFilter;
-  const recentProjectIds = persistedState.recentProjectIds;
-  const recentMatch = recentProjectIds.find((projectId) => projectIds.has(projectId)) ?? null;
-  const lastProjectId = persistedState.lastProjectId;
-  const lastMatch = lastProjectId !== null && projectIds.has(lastProjectId) ? lastProjectId : null;
-
-  if (quickFilter === 'active') {
-    const activeProjects = sortedByName.filter(isActiveProjectCandidate);
-    if (activeProjects.length > 0) {
-      return activeProjects[0].id;
-    }
-    if (lastMatch !== null) {
-      return lastMatch;
-    }
-    return sortedById[0]?.id ?? null;
-  }
-
-  if (quickFilter === 'all') {
-    if (lastMatch !== null) {
-      return lastMatch;
-    }
-    if (recentMatch !== null) {
-      return recentMatch;
-    }
-    return sortedById[0]?.id ?? null;
-  }
-
-  if (recentMatch !== null) {
-    return recentMatch;
-  }
-  if (lastMatch !== null) {
-    return lastMatch;
-  }
-  return sortedById[0]?.id ?? null;
-};
-
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
 
-  const {
-    projects,
-    currentProject,
-    loading: projectsLoading,
-    error: projectsError,
-  } = useSelector((state: RootState) => state.project);
+  // Global selected project is the single source of truth (UX review C4): the
+  // dashboard no longer owns a local project picker — it reads/writes the
+  // globally-selected project through this hook, which the header selector and
+  // other screens share.
+  const { projects, currentProject, projectId, selectProject, loading: projectsLoading } =
+    useSelectedProject();
+  const projectsError = useSelector((state: RootState) => state.project.error);
   const {
     tasksByProject,
     taskScopeByProject,
@@ -240,7 +185,7 @@ const Dashboard: React.FC = () => {
     () => (currentProject ? tasksByProject[currentProject.id] || [] : []),
     [currentProject, tasksByProject]
   );
-  const currentProjectId = currentProject?.id ?? null;
+  const currentProjectId = projectId;
 
   useEffect(() => {
     const updateNow = () => setNow(Date.now());
@@ -335,29 +280,6 @@ const Dashboard: React.FC = () => {
     setBurndownWidgetState('no_sprint');
     setVelocityLoading(false);
   }, []);
-
-  const handleProjectChange = useCallback(
-    (projectId: number) => {
-      const nextProject = projects.find((project) => project.id === projectId);
-      if (nextProject) {
-        dispatch(setCurrentProject(nextProject));
-      }
-    },
-    [projects, dispatch]
-  );
-
-  useEffect(() => {
-    if (!currentProject && projects.length > 0) {
-      const initialProjectId = resolveInitialProjectId(projects);
-      const initialProject =
-        initialProjectId !== null
-          ? projects.find((project) => project.id === initialProjectId) ?? projects[0]
-          : projects[0];
-      if (initialProject) {
-        dispatch(setCurrentProject(initialProject));
-      }
-    }
-  }, [currentProject, projects, dispatch]);
 
   useEffect(() => {
     if (!currentProject) return;
@@ -717,9 +639,6 @@ const Dashboard: React.FC = () => {
       {projects.length > 0 && (
         <Box data-testid={DASHBOARD_TEST_IDS.filtersRoot}>
           <DashboardFilters
-            projectId={currentProject?.id || null}
-            onProjectChange={handleProjectChange}
-            projects={projects}
             dateRange={dateRange}
             onDateRangeChange={handleDateRangeChange}
             chartView={chartView}
@@ -740,7 +659,7 @@ const Dashboard: React.FC = () => {
           primaryAction={{
             label: projects.length === 0 ? 'Open Projects' : 'Select First Project',
             onClick: () =>
-              projects.length === 0 ? navigate('/projects') : dispatch(setCurrentProject(projects[0])),
+              projects.length === 0 ? navigate('/projects') : selectProject(projects[0]?.id ?? null),
           }}
           secondaryAction={
             projects.length === 0
@@ -766,7 +685,7 @@ const Dashboard: React.FC = () => {
             </Alert>
           )}
 
-          <KPIBar metrics={kpiMetrics} />
+          <DashboardKpiBanner metrics={kpiMetrics} />
 
           {dashboardError && (
             <Alert
