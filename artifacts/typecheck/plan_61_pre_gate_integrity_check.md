@@ -1,4 +1,4 @@
-﻿# plan_61 pre-gate integrity check
+# plan_61 pre-gate integrity check
 
 - Date: 2026-02-26 20:35:05
 - Workspace root: <repo-root>

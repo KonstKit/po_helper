@@ -496,6 +496,7 @@ const ProjectDetailTabs = ({
             if (startDate && endDate) {
               const sd = new Date(startDate).getTime();
               const ed = new Date(endDate).getTime();
+              // eslint-disable-next-line react-hooks/purity -- one-off "now" read for a sprint-forecast estimate; the value is intentionally non-reactive
               const now = Date.now();
               const totalDays = Math.max(1, (ed - sd) / (1000 * 3600 * 24));
               const elapsedDays = Math.max(
