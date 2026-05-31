@@ -119,6 +119,9 @@ const ProjectDetail = () => {
   const [project, setProject] = useState<Project | null>(null);
   const [rows, setRows] = useState<TaskItem[]>([]);
   const lastRowsRef = useRef<TaskItem[]>([]);
+  // Tracks the previously-loaded project id so the load effect can tell an actual
+  // project switch (clear stale data) from the initial mount (keep cached tasks).
+  const prevProjectIdRef = useRef<string | undefined>(undefined);
   // Server-side pagination state for tasks
   const [taskPaginationModel, setTaskPaginationModel] = useState<GridPaginationModel>({ page: 0, pageSize: 25 });
   const [taskRowCount, setTaskRowCount] = useState(0);
@@ -954,19 +957,30 @@ const ProjectDetail = () => {
         sprints: true,
         sprintInsights: true,
       });
-      // Codex P2: also clear the previous project's section data. The skeletons
-      // are gated on emptiness (e.g. `sectionLoading.tasks && rows.length === 0`),
-      // so resetting only the flags is not enough — without this, the prior
-      // project's rows/risks/burndown/budget/value/team render under the new
-      // project's header until each section's refetch resolves.
-      setRows([]);
-      lastRowsRef.current = [];
-      setRisks(null);
-      setBurndown(null);
-      setSprintBurndown(null);
-      setBudgetHours(null);
-      setValueMetrics(null);
-      setTeamMembers([]);
+      // Codex P2 (rounds 1+3): clear the previous project's section data on an
+      // actual project SWITCH only — not on the initial mount, where doing so
+      // would wipe the cached-task restore (lastRowsRef) that backs the
+      // empty/failed-Jira fallback below. The skeletons are gated on emptiness,
+      // so resetting only the loading flags is not enough to hide stale data.
+      const isProjectSwitch =
+        prevProjectIdRef.current !== undefined && prevProjectIdRef.current !== id;
+      prevProjectIdRef.current = id;
+      if (isProjectSwitch) {
+        setRows([]);
+        lastRowsRef.current = [];
+        setRisks(null);
+        setBurndown(null);
+        setSprintBurndown(null);
+        setBudgetHours(null);
+        setValueMetrics(null);
+        setTeamMembers([]);
+        // Also clear the board/sprint selectors, else the prior project's
+        // boards/sprints render (and stay selectable) under the new header.
+        setBoards([]);
+        setSprints([]);
+        setSelectedSprint('');
+        setBoardId('');
+      }
       try {
         if (id) {
           logDebug("ProjectDetail: Starting to load project details");

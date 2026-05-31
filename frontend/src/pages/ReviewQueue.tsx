@@ -69,7 +69,7 @@ const ReviewQueue: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending');
   // Project comes from the single global selector in the header (UX review C5),
   // not a free-text "Project ID" field the user has to remember and type.
-  const { projectId, currentProject, projects, loading: projectsLoading } = useSelectedProject();
+  const { projectId, currentProject, projects, lastLoadedAt } = useSelectedProject();
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const fetchItems = useCallback(async () => {
@@ -91,13 +91,15 @@ const ReviewQueue: React.FC = () => {
   }, [statusFilter, projectId]);
 
   useEffect(() => {
-    // Codex m-1 (round 2): don't fire an unscoped request before the global
-    // project resolves. Skip while the list is still loading OR while projects
-    // exist but currentProject hasn't been restored yet (projectId still null).
-    // Only fetch with no project when there genuinely are none (admin/global).
-    if (projectId == null && (projectsLoading || projects.length > 0)) return;
+    // Codex (rounds 2-3): don't fire an unscoped request before the global
+    // project context settles. `loading` is unreliable here (the selector hook
+    // fetches without toggling it), so gate on `lastLoadedAt`: wait until the
+    // list has loaded AND, if it has projects, until one is selected (projectId).
+    // Only fetch projectless once the list has loaded and is genuinely empty
+    // (no race then: there is no competing project-scoped request).
+    if (projectId == null && (lastLoadedAt == null || projects.length > 0)) return;
     void fetchItems();
-  }, [fetchItems, projectId, projectsLoading, projects.length]);
+  }, [fetchItems, projectId, lastLoadedAt, projects.length]);
 
   const handleStatusFilterChange = (event: SelectChangeEvent<string>) => {
     const value = event.target.value;
