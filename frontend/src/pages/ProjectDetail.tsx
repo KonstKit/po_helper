@@ -678,6 +678,12 @@ const ProjectDetail = () => {
 
   const loadSprintInsights = useCallback(async (sprintId: number) => {
     setSectionLoading((s) => ({ ...s, sprintInsights: true }));
+    // Codex P2: clear the previous sprint's insights before loading the next, so
+    // the skeleton (gated on any-missing) shows during the switch instead of
+    // mixing the old sprint's quality/capacity with the new sprint's burndown.
+    setSprintBurndown(null);
+    setSprintQuality(null);
+    setSprintCapacity(null);
     try {
       try {
         setSprintBurndown(await getSprintBurndown(sprintId));
