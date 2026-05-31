@@ -1,17 +1,11 @@
 import { useCallback, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import type { RootState, AppDispatch } from '../store/store';
-import { setProjects, setCurrentProject, setError, setLastLoadedAt } from '../store/projectSlice';
-import { listProjects } from '../services/api/projects';
+import { setCurrentProject } from '../store/projectSlice';
+import { loadAllProjects } from '../store/dataThunks';
 import { readStoredJson, writeStoredJson } from '../utils/browserStorage';
 
 const STORAGE_KEY = 'po_helper_selected_project_id';
-
-// Guards against N hook instances (the header selector + every consuming page)
-// all firing the project-list fetch on a cold load. Module-scoped so all
-// instances share it; reset in `finally` so a failed load can still be retried
-// (UX review M-1: previously each instance issued its own duplicate request).
-let projectsFetchInFlight = false;
 
 // Migration helper: older builds persisted the selected project under the
 // Dashboard's own keys. If the new key is absent we honour the old last/recent
@@ -59,36 +53,18 @@ export function useSelectedProject() {
   const lastLoadedAt = useSelector((s: RootState) => s.project.lastLoadedAt);
   const error = useSelector((s: RootState) => s.project.error);
 
-  // Load the project list once if it has not been fetched yet. The module-level
-  // in-flight guard prevents the header selector and the consuming page from each
-  // issuing a duplicate request on a cold load (UX review M-1).
+  // Ensure the global project list is loaded via the SAME canonical thunk the
+  // app uses on startup. It has its own in-flight + staleness guard, so calling
+  // it here cannot race initializeAppData()'s loadAllProjects(): a raw
+  // listProjects here previously could overwrite (or be overwritten by) that
+  // request, dropping projects/selections beyond the first page (codex P2).
+  // The thunk also sets error on failure, which `ready` (below) keys on, so a
+  // failed list load no longer leaves project-scoped pages waiting forever.
   useEffect(() => {
-    if (projects.length > 0 || projectsFetchInFlight) return;
-    let cancelled = false;
-    projectsFetchInFlight = true;
-    listProjects({ limit: 200 })
-      .then((res) => {
-        if (cancelled) return;
-        const items = Array.isArray(res?.data) ? res.data : [];
-        dispatch(setProjects(items as never));
-        dispatch(setError(null));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        // Mark the load as settled-with-error so project-scoped pages stop
-        // waiting on `ready` instead of hanging forever on a failed list load
-        // (codex P2). lastLoadedAt is the "settled" signal; error carries why.
-        dispatch(setError('Failed to load projects'));
-        dispatch(setLastLoadedAt(Date.now()));
-      })
-      .finally(() => {
-        projectsFetchInFlight = false;
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (projects.length === 0) {
+      dispatch(loadAllProjects({}));
+    }
+  }, [dispatch, projects.length]);
 
   // Restore the persisted selection (or default to the first project) once the
   // list is available and nothing is selected yet.
