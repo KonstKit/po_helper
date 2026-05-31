@@ -7,6 +7,12 @@ import { readStoredJson, writeStoredJson } from '../utils/browserStorage';
 
 const STORAGE_KEY = 'po_helper_selected_project_id';
 
+// Guards against N hook instances (the header selector + every consuming page)
+// all firing the project-list fetch on a cold load. Module-scoped so all
+// instances share it; reset in `finally` so a failed load can still be retried
+// (UX review M-1: previously each instance issued its own duplicate request).
+let projectsFetchInFlight = false;
+
 /**
  * Single source of truth for the globally-selected project (UX review C4).
  *
@@ -23,20 +29,25 @@ export function useSelectedProject() {
   const currentProject = useSelector((s: RootState) => s.project.currentProject);
   const loading = useSelector((s: RootState) => s.project.loading);
 
-  // Load the project list once if it has not been fetched yet.
+  // Load the project list once if it has not been fetched yet. The module-level
+  // in-flight guard prevents the header selector and the consuming page from each
+  // issuing a duplicate request on a cold load (UX review M-1).
   useEffect(() => {
+    if (projects.length > 0 || projectsFetchInFlight) return;
     let cancelled = false;
-    if (projects.length === 0) {
-      listProjects({ limit: 200 })
-        .then((res) => {
-          if (cancelled) return;
-          const items = Array.isArray(res?.data) ? res.data : [];
-          dispatch(setProjects(items as never));
-        })
-        .catch(() => {
-          /* surfaced elsewhere; the selector simply stays empty */
-        });
-    }
+    projectsFetchInFlight = true;
+    listProjects({ limit: 200 })
+      .then((res) => {
+        if (cancelled) return;
+        const items = Array.isArray(res?.data) ? res.data : [];
+        dispatch(setProjects(items as never));
+      })
+      .catch(() => {
+        /* surfaced elsewhere; the selector simply stays empty */
+      })
+      .finally(() => {
+        projectsFetchInFlight = false;
+      });
     return () => {
       cancelled = true;
     };

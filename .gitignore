@@ -98,3 +98,7 @@ exports/rtm_matrix_*.pdf
 *.dump
 *.sql.gz
 .last_db_backup_name
+
+# UI capture reference (large binary screenshots + index doc) — not app code
+ui-screenshots/
+UI_SCREENSHOT_INDEX.md

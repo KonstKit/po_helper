@@ -54,6 +54,7 @@ const CLEAR_PATTERNS = [
   /^knowledge_/,              // Knowledge page state
   /^onboarding_/,             // Onboarding state
   /^navigation_/,             // Navigation state
+  /^po_helper_/,              // App-namespaced prefs (e.g. selected project) — codex P3
   /analytics_/,               // Analytics data
   /adoption_/,                // Feature adoption tracking
   /metrics_/,                 // User metrics
@@ -212,6 +213,9 @@ export function performAuthErrorCleanup(
       'onboarding_progress',
       'onboarding_completed',
       'time_to_value_metrics',
+      // Same-user token refresh keeps their selected project; a full manual
+      // logout still clears it via the /^po_helper_/ pattern (codex P3).
+      'po_helper_selected_project_id',
       // Carries the owner of the soft-reset session so the next login can
       // detect cross-user signin and wipe the keys above. Same-user re-auth
       // consumes and clears it via dropInheritedStateIfOwnerChanged().

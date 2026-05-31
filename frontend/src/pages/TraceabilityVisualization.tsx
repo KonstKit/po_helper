@@ -131,6 +131,9 @@ const TraceabilityVisualization: React.FC = () => {
     }
     let cancelled = false;
     setArtifactOptionsLoading(true);
+    // Codex P2: drop the previous project's options during the refetch so the
+    // default-graph effect below cannot seed from a stale artifact mid-switch.
+    setArtifactOptions([]);
     getRTMMatrix({ projectId, rowLimit: 200, colLimit: 1 })
       .then((res) => {
         if (cancelled) return;
@@ -154,12 +157,17 @@ const TraceabilityVisualization: React.FC = () => {
   // of having to type an Artifact ID before anything renders. We seed with the
   // first artifact returned for the project.
   useEffect(() => {
-    if (selectedArtifactId != null) return;
     if (searchParams.get('artifact')) return;
-    const first = artifactOptions[0];
-    if (first) {
-      setSelectedArtifactId(first.id);
-    }
+    if (artifactOptions.length === 0) return;
+    // Codex P2: re-seed the default graph when nothing is selected OR the current
+    // pick is not among the active project's artifacts. After a project switch the
+    // old selection/options would otherwise stick (the old guard returned early on
+    // any non-null selection, so a stale artifact survived). A URL-pinned artifact
+    // is preserved by the early return above.
+    const stillValid =
+      selectedArtifactId != null && artifactOptions.some((a) => a.id === selectedArtifactId);
+    if (stillValid) return;
+    setSelectedArtifactId(artifactOptions[0].id);
   }, [artifactOptions, selectedArtifactId, searchParams]);
 
   // Load confidence distribution
