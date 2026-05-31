@@ -332,7 +332,7 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
                             Coverage
                           </Typography>
                           <Typography variant="body2">
-                            {detailedData.link_coverage.coverage_pct.toFixed(1)}%
+                            {(detailedData.link_coverage.coverage_pct ?? 0).toFixed(1)}%
                           </Typography>
                         </Stack>
                         <LinearProgress

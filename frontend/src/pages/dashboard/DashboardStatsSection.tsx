@@ -132,7 +132,7 @@ interface BudgetCardModel {
 // the overrun and turn the bar red (while capping its visual fill at 100%).
 const buildBudgetCardModel = (budgetData: BudgetHoursResponse | null): BudgetCardModel => {
   if (!budgetData) {
-    return { configured: false, value: '--', iconColor: 'grey.500' };
+    return { configured: false, value: NOT_CONFIGURED, iconColor: 'grey.500' };
   }
 
   const spent = toFinite(budgetData.total_spent_hours);
@@ -176,7 +176,7 @@ interface ValueCardModel {
 // input data, instead of a bare 0 that looks like a measured result.
 const buildValueCardModel = (valueMetrics: ValueMetricsResponse | null): ValueCardModel => {
   if (!valueMetrics) {
-    return { configured: false, value: '--' };
+    return { configured: false, value: NOT_CONFIGURED };
   }
 
   const roi = toFinite(valueMetrics.roi);

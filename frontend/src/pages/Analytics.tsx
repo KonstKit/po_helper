@@ -81,7 +81,11 @@ const Analytics = () => {
       );
       const ps = psResp.data;
       setProjects(ps);
-      if (ps.length) setProjectId(ps[0].id);
+      // Codex P2 / C4: do NOT default projectId to ps[0] here. The global
+      // selector (useSelectedProject) is the single source of truth and the
+      // mirror effect below drives projectId. Forcing the first project once
+      // this async fetch resolved clobbered an already-chosen global project,
+      // leaving Analytics' data inconsistent with the header selector.
     } catch (error) {
       console.error('Failed to load projects:', error);
       setProjects([]); // Set empty to prevent UI issues

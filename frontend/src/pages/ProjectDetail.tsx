@@ -954,6 +954,19 @@ const ProjectDetail = () => {
         sprints: true,
         sprintInsights: true,
       });
+      // Codex P2: also clear the previous project's section data. The skeletons
+      // are gated on emptiness (e.g. `sectionLoading.tasks && rows.length === 0`),
+      // so resetting only the flags is not enough — without this, the prior
+      // project's rows/risks/burndown/budget/value/team render under the new
+      // project's header until each section's refetch resolves.
+      setRows([]);
+      lastRowsRef.current = [];
+      setRisks(null);
+      setBurndown(null);
+      setSprintBurndown(null);
+      setBudgetHours(null);
+      setValueMetrics(null);
+      setTeamMembers([]);
       try {
         if (id) {
           logDebug("ProjectDetail: Starting to load project details");
