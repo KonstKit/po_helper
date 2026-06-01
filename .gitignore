@@ -83,7 +83,7 @@ e2e/playwright/playwright-report/
 e2e/playwright/.playwright-token
 .playwright-mcp/
 
-# Claude Code
+# Local agent/editor settings
 .claude/
 
 # jscpd reports (generated)

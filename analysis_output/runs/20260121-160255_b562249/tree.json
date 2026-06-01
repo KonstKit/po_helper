@@ -626,23 +626,6 @@
     }
   },
   "folders": {
-    ".claude": {
-      "files": {
-        "settings.local.json": {
-          "language": "JSON",
-          "loc_nonempty": 38,
-          "loc_total": 39,
-          "path": ".claude/settings.local.json",
-          "target": "prod",
-          "top_level_methods": [],
-          "types": []
-        }
-      },
-      "folders": {},
-      "loc_nonempty": 38,
-      "loc_total": 39,
-      "path": ".claude"
-    },
     ".github": {
       "files": {},
       "folders": {
