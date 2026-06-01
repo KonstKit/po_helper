@@ -62,7 +62,7 @@ def _normalize_scopes(scopes: list[str]) -> list[str]:
     normalized: list[str] = []
     for scope in scopes:
         if not isinstance(scope, str):
-            continue
+            continue  # type: ignore[unreachable]
         cleaned = scope.strip()
         if cleaned and cleaned not in normalized:
             normalized.append(cleaned)

@@ -29,7 +29,7 @@ from app.services.jira_service import jira_service
 try:
     from sentry_sdk.integrations.celery import CeleryIntegration
 except ImportError:  # pragma: no cover - Celery optional
-    CeleryIntegration = None
+    CeleryIntegration = None  # type: ignore[assignment, misc]
 
 
 # Configure logging level based on environment

@@ -141,7 +141,7 @@ async def sync_testrail(
         lookback_days=lookback_days,
         trigger="manual",
     )
-    payload = {"sync": asdict(result)}
+    payload: dict = {"sync": asdict(result)}
 
     if link:
         try:

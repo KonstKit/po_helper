@@ -650,7 +650,7 @@ async def get_sync_health(
             .where(ProjectRepository.project_id.in_(visible_project_ids))
         )
         repositories_result = await db.execute(repos_query)
-        repositories = repositories_result.scalars().all()
+        repositories = list(repositories_result.scalars().all())
 
     checked_at = datetime.now(timezone.utc).isoformat()
     jira_last_sync = _project_last_sync(selected_project) if selected_project else None
@@ -764,7 +764,7 @@ async def get_detailed_sync_health(
     repos_result = await db.execute(repos_query)
     orphan_result = await db.execute(orphan_count_query)
 
-    repositories = repos_result.scalars().all()
+    repositories = list(repos_result.scalars().all())
     orphan_count = int(orphan_result.scalar() or 0)
     by_type: Dict[str, int] = {}
     by_source: Dict[str, int] = {}

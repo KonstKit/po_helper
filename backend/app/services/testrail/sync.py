@@ -368,7 +368,7 @@ async def _load_sync_cursor(
     source_id: Optional[int],
     project_id: Optional[int],
 ) -> Optional[int]:
-    filters = []
+    filters: list[Any] = []
     if source_id is None:
         filters.append(SyncState.source_id.is_(None))
     else:
@@ -394,7 +394,7 @@ async def _fetch_cases(
 ) -> List[Dict[str, Any]]:
     if suite_ids is None:
         suites = await client.get_suites(testrail_project_id)
-        suite_ids = [_as_int(suite.get("id")) for suite in suites if _as_int(suite.get("id"))]
+        suite_ids = [sid for sid in (_as_int(suite.get("id")) for suite in suites) if sid]
 
     cases: List[Dict[str, Any]] = []
     if suite_ids:

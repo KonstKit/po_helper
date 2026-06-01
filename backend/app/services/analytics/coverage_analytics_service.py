@@ -124,13 +124,13 @@ async def _count_artifacts_by_type(
     project_id: Optional[int],
 ) -> Dict[str, int]:
     """Count artifacts grouped by type."""
-    stmt = select(Artifact.type, func.count(Artifact.id).label("count")).group_by(Artifact.type)
+    stmt = select(Artifact.type, func.count(Artifact.id).label("cnt")).group_by(Artifact.type)
 
     if project_id is not None:
         stmt = stmt.where(Artifact.project_id == project_id)
 
     result = await db.execute(stmt)
-    return {row.type: row.count for row in result.all()}
+    return {row.type: row.cnt for row in result.all()}
 
 
 async def _resolve_artifact_types(

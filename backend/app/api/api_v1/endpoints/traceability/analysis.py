@@ -475,7 +475,7 @@ async def get_impact_analysis(
             _reason = _rec.get("reason")
             recommendation_texts.append(f"{_action} — {_reason}" if _reason else _action)
         else:
-            recommendation_texts.append(str(_rec))
+            recommendation_texts.append(str(_rec))  # type: ignore[unreachable]
 
     payload = {
         "source_artifact_id": start.id,

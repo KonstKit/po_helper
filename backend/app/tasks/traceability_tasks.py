@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from app.core.celery_async_runner import run_async
 from app.core.celery_app import celery_app
@@ -367,7 +367,7 @@ def scheduled_rule_execution_task() -> Dict[str, Any]:
             try:
                 # First-time setup: schedule exists but next run has not been calculated yet.
                 if rule.next_scheduled_run is None:
-                    cron = croniter(rule.schedule_cron, now)
+                    cron = croniter(cast(str, rule.schedule_cron), now)
                     rule.next_scheduled_run = cron.get_next(datetime)
                     changed = True
                     continue
@@ -381,7 +381,7 @@ def scheduled_rule_execution_task() -> Dict[str, Any]:
                     logger.info("Executing scheduled rule %d: %s", rule.id, rule.name)
                     execute_rule_task.delay(rule.id)
 
-                    cron = croniter(rule.schedule_cron, now)
+                    cron = croniter(cast(str, rule.schedule_cron), now)
                     rule.next_scheduled_run = cron.get_next(datetime)
                     changed = True
 

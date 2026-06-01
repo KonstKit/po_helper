@@ -490,7 +490,8 @@ class JiraProjectService:
                 if isinstance(component_name, str) and component_name:
                     components.append(component_name)
 
-        assignee = f.get("assignee") if isinstance(f.get("assignee"), dict) else {}
+        assignee_raw = f.get("assignee")
+        assignee = assignee_raw if isinstance(assignee_raw, dict) else {}
 
         def hours(val: Optional[int]) -> Optional[float]:
             """Convert seconds to hours."""

@@ -440,7 +440,7 @@ class ValidationRulesService:
             List of violations found
         """
         violations = []
-        context = {}
+        context: Dict[str, Any] = {}
 
         for rule in self._rules:
             # Filter by rule_ids
@@ -533,7 +533,7 @@ class ValidationRulesService:
             status = ValidationStatus.PASS
 
         # Build summary by rule
-        summary_by_rule: Dict[str, Dict[str, int]] = {}
+        summary_by_rule: Dict[str, Dict[str, Any]] = {}
         for v in all_violations:
             if v.rule_id not in summary_by_rule:
                 summary_by_rule[v.rule_id] = {"violations": 0, "rule_name": v.rule_name}
