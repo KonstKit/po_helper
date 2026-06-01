@@ -487,9 +487,7 @@ class ConfluenceService:
                 spaces: List[Dict[str, Any]] = []
                 request_limit = max(25, min(100, int(limit) if int(limit) > 0 else 50))
                 max_scan = (
-                    max(200, request_limit * 10)
-                    if query_lower
-                    else max(int(limit), request_limit)
+                    max(200, request_limit * 10) if query_lower else max(int(limit), request_limit)
                 )
                 scanned = 0
                 start_at = 0
@@ -665,6 +663,7 @@ class ConfluenceService:
                 if results:
                     break
             pages: List[Dict[str, Any]] = []
+
             def _clean_search_title(value: Optional[str]) -> Optional[str]:
                 if value is None:
                     return None
@@ -711,9 +710,7 @@ class ConfluenceService:
                     }
                 )
             # Keep page-like results only and avoid downstream errors on empty IDs.
-            return [
-                p for p in pages if p.get("id") and str(p.get("type", "")).lower() == "page"
-            ]
+            return [p for p in pages if p.get("id") and str(p.get("type", "")).lower() == "page"]
         # Otherwise list content by space (or all) via /content
         for ver in ("latest", "2"):
             url = f"{self.base_url}/rest/api/{ver}/content"

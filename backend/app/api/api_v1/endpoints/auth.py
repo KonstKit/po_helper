@@ -252,9 +252,7 @@ async def issue_scoped_token(
         effective_permissions = _effective_permissions(current_user)
         if caller_token_scopes is not None:
             effective_permissions &= set(caller_token_scopes)
-        invalid_scopes = [
-            scope for scope in requested_scopes if scope not in effective_permissions
-        ]
+        invalid_scopes = [scope for scope in requested_scopes if scope not in effective_permissions]
         if invalid_scopes:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -323,6 +321,7 @@ async def register(
     )
     user_with_roles = result.scalar_one()
     return user_with_roles
+
 
 # =============================================================================
 # OAuth2 SSO Endpoints
@@ -875,4 +874,3 @@ async def verify_mfa_login(
     logger.info(f"MFA login completed for user {email}")
 
     return Token(access_token=access_token, token_type="bearer")
-

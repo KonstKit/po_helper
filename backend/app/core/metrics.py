@@ -17,9 +17,9 @@ class MetricsRegistry:
             Tuple[str, Tuple[Tuple[str, str], ...]],
             deque[float],
         ] = defaultdict(lambda: deque(maxlen=self._histogram_max_samples))
-        self._recent_events: deque[tuple[float, str, Tuple[str, Tuple[Tuple[str, str], ...]], float]] = deque(
-            maxlen=100_000
-        )
+        self._recent_events: deque[
+            tuple[float, str, Tuple[str, Tuple[Tuple[str, str], ...]], float]
+        ] = deque(maxlen=100_000)
 
     def _key(
         self, name: str, labels: Dict[str, str] | None

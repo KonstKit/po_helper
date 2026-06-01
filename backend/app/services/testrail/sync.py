@@ -85,9 +85,7 @@ class TestRailSyncService:
             max_retries=_as_int(override_settings.get("max_retries")),
             backoff_base_seconds=_as_float(override_settings.get("backoff_base_seconds")),
             backoff_max_seconds=_as_float(override_settings.get("backoff_max_seconds")),
-            retry_after_header=_as_bool(
-                override_settings.get("retry_after_header"), default=True
-            ),
+            retry_after_header=_as_bool(override_settings.get("retry_after_header"), default=True),
         )
         return cls(client, override_settings=override_settings), override_settings
 
@@ -287,7 +285,11 @@ class TestRailSyncService:
             run_updated = _extract_timestamp(run.get("updated_on")) or _extract_timestamp(
                 run.get("created_on")
             )
-            if updated_after is not None and run_updated is not None and run_updated <= updated_after:
+            if (
+                updated_after is not None
+                and run_updated is not None
+                and run_updated <= updated_after
+            ):
                 continue
 
             result.runs_scanned += 1
@@ -357,9 +359,7 @@ class TestRailSyncService:
 
 
 async def _load_testrail_settings(db: AsyncSession) -> Optional[IntegrationSetting]:
-    res = await db.execute(
-        select(IntegrationSetting).where(IntegrationSetting.kind == "testrail")
-    )
+    res = await db.execute(select(IntegrationSetting).where(IntegrationSetting.kind == "testrail"))
     return res.scalar_one_or_none()
 
 
@@ -503,9 +503,7 @@ def _case_meta(case: Dict[str, Any], testrail_project_id: int) -> Dict[str, Any]
         "refs": case.get("refs"),
         "status": status,
     }
-    meta["custom_fields"] = {
-        key: value for key, value in case.items() if key.startswith("custom_")
-    }
+    meta["custom_fields"] = {key: value for key, value in case.items() if key.startswith("custom_")}
     return meta
 
 

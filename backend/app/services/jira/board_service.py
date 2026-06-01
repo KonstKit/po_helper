@@ -473,7 +473,9 @@ class JiraBoardService:
 
                         response_start_at = data.get("startAt") if isinstance(data, dict) else None
                         current_start_at = (
-                            int(response_start_at) if isinstance(response_start_at, int) else start_at
+                            int(response_start_at)
+                            if isinstance(response_start_at, int)
+                            else start_at
                         )
                         response_max_results = (
                             data.get("maxResults") if isinstance(data, dict) else None

@@ -102,14 +102,11 @@ def persist_review_candidates_sync(
         existing = batch_seen.get(key)
         from_db = False
         if existing is None:
-            query = (
-                db.query(TraceabilityReviewItem)
-                .filter(
-                    TraceabilityReviewItem.artifact_id == artifact_id,
-                    TraceabilityReviewItem.rule_id == rule_id,
-                    TraceabilityReviewItem.node_id == node_id,
-                    TraceabilityReviewItem.status.in_(OPEN_REVIEW_STATUSES),
-                )
+            query = db.query(TraceabilityReviewItem).filter(
+                TraceabilityReviewItem.artifact_id == artifact_id,
+                TraceabilityReviewItem.rule_id == rule_id,
+                TraceabilityReviewItem.node_id == node_id,
+                TraceabilityReviewItem.status.in_(OPEN_REVIEW_STATUSES),
             )
             if project_id is None:
                 query = query.filter(TraceabilityReviewItem.project_id.is_(None))
@@ -190,28 +187,30 @@ async def list_review_items(
     total = (await db.execute(count_query)).scalar() or 0
 
     rows = (
-        await db.execute(
-            # ``id`` is the unique tiebreaker: a single rule run inserts many
-            # rows with identical ``created_at``, so ordering by timestamp alone
-            # is non-deterministic and offset/limit paging could drop or
-            # duplicate rows across pages.
-            base.order_by(
-                TraceabilityReviewItem.created_at.desc(),
-                TraceabilityReviewItem.id.desc(),
+        (
+            await db.execute(
+                # ``id`` is the unique tiebreaker: a single rule run inserts many
+                # rows with identical ``created_at``, so ordering by timestamp alone
+                # is non-deterministic and offset/limit paging could drop or
+                # duplicate rows across pages.
+                base.order_by(
+                    TraceabilityReviewItem.created_at.desc(),
+                    TraceabilityReviewItem.id.desc(),
+                )
+                .offset(skip)
+                .limit(limit)
             )
-            .offset(skip)
-            .limit(limit)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return total, list(rows)
 
 
 async def get_review_item(
     db: AsyncSession, review_item_id: int, *, for_update: bool = False
 ) -> Optional[TraceabilityReviewItem]:
-    stmt = select(TraceabilityReviewItem).where(
-        TraceabilityReviewItem.id == review_item_id
-    )
+    stmt = select(TraceabilityReviewItem).where(TraceabilityReviewItem.id == review_item_id)
     if for_update:
         # Serialize concurrent lifecycle transitions on the same row (e.g. two
         # operators claiming simultaneously). No-op on SQLite; a real row lock

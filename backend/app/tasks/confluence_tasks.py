@@ -429,9 +429,7 @@ async def _async_sync_space(
         return {"synced": 0, "created": 0, "updated": 0, "skipped": True, "duplicate": True}
 
     # Get first batch to estimate total
-    pages = confluence_service.list_pages(
-        space=space_key, q=query, limit=limit, start=page_start
-    )
+    pages = confluence_service.list_pages(space=space_key, q=query, limit=limit, start=page_start)
 
     if pages:
         # Estimate total
@@ -479,15 +477,17 @@ async def _async_sync_space(
                         else:
                             batch_updated += 1
 
-                        artifact_result = await artifact_sync_service.sync_confluence_page_artifacts(
-                            db,
-                            page_row,
-                            ingestion_run_id=run_key,
-                            source_metadata={
-                                "sync_source": "confluence",
-                                "space_key": space_key,
-                                "trigger": trigger,
-                            },
+                        artifact_result = (
+                            await artifact_sync_service.sync_confluence_page_artifacts(
+                                db,
+                                page_row,
+                                ingestion_run_id=run_key,
+                                source_metadata={
+                                    "sync_source": "confluence",
+                                    "space_key": space_key,
+                                    "trigger": trigger,
+                                },
+                            )
                         )
                         batch_artifacts_created += artifact_result.created
                         batch_artifacts_updated += artifact_result.updated

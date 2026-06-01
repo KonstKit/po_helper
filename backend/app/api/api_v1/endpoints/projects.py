@@ -15,7 +15,12 @@ from app.schemas.project import (
     ProjectUpdate,
     ProjectWithStats,
 )
-from app.api.deps import can_access_project, ensure_project_access, has_admin_access, require_permission
+from app.api.deps import (
+    can_access_project,
+    ensure_project_access,
+    has_admin_access,
+    require_permission,
+)
 from app.core.request_context import get_token_tenant_id
 from app.utils import paginate_query, transactional_session, execute_with_lock
 

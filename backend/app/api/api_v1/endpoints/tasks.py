@@ -137,7 +137,9 @@ async def _build_task_export_result(
     }
 
 
-async def _run_task_export_job(task_id: str, project_id: Optional[int], sprint_id: Optional[int]) -> None:
+async def _run_task_export_job(
+    task_id: str, project_id: Optional[int], sprint_id: Optional[int]
+) -> None:
     try:
         await task_manager.run_async(
             task_id,

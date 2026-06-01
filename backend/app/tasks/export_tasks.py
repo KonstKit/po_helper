@@ -37,9 +37,7 @@ class ExportBaseTask(Task):
         self.channel_id: Optional[str] = None
         self.export_task_id: Optional[str] = None
 
-    def update_progress(
-        self, message: str, percent: Optional[int] = None
-    ) -> None:
+    def update_progress(self, message: str, percent: Optional[int] = None) -> None:
         """Update task progress and send SSE update if channel is configured."""
         effective_percent = (
             percent
@@ -345,12 +343,9 @@ async def _generate_xlsx(
             ws.cell(row=row_idx, column=6, value=art["url"])
 
             if data["include_details"] and art["links"]:
-                link_types = ", ".join(
-                    set(link_item["link_type"] for link_item in art["links"])
-                )
-                avg_conf = (
-                    sum(link_item["confidence"] or 0 for link_item in art["links"])
-                    / len(art["links"])
+                link_types = ", ".join(set(link_item["link_type"] for link_item in art["links"]))
+                avg_conf = sum(link_item["confidence"] or 0 for link_item in art["links"]) / len(
+                    art["links"]
                 )
                 ws.cell(row=row_idx, column=7, value=link_types)
                 ws.cell(row=row_idx, column=8, value=f"{avg_conf:.2f}")
@@ -405,13 +400,10 @@ async def _generate_csv(
                     art["url"],
                 ]
                 if data["include_details"] and art["links"]:
-                    link_types = "|".join(
-                        set(link_item["link_type"] for link_item in art["links"])
-                    )
-                    avg_conf = (
-                        sum(link_item["confidence"] or 0 for link_item in art["links"])
-                        / len(art["links"])
-                    )
+                    link_types = "|".join(set(link_item["link_type"] for link_item in art["links"]))
+                    avg_conf = sum(
+                        link_item["confidence"] or 0 for link_item in art["links"]
+                    ) / len(art["links"])
                     row.extend([link_types, f"{avg_conf:.2f}"])
                 elif data["include_details"]:
                     row.extend(["", ""])
@@ -453,11 +445,7 @@ async def _update_export_status(
         values: dict = {"status": status, "error_message": error_message}
         if status == "processing":
             values["started_at"] = datetime.now(timezone.utc)
-        stmt = (
-            update(ExportTask)
-            .where(ExportTask.task_id == export_task_id)
-            .values(**values)
-        )
+        stmt = update(ExportTask).where(ExportTask.task_id == export_task_id).values(**values)
         await db.execute(stmt)
         await db.commit()
 

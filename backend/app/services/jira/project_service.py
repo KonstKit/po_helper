@@ -484,7 +484,7 @@ class JiraProjectService:
             return None
 
         components: List[str] = []
-        for c in (f.get("components") or []):
+        for c in f.get("components") or []:
             if isinstance(c, dict):
                 component_name = c.get("name")
                 if isinstance(component_name, str) and component_name:

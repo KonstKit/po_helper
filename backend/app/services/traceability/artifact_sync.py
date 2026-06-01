@@ -181,11 +181,7 @@ class TraceabilityArtifactSyncService:
             result.add_warning(f"No Confluence pages matched project {project_id}")
             return result
 
-        external_ids = [
-            str(page.confluence_id).strip()
-            for page in page_rows
-            if page.confluence_id
-        ]
+        external_ids = [str(page.confluence_id).strip() for page in page_rows if page.confluence_id]
         existing = await self._load_existing_artifacts(
             db,
             project_id=project_id,
@@ -357,9 +353,7 @@ class TraceabilityArtifactSyncService:
             if isinstance(value, str) and value.strip():
                 keys.add(value.strip())
             elif isinstance(value, list):
-                keys.update(
-                    str(item).strip() for item in value if str(item).strip()
-                )
+                keys.update(str(item).strip() for item in value if str(item).strip())
         return keys
 
     def _merge_meta(self, *parts: Optional[dict[str, Any]]) -> dict[str, Any]:

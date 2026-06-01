@@ -40,12 +40,8 @@ from app.utils import transactional_session
 router = APIRouter()
 
 
-async def _get_item_or_404(
-    db: AsyncSession, review_item_id: int, *, for_update: bool = False
-):
-    item = await review_service.get_review_item(
-        db, review_item_id, for_update=for_update
-    )
+async def _get_item_or_404(db: AsyncSession, review_item_id: int, *, for_update: bool = False):
+    item = await review_service.get_review_item(db, review_item_id, for_update=for_update)
     if item is None:
         raise HTTPException(status_code=404, detail=f"Review item {review_item_id} not found")
     return item
@@ -83,9 +79,7 @@ async def list_review_items(
         skip=skip,
         limit=limit,
     )
-    return ReviewItemListResponse(
-        total=total, items=[ReviewItemResponse.from_db(i) for i in items]
-    )
+    return ReviewItemListResponse(total=total, items=[ReviewItemResponse.from_db(i) for i in items])
 
 
 @router.get("/review-items/{review_item_id}", response_model=ReviewItemResponse)
