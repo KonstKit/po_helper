@@ -81,9 +81,9 @@ async def get_projects(
 
         query = _visible_projects_query(current_user)
         if has_admin_access(current_user):
-            projects = await paginate_query(db, query, skip, limit)
+            projects: list[Project] = await paginate_query(db, query, skip, limit)
         else:
-            projects: list[Project] = []
+            projects = []
             skipped_visible = 0
             stream = await db.stream_scalars(_project_access_candidate_query(current_user))
             try:

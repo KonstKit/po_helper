@@ -474,7 +474,7 @@ class LinkService:
         project_id: Optional[int] = None,
     ) -> Dict[str, List[ArtifactLink]]:
         """Get all links for an artifact (incoming and/or outgoing)."""
-        result = {"outgoing": [], "incoming": []}
+        result: Dict[str, List[ArtifactLink]] = {"outgoing": [], "incoming": []}
 
         if direction in ("outgoing", "both"):
             result["outgoing"] = await self.get_outgoing_links(
@@ -638,7 +638,7 @@ class LinkService:
             return False
 
         # Capture info for audit before deletion
-        link_info = {
+        link_info: Dict[str, Any] = {
             "from_artifact_id": link.from_artifact_id,
             "to_artifact_id": link.to_artifact_id,
             "link_type": link.link_type,

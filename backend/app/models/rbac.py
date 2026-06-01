@@ -16,7 +16,7 @@ Design:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -177,7 +177,7 @@ class Permissions:
 
 
 # Predefined role configurations
-SYSTEM_ROLES = {
+SYSTEM_ROLES: Dict[str, Dict[str, Any]] = {
     "admin": {
         "display_name": "Administrator",
         "description": "Full system access. Can manage users, settings, and all resources.",

@@ -100,11 +100,11 @@ class TestRailLinker:
 
         async with transactional_session(db):
             for case in cases:
-                keys = case_keys.get(case.id)
-                if not keys:
+                mapped_keys = case_keys.get(case.id)
+                if not mapped_keys:
                     continue
                 linked_any = False
-                for key in keys:
+                for key in mapped_keys:
                     issue = issue_map.get(key)
                     if issue is None:
                         continue
@@ -145,7 +145,7 @@ class TestRailLinker:
         for test in tests:
             result.results_scanned += 1
             run_id = _as_str((test.meta or {}).get("run_id"))
-            run = run_map.get(run_id)
+            run = run_map.get(run_id) if run_id else None
             commits = _extract_commits_from_test(
                 test,
                 run,
@@ -171,8 +171,8 @@ class TestRailLinker:
                     continue
                 linked_any = False
                 for sha in shas:
-                    commits = commit_map.get(sha) or []
-                    for commit in commits:
+                    commit_artifacts = commit_map.get(sha) or []
+                    for commit in commit_artifacts:
                         created = await _ensure_link(
                             db,
                             source=test,
@@ -202,7 +202,7 @@ async def _load_testrail_artifacts(
     )
     if project_id is not None:
         stmt = stmt.where(Artifact.project_id == project_id)
-    return (await db.execute(stmt)).scalars().all()
+    return list((await db.execute(stmt)).scalars().all())
 
 
 async def _load_testrail_runs(
@@ -225,7 +225,7 @@ async def _load_jira_issues(
     )
     if project_id is not None:
         stmt = stmt.where(Artifact.project_id == project_id)
-    return (await db.execute(stmt)).scalars().all()
+    return list((await db.execute(stmt)).scalars().all())
 
 
 async def _load_commits(
