@@ -19,6 +19,9 @@ RUN npm run build
 # Production stage
 FROM nginx:alpine
 
+# Patch base OS packages (e.g. libxml2) to clear known CVEs
+RUN apk upgrade --no-cache
+
 # Copy built application (Vite outputs to dist/)
 COPY --from=build /app/dist /usr/share/nginx/html
 
