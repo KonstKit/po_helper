@@ -96,9 +96,7 @@ async def record_event(
 ) -> AnalyticsEvent:
     event = _to_model(event_in, user_id=user_id)
     try:
-        async with transactional_session(
-            db, error_message="record_event", log_errors=False
-        ):
+        async with transactional_session(db, error_message="record_event", log_errors=False):
             db.add(event)
     except IntegrityError:
         # User row may not exist yet (e.g. lazy provisioning, external auth).
@@ -122,9 +120,7 @@ async def record_events_batch(
 ) -> int:
     rows = [_to_model(ev, user_id=user_id) for ev in events_in]
     try:
-        async with transactional_session(
-            db, error_message="record_events_batch", log_errors=False
-        ):
+        async with transactional_session(db, error_message="record_events_batch", log_errors=False):
             db.add_all(rows)
     except IntegrityError:
         logger.warning(
@@ -132,9 +128,7 @@ async def record_events_batch(
             user_id,
         )
         rows = [_to_model(ev, user_id=None) for ev in events_in]
-        async with transactional_session(
-            db, error_message="record_events_batch_no_user"
-        ):
+        async with transactional_session(db, error_message="record_events_batch_no_user"):
             db.add_all(rows)
     return len(rows)
 
@@ -196,9 +190,7 @@ def _retention_cutoff() -> Optional[datetime]:
     return datetime.now(tz=timezone.utc) - timedelta(days=days)
 
 
-async def _fetch_events_by_name(
-    db: AsyncSession, names: Iterable[str]
-) -> List[AnalyticsEvent]:
+async def _fetch_events_by_name(db: AsyncSession, names: Iterable[str]) -> List[AnalyticsEvent]:
     stmt = select(AnalyticsEvent).where(AnalyticsEvent.event_name.in_(list(names)))
     cutoff = _retention_cutoff()
     if cutoff is not None:
@@ -272,9 +264,7 @@ async def compute_onboarding_metrics(db: AsyncSession) -> OnboardingMetricsOut:
     completed_count = len(completed)
     skipped_count = len(skipped)
     completed_attributable = len(set(completed.keys()))
-    completion_rate = (
-        (completed_attributable / started_count) if started_count else 0.0
-    )
+    completion_rate = (completed_attributable / started_count) if started_count else 0.0
 
     durations: List[float] = []
     for ident, started_at in started.items():
@@ -380,8 +370,7 @@ async def compute_time_to_value(db: AsyncSession) -> TimeToValueMetricsOut:
 
     baseline_q = select(User.id, User.created_at).where(User.id.in_(user_ids))
     baselines: dict[int, datetime] = {
-        uid: created_at
-        for uid, created_at in (await db.execute(baseline_q)).all()
+        uid: created_at for uid, created_at in (await db.execute(baseline_q)).all()
     }
 
     contributing_users: set[int] = set()
@@ -481,9 +470,7 @@ async def compute_summary(db: AsyncSession) -> UsageSummaryOut:
     )
     if cutoff is not None:
         distinct_users_q = distinct_users_q.where(AnalyticsEvent.occurred_at >= cutoff)
-        distinct_sessions_q = distinct_sessions_q.where(
-            AnalyticsEvent.occurred_at >= cutoff
-        )
+        distinct_sessions_q = distinct_sessions_q.where(AnalyticsEvent.occurred_at >= cutoff)
     user_count = (await db.execute(distinct_users_q)).scalar() or 0
     anon_session_count = (await db.execute(distinct_sessions_q)).scalar() or 0
     active = int(user_count) + int(anon_session_count)

@@ -440,7 +440,7 @@ class ValidationRulesService:
             List of violations found
         """
         violations = []
-        context = {}
+        context: Dict[str, Any] = {}
 
         for rule in self._rules:
             # Filter by rule_ids
@@ -516,9 +516,7 @@ class ValidationRulesService:
             if violations:
                 all_violations.extend(violations)
                 # Check if any are MUST violations
-                has_must_violation = any(
-                    v.severity == ValidationSeverity.MUST for v in violations
-                )
+                has_must_violation = any(v.severity == ValidationSeverity.MUST for v in violations)
                 if has_must_violation:
                     failed += 1
                 else:
@@ -535,7 +533,7 @@ class ValidationRulesService:
             status = ValidationStatus.PASS
 
         # Build summary by rule
-        summary_by_rule: Dict[str, Dict[str, int]] = {}
+        summary_by_rule: Dict[str, Dict[str, Any]] = {}
         for v in all_violations:
             if v.rule_id not in summary_by_rule:
                 summary_by_rule[v.rule_id] = {"violations": 0, "rule_name": v.rule_name}
@@ -551,9 +549,15 @@ class ValidationRulesService:
             summary={
                 "by_rule": summary_by_rule,
                 "by_severity": {
-                    "must": len([v for v in all_violations if v.severity == ValidationSeverity.MUST]),
-                    "should": len([v for v in all_violations if v.severity == ValidationSeverity.SHOULD]),
-                    "warn": len([v for v in all_violations if v.severity == ValidationSeverity.WARN]),
+                    "must": len(
+                        [v for v in all_violations if v.severity == ValidationSeverity.MUST]
+                    ),
+                    "should": len(
+                        [v for v in all_violations if v.severity == ValidationSeverity.SHOULD]
+                    ),
+                    "warn": len(
+                        [v for v in all_violations if v.severity == ValidationSeverity.WARN]
+                    ),
                 },
                 "by_artifact_type": self._group_by_artifact_type(all_violations),
             },

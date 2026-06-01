@@ -365,9 +365,7 @@ def _validate_node_configuration(
                     f'"{transform_type}"; supported values: {supported}'
                 )
                 if settings.TRACEABILITY_TRANSFORM_STRICT:
-                    errors.append(
-                        ValidationErrorSchema(message=message, node_id=node.id)
-                    )
+                    errors.append(ValidationErrorSchema(message=message, node_id=node.id))
                 else:
                     warnings.append(
                         ValidationWarningSchema(
@@ -415,8 +413,7 @@ def _validate_node_configuration(
                     errors.append(
                         ValidationErrorSchema(
                             message=(
-                                f'Decision node "{label}" confidence threshold '
-                                "must be numeric"
+                                f'Decision node "{label}" confidence threshold ' "must be numeric"
                             ),
                             node_id=node.id,
                         )
@@ -743,7 +740,9 @@ async def update_rule(
                 detail={
                     "code": "flow_schema_invalid",
                     "message": "Stored flow_json schema is invalid",
-                    "errors": [{"type": "error", "message": str(exc), "node_id": None, "edge_id": None}],
+                    "errors": [
+                        {"type": "error", "message": str(exc), "node_id": None, "edge_id": None}
+                    ],
                     "warnings": [],
                 },
             ) from exc
@@ -852,13 +851,17 @@ async def delete_rule(
     # created/reopened concurrently — after the guard ran — from being silently
     # detached here instead of blocking the delete.
     terminal_items = (
-        await db.execute(
-            select(TraceabilityReviewItem).where(
-                TraceabilityReviewItem.rule_id == rule_id,
-                TraceabilityReviewItem.status.in_(TERMINAL_REVIEW_STATUSES),
+        (
+            await db.execute(
+                select(TraceabilityReviewItem).where(
+                    TraceabilityReviewItem.rule_id == rule_id,
+                    TraceabilityReviewItem.status.in_(TERMINAL_REVIEW_STATUSES),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     rule_name = rule.name
     async with transactional_session(db):
@@ -925,9 +928,7 @@ def execute_rule(
     """
     from app.services.rule_execution_engine import RuleExecutionEngine
 
-    rule = (
-        db.query(TraceabilityRule).filter(TraceabilityRule.id == rule_id).first()
-    )
+    rule = db.query(TraceabilityRule).filter(TraceabilityRule.id == rule_id).first()
     if rule is None:
         raise HTTPException(status_code=404, detail=f"Rule with id {rule_id}")
     if rule.project_id is not None:
@@ -945,7 +946,9 @@ def execute_rule(
             detail={
                 "code": "flow_schema_invalid",
                 "message": "Stored flow_json schema is invalid",
-                "errors": [{"type": "error", "message": str(exc), "node_id": None, "edge_id": None}],
+                "errors": [
+                    {"type": "error", "message": str(exc), "node_id": None, "edge_id": None}
+                ],
                 "warnings": [],
             },
         ) from exc
@@ -1263,7 +1266,9 @@ def execute_rule_by_webhook(
             detail={
                 "code": "flow_schema_invalid",
                 "message": "Stored flow_json schema is invalid",
-                "errors": [{"type": "error", "message": str(exc), "node_id": None, "edge_id": None}],
+                "errors": [
+                    {"type": "error", "message": str(exc), "node_id": None, "edge_id": None}
+                ],
                 "warnings": [],
             },
         ) from exc

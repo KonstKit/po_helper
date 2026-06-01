@@ -48,7 +48,13 @@ def _resolve_report_download_path(filename: str) -> Path:
     reports_dir = Path(report_service.reports_dir).resolve()
     requested = Path(filename)
 
-    if requested.is_absolute() or requested.name != filename or filename in {".", ".."}:
+    if (
+        requested.is_absolute()
+        or requested.name != filename
+        or filename in {".", ".."}
+        or "\\" in filename
+        or "/" in filename
+    ):
         raise HTTPException(status_code=400, detail="Invalid report filename")
 
     resolved = (reports_dir / requested).resolve()

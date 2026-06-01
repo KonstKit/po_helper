@@ -1,4 +1,4 @@
-﻿---
+---
 level: 3
 file_id: plan_39
 parent: plan_36

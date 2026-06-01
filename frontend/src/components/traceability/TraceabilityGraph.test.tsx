@@ -123,7 +123,7 @@ describe('TraceabilityGraph', () => {
     // No node-label <text> elements should have been drawn into the SVG.
     const svg = document.querySelector('svg') as SVGSVGElement;
     expect(svg).not.toBeNull();
-    expect(within(svg).queryByText('REQ-42')).not.toBeInTheDocument();
+    expect(within(svg as unknown as HTMLElement).queryByText('REQ-42')).not.toBeInTheDocument();
     expect(svg.querySelectorAll('g.node').length).toBe(0);
   });
 

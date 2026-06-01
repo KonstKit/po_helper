@@ -1,7 +1,7 @@
 import asyncio
 from typing import Optional, Dict, Any
 from urllib.parse import urlparse
-from fastapi import APIRouter, Depends, BackgroundTasks, Query, HTTPException
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from time import perf_counter
@@ -161,9 +161,7 @@ async def connect_to_jira(
                 )
                 row.email = None if resolved_use_pat else (payload.email or None)
                 row.api_token = (
-                    _encrypt_saved_token(payload.api_token)
-                    if payload.api_token
-                    else row.api_token
+                    _encrypt_saved_token(payload.api_token) if payload.api_token else row.api_token
                 )
             logger.info("Jira credentials saved to database")
 

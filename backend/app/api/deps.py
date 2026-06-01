@@ -94,9 +94,7 @@ def _normalize_token_scopes(scopes: Any) -> Optional[tuple[str, ...]]:
     try:
         normalized = tuple(
             dict.fromkeys(
-                scope.strip()
-                for scope in scopes
-                if isinstance(scope, str) and scope.strip()
+                scope.strip() for scope in scopes if isinstance(scope, str) and scope.strip()
             )
         )
     except TypeError:

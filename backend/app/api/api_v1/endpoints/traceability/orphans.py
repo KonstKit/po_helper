@@ -139,7 +139,11 @@ async def recalculate_link_confidence(
     Can target a specific link (by link_id), all links in a project (by project_id),
     or links below a confidence threshold.
     """
-    if link_id is None and project_id is None and not current_user.has_permission(Permissions.ADMIN):
+    if (
+        link_id is None
+        and project_id is None
+        and not current_user.has_permission(Permissions.ADMIN)
+    ):
         raise HTTPException(status_code=403, detail="project_id is required")
     if link_id is not None:
         link = await db.get(ArtifactLink, link_id)
@@ -353,9 +357,7 @@ async def get_confidence_distribution(
         "stats": {
             "total_links": len(links),
             "avg_confidence": (
-                sum(scored_confidences) / len(scored_confidences)
-                if scored_confidences
-                else 0.0
+                sum(scored_confidences) / len(scored_confidences) if scored_confidences else 0.0
             ),
             "median_confidence": median_confidence,
             "min_confidence": scored_confidences[0] if scored_confidences else 0.0,

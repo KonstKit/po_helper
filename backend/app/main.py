@@ -29,7 +29,8 @@ from app.services.jira_service import jira_service
 try:
     from sentry_sdk.integrations.celery import CeleryIntegration
 except ImportError:  # pragma: no cover - Celery optional
-    CeleryIntegration = None
+    CeleryIntegration = None  # type: ignore[assignment, misc]
+
 
 # Configure logging level based on environment
 class _JsonLogFormatter(logging.Formatter):
@@ -182,13 +183,17 @@ async def _ensure_postgres_alembic_runtime_state() -> None:
                 f"(found {version_row_count})."
             )
 
-        current_revision = await conn.scalar(text(f"SELECT version_num FROM {alembic_table_qualified}"))
+        current_revision = await conn.scalar(
+            text(f"SELECT version_num FROM {alembic_table_qualified}")
+        )
         if not current_revision:
             raise RuntimeError(
                 "Alembic runtime state is invalid: alembic_version.version_num is empty."
             )
 
-        logger.info("Alembic runtime state verified (schema=%s revision=%s)", schema_name, current_revision)
+        logger.info(
+            "Alembic runtime state verified (schema=%s revision=%s)", schema_name, current_revision
+        )
 
 
 def _is_https_request(request: Request) -> bool:
@@ -223,7 +228,9 @@ def _is_local_origin(origin: str) -> bool:
 
 
 def _validate_runtime_security_settings() -> None:
-    if (settings.is_production or settings.is_staging) and not settings.has_strong_dedicated_encryption_secret:
+    if (
+        settings.is_production or settings.is_staging
+    ) and not settings.has_strong_dedicated_encryption_secret:
         raise RuntimeError(
             "A strong dedicated ENCRYPTION_SECRET is required in staging/production for Jira/Confluence token storage."
         )
@@ -239,7 +246,9 @@ def _validate_runtime_security_settings() -> None:
                 "ALLOW_UNAUTHENTICATED_DEMO_API requires BACKEND_BIND_HOST to be a loopback address."
             )
 
-        non_local_origins = [origin for origin in settings.CORS_ORIGINS if not _is_local_origin(origin)]
+        non_local_origins = [
+            origin for origin in settings.CORS_ORIGINS if not _is_local_origin(origin)
+        ]
         if non_local_origins:
             raise RuntimeError(
                 "ALLOW_UNAUTHENTICATED_DEMO_API requires local-only CORS origins. "
@@ -409,9 +418,7 @@ async def _ensure_postgres_sync_tasks_schema() -> None:
                         f"ON {sync_tasks_qualified} (status, heartbeat_at, started_at)"
                     )
                 )
-                logger.warning(
-                    "Startup self-heal applied: created ix_sync_tasks_status_heartbeat"
-                )
+                logger.warning("Startup self-heal applied: created ix_sync_tasks_status_heartbeat")
     except Exception as exc:
         logger.warning("PostgreSQL sync_tasks schema reconciliation failed: %s", exc)
 
@@ -599,6 +606,7 @@ async def add_security_headers(request: Request, call_next):
             "max-age=31536000; includeSubDomains",
         )
     return response
+
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 app.include_router(ws_router, prefix="/api/v1")

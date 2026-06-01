@@ -14,7 +14,7 @@
 - Данные: SQLAlchemy 2.x (по умолчанию SQLite: `sqlite+aiosqlite`), Alembic (в полном профиле зависимостей).
 - Интеграции: `requests` (REST + CQL), `beautifulsoup4` (парсинг Confluence storage XHTML).
 - Конфигурация: `pydantic-settings` (Pydantic v2).
-- Безопасность: JWT (`python-jose[cryptography]`), `passlib[bcrypt]`, CORS.
+- Безопасность: JWT (`PyJWT`), `passlib[bcrypt]`, CORS.
 
 Стартовая структура:
 - Приложение: `backend/app/main.py` (инициализация FastAPI, CORS, роуты).

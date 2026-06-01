@@ -66,14 +66,10 @@ async def get_coverage_analytics(
             artifact_types = await _resolve_artifact_types(db, project_id)
 
         # --- Step 1: Calculate coverage for specified types ---
-        coverage_stats = await _calculate_coverage_stats(
-            db, project_id, artifact_types
-        )
+        coverage_stats = await _calculate_coverage_stats(db, project_id, artifact_types)
 
         # --- Step 3: Find uncovered requirements ---
-        uncovered = await _get_uncovered_artifacts(
-            db, project_id, artifact_types, limit=100
-        )
+        uncovered = await _get_uncovered_artifacts(db, project_id, artifact_types, limit=100)
 
         # --- Step 4: Gap analysis ---
         gap_analysis = await _analyze_gaps(db, project_id, artifact_types)
@@ -81,15 +77,11 @@ async def get_coverage_analytics(
         # --- Step 5: Trends (if requested) ---
         trends = None
         if include_trends:
-            trends = await _get_coverage_trends(
-                db, project_id, artifact_types, trend_days
-            )
+            trends = await _get_coverage_trends(db, project_id, artifact_types, trend_days)
 
         # --- Step 6: Evaluate quality gates ---
         gates = quality_gates or DEFAULT_QUALITY_GATES
-        quality_gate_results = _evaluate_quality_gates(
-            coverage_stats, gap_analysis, gates
-        )
+        quality_gate_results = _evaluate_quality_gates(coverage_stats, gap_analysis, gates)
 
         response = {
             "project_id": project_id,
@@ -101,9 +93,7 @@ async def get_coverage_analytics(
                 "by_type": coverage_stats["by_type"],
                 "by_link_type": coverage_stats["by_link_type"],
             },
-            "uncovered_requirements": [
-                _artifact_to_summary(a) for a in uncovered
-            ],
+            "uncovered_requirements": [_artifact_to_summary(a) for a in uncovered],
             "gap_analysis": gap_analysis,
             "trends": trends,
             "quality_gates": quality_gate_results,
@@ -134,15 +124,13 @@ async def _count_artifacts_by_type(
     project_id: Optional[int],
 ) -> Dict[str, int]:
     """Count artifacts grouped by type."""
-    stmt = select(Artifact.type, func.count(Artifact.id).label("count")).group_by(
-        Artifact.type
-    )
+    stmt = select(Artifact.type, func.count(Artifact.id).label("cnt")).group_by(Artifact.type)
 
     if project_id is not None:
         stmt = stmt.where(Artifact.project_id == project_id)
 
     result = await db.execute(stmt)
-    return {row.type: row.count for row in result.all()}
+    return {row.type: row.cnt for row in result.all()}
 
 
 async def _resolve_artifact_types(
@@ -161,9 +149,7 @@ async def _calculate_coverage_stats(
 ) -> Dict[str, Any]:
     """Calculate coverage statistics for specified artifact types."""
     # Get artifacts of specified types
-    artifact_stmt = select(Artifact.id, Artifact.type).where(
-        Artifact.type.in_(artifact_types)
-    )
+    artifact_stmt = select(Artifact.id, Artifact.type).where(Artifact.type.in_(artifact_types))
     if project_id is not None:
         artifact_stmt = artifact_stmt.where(Artifact.project_id == project_id)
 
@@ -242,9 +228,7 @@ async def _calculate_coverage_stats(
 
     # Calculate average confidence
     avg_confidence = (
-        round(sum(confidence_values) / len(confidence_values), 3)
-        if confidence_values
-        else None
+        round(sum(confidence_values) / len(confidence_values), 3) if confidence_values else None
     )
 
     return {
@@ -269,11 +253,7 @@ async def _get_uncovered_artifacts(
     linked_ids_subquery = (
         select(ArtifactLink.from_artifact_id)
         .where(ArtifactLink.from_artifact_id.isnot(None))
-        .union(
-            select(ArtifactLink.to_artifact_id).where(
-                ArtifactLink.to_artifact_id.isnot(None)
-            )
-        )
+        .union(select(ArtifactLink.to_artifact_id).where(ArtifactLink.to_artifact_id.isnot(None)))
     )
 
     stmt = (
@@ -298,9 +278,11 @@ async def _analyze_gaps(
 ) -> Dict[str, Any]:
     """Analyze gaps in traceability coverage."""
     # Count by status
-    status_stmt = select(
-        Artifact.status, func.count(Artifact.id).label("count")
-    ).where(Artifact.type.in_(artifact_types)).group_by(Artifact.status)
+    status_stmt = (
+        select(Artifact.status, func.count(Artifact.id).label("count"))
+        .where(Artifact.type.in_(artifact_types))
+        .group_by(Artifact.status)
+    )
 
     if project_id is not None:
         status_stmt = status_stmt.where(Artifact.project_id == project_id)
@@ -323,9 +305,11 @@ async def _analyze_gaps(
     no_downstream = (await db.execute(no_downstream_stmt)).scalar() or 0
 
     # Count artifacts by source
-    source_stmt = select(
-        Artifact.source, func.count(Artifact.id).label("count")
-    ).where(Artifact.type.in_(artifact_types)).group_by(Artifact.source)
+    source_stmt = (
+        select(Artifact.source, func.count(Artifact.id).label("count"))
+        .where(Artifact.type.in_(artifact_types))
+        .group_by(Artifact.source)
+    )
 
     if project_id is not None:
         source_stmt = source_stmt.where(Artifact.project_id == project_id)
@@ -362,39 +346,41 @@ async def _get_coverage_trends(
     start_date = end_date - timedelta(days=days)
 
     # Count new artifacts by day
-    new_artifacts_stmt = select(
-        func.date(Artifact.created_at).label("date"),
-        func.count(Artifact.id).label("count"),
-    ).where(
-        Artifact.type.in_(artifact_types),
-        Artifact.created_at >= start_date,
-    ).group_by(func.date(Artifact.created_at)).order_by(func.date(Artifact.created_at))
+    new_artifacts_stmt = (
+        select(
+            func.date(Artifact.created_at).label("date"),
+            func.count(Artifact.id).label("count"),
+        )
+        .where(
+            Artifact.type.in_(artifact_types),
+            Artifact.created_at >= start_date,
+        )
+        .group_by(func.date(Artifact.created_at))
+        .order_by(func.date(Artifact.created_at))
+    )
 
     if project_id is not None:
         new_artifacts_stmt = new_artifacts_stmt.where(Artifact.project_id == project_id)
 
     new_result = await db.execute(new_artifacts_stmt)
-    daily_new = [
-        {"date": str(row.date), "new_artifacts": row.count}
-        for row in new_result.all()
-    ]
+    daily_new = [{"date": str(row.date), "new_artifacts": row.count} for row in new_result.all()]
 
     # Count new links by day
-    new_links_stmt = select(
-        func.date(ArtifactLink.created_at).label("date"),
-        func.count(ArtifactLink.id).label("count"),
-    ).where(ArtifactLink.created_at >= start_date).group_by(
-        func.date(ArtifactLink.created_at)
-    ).order_by(func.date(ArtifactLink.created_at))
+    new_links_stmt = (
+        select(
+            func.date(ArtifactLink.created_at).label("date"),
+            func.count(ArtifactLink.id).label("count"),
+        )
+        .where(ArtifactLink.created_at >= start_date)
+        .group_by(func.date(ArtifactLink.created_at))
+        .order_by(func.date(ArtifactLink.created_at))
+    )
 
     if project_id is not None:
         new_links_stmt = new_links_stmt.where(ArtifactLink.project_id == project_id)
 
     links_result = await db.execute(new_links_stmt)
-    daily_links = [
-        {"date": str(row.date), "new_links": row.count}
-        for row in links_result.all()
-    ]
+    daily_links = [{"date": str(row.date), "new_links": row.count} for row in links_result.all()]
 
     return {
         "period_days": days,
@@ -420,11 +406,7 @@ def _evaluate_quality_gates(
     # Requirement coverage gate
     min_req_coverage = gates.get("min_requirement_coverage_pct", 80.0)
     req_total = int(requirement_stats.get("total", 0)) if requirement_stats else 0
-    req_coverage = (
-        float(requirement_stats.get("coverage_pct", 0.0))
-        if req_total > 0
-        else 0.0
-    )
+    req_coverage = float(requirement_stats.get("coverage_pct", 0.0)) if req_total > 0 else 0.0
     results["requirement_coverage"] = req_coverage >= min_req_coverage if req_total > 0 else True
     gate_details["requirement_coverage"] = {
         "actual": req_coverage,
@@ -477,9 +459,7 @@ def _evaluate_quality_gates(
     }
 
     # All gates passed?
-    results["all_passed"] = all(
-        v for k, v in results.items() if k != "all_passed"
-    )
+    results["all_passed"] = all(v for k, v in results.items() if k != "all_passed")
     results["details"] = gate_details
 
     return results

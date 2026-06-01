@@ -216,7 +216,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
               </Box>
               <Box>
                 <Typography variant="h6">
-                  {reportData.overall_quality_score.toFixed(1)}/100
+                  {Number.isFinite(reportData.overall_quality_score) ? reportData.overall_quality_score.toFixed(1) : '—'}/100
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   Quality Score

@@ -170,9 +170,7 @@ class DerivationService:
                 continue
 
             # Get outgoing links
-            stmt = select(ArtifactLink).where(
-                ArtifactLink.from_artifact_id == current_id
-            )
+            stmt = select(ArtifactLink).where(ArtifactLink.from_artifact_id == current_id)
 
             if link_types:
                 stmt = stmt.where(ArtifactLink.link_type.in_(link_types))
@@ -236,13 +234,17 @@ class DerivationService:
 
             # Build query based on direction
             if direction == "outgoing":
-                stmt = select(ArtifactLink, Artifact).join(
-                    Artifact, Artifact.id == ArtifactLink.to_artifact_id
-                ).where(ArtifactLink.from_artifact_id == current_id)
+                stmt = (
+                    select(ArtifactLink, Artifact)
+                    .join(Artifact, Artifact.id == ArtifactLink.to_artifact_id)
+                    .where(ArtifactLink.from_artifact_id == current_id)
+                )
             elif direction == "incoming":
-                stmt = select(ArtifactLink, Artifact).join(
-                    Artifact, Artifact.id == ArtifactLink.from_artifact_id
-                ).where(ArtifactLink.to_artifact_id == current_id)
+                stmt = (
+                    select(ArtifactLink, Artifact)
+                    .join(Artifact, Artifact.id == ArtifactLink.from_artifact_id)
+                    .where(ArtifactLink.to_artifact_id == current_id)
+                )
             else:  # both
                 stmt = select(ArtifactLink, Artifact).where(
                     or_(
@@ -305,9 +307,7 @@ class DerivationService:
                     )
 
                     reachable[next_id] = path
-                    queue.append(
-                        (next_id, new_path, new_links, new_types, new_confs, depth + 1)
-                    )
+                    queue.append((next_id, new_path, new_links, new_types, new_confs, depth + 1))
 
         return reachable
 
@@ -540,9 +540,7 @@ class DerivationService:
 
         # Delete
         if to_delete:
-            await self.db.execute(
-                delete(ArtifactLink).where(ArtifactLink.id.in_(to_delete))
-            )
+            await self.db.execute(delete(ArtifactLink).where(ArtifactLink.id.in_(to_delete)))
 
         logger.info(
             "Invalidated %d derived links for artifact %d",

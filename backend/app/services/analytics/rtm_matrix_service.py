@@ -259,14 +259,14 @@ async def _query_artifacts(
     if search_query:
         # Sanitize and limit input to prevent DoS and injection
         sanitized_query = (
-            search_query
-            .replace("\x00", "")  # Remove null bytes
-            [:500]  # Limit length to prevent DoS
+            search_query.replace("\x00", "")[
+                # Remove null bytes
+                :500
+            ]  # Limit length to prevent DoS
         )
         # Escape SQL LIKE wildcards to prevent injection
         escaped_query = (
-            sanitized_query
-            .replace("\\", "\\\\")  # Escape backslash first
+            sanitized_query.replace("\\", "\\\\")  # Escape backslash first
             .replace("%", "\\%")
             .replace("_", "\\_")
         )
@@ -285,12 +285,8 @@ async def _query_artifacts(
 
     # Filter out orphaned artifacts (those without any links)
     if not include_orphans:
-        has_outgoing_link = exists().where(
-            ArtifactLink.from_artifact_id == Artifact.id
-        )
-        has_incoming_link = exists().where(
-            ArtifactLink.to_artifact_id == Artifact.id
-        )
+        has_outgoing_link = exists().where(ArtifactLink.from_artifact_id == Artifact.id)
+        has_incoming_link = exists().where(ArtifactLink.to_artifact_id == Artifact.id)
         orphan_filter = or_(has_outgoing_link, has_incoming_link)
         stmt = stmt.where(orphan_filter)
         count_stmt = count_stmt.where(orphan_filter)
@@ -490,9 +486,7 @@ def _calculate_coverage(
     total_possible_cells = total_rows * total_cols
     total_cells_with_links = sum(len(row_cells) for row_cells in cells.values())
     traceability_density = (
-        (total_cells_with_links / total_possible_cells * 100)
-        if total_possible_cells > 0
-        else 0.0
+        (total_cells_with_links / total_possible_cells * 100) if total_possible_cells > 0 else 0.0
     )
 
     # Average confidence

@@ -100,9 +100,7 @@ async def connect_confluence(
                 )
                 row.email = payload.email or None
                 row.api_token = (
-                    _encrypt_saved_token(payload.api_token)
-                    if payload.api_token
-                    else row.api_token
+                    _encrypt_saved_token(payload.api_token) if payload.api_token else row.api_token
                 )
         return {"status": "connected", **confluence_service.status()}
 
@@ -892,7 +890,9 @@ async def extract_prd_requirements(
                     return idx
             return None
 
-        def _score_candidate(req_id_norm: str, desc_norm: str, prio_norm: str, structured: bool) -> int:
+        def _score_candidate(
+            req_id_norm: str, desc_norm: str, prio_norm: str, structured: bool
+        ) -> int:
             req_l = req_id_norm.lower()
             desc_l = desc_norm.lower()
             prio_l = prio_norm.lower()
@@ -1010,9 +1010,13 @@ async def extract_prd_requirements(
 
                 fallback_id_idx = 0
                 fallback_desc_idx = 1 if len(cells) > 1 else 0
-                use_id_idx = id_idx if id_idx is not None and id_idx < len(cells) else fallback_id_idx
+                use_id_idx = (
+                    id_idx if id_idx is not None and id_idx < len(cells) else fallback_id_idx
+                )
                 use_desc_idx = (
-                    desc_idx if desc_idx is not None and desc_idx < len(cells) else fallback_desc_idx
+                    desc_idx
+                    if desc_idx is not None and desc_idx < len(cells)
+                    else fallback_desc_idx
                 )
                 use_prio_idx = prio_idx if prio_idx is not None and prio_idx < len(cells) else None
 

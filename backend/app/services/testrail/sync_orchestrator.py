@@ -4,7 +4,11 @@ from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.testrail.sync import DEFAULT_LOOKBACK_DAYS, TestRailSyncResult, TestRailSyncService
+from app.services.testrail.sync import (
+    DEFAULT_LOOKBACK_DAYS,
+    TestRailSyncResult,
+    TestRailSyncService,
+)
 
 
 class TestRailSyncOrchestrator:

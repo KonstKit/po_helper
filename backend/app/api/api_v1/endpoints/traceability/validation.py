@@ -95,9 +95,7 @@ async def validate_artifact(
     # Parse filters
     rule_id_set = set(rule_ids.split(",")) if rule_ids else None
     severity_set = (
-        {ValidationSeverity(s.strip()) for s in severities.split(",")}
-        if severities
-        else None
+        {ValidationSeverity(s.strip()) for s in severities.split(",")} if severities else None
     )
 
     # Validate
@@ -147,11 +145,7 @@ async def validate_project(
     # Parse filters
     artifact_types = set(request.artifact_types) if request.artifact_types else None
     rule_ids = set(request.rule_ids) if request.rule_ids else None
-    severities = (
-        {ValidationSeverity(s) for s in request.severities}
-        if request.severities
-        else None
-    )
+    severities = {ValidationSeverity(s) for s in request.severities} if request.severities else None
 
     # Validate
     service = get_validation_rules_service(db)

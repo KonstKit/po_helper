@@ -1,7 +1,7 @@
 import csv
 from datetime import datetime, timezone
 from io import StringIO
-from typing import Any, AsyncIterator, Dict, List, Literal, Optional
+from typing import AsyncIterator, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -31,9 +31,7 @@ from app.utils import get_by_id_or_404, transactional_session
 router = APIRouter()
 
 
-async def _load_baseline_items(
-    db: AsyncSession, baseline_id: int
-) -> List[BaselineItemModel]:
+async def _load_baseline_items(db: AsyncSession, baseline_id: int) -> List[BaselineItemModel]:
     result = await db.execute(
         select(BaselineItemModel)
         .where(BaselineItemModel.baseline_id == baseline_id)

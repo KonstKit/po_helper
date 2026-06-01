@@ -1,7 +1,7 @@
 """Jira board and sprint operations service."""
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, cast
 import httpx
 
 from app.core.config import settings
@@ -196,7 +196,7 @@ class JiraBoardService:
             1,
             int(getattr(settings, "JIRA_SPRINT_ISSUES_MAX_PAGES", 500) or 500),
         )
-        seen_starts = set()
+        seen_starts: set[int] = set()
         sprint_issues_timeout = min(int(getattr(settings, "JIRA_HTTP_TIMEOUT", 25) or 25), 15)
 
         try:
@@ -252,7 +252,7 @@ class JiraBoardService:
                 current_max_results = (
                     int(response_max_results)
                     if isinstance(response_max_results, int) and response_max_results > 0
-                    else params["maxResults"]
+                    else cast(int, params["maxResults"])
                 )
                 next_start_at = current_start_at + len(issues)
                 total_count = data.get("total") if isinstance(data, dict) else None
@@ -301,7 +301,7 @@ class JiraBoardService:
             start_at = 0
             items: List[Dict[str, Any]] = []
             max_pages = max(1, int(getattr(settings, "JIRA_WORKLOG_MAX_PAGES", 2000) or 2000))
-            seen_starts = set()
+            seen_starts: set[int] = set()
 
             try:
                 while True:
@@ -425,7 +425,7 @@ class JiraBoardService:
                 start_at = 0
                 items: List[Dict[str, Any]] = []
                 max_pages = max(1, int(getattr(settings, "JIRA_WORKLOG_MAX_PAGES", 2000) or 2000))
-                seen_starts = set()
+                seen_starts: set[int] = set()
 
                 try:
                     while True:
@@ -473,7 +473,9 @@ class JiraBoardService:
 
                         response_start_at = data.get("startAt") if isinstance(data, dict) else None
                         current_start_at = (
-                            int(response_start_at) if isinstance(response_start_at, int) else start_at
+                            int(response_start_at)
+                            if isinstance(response_start_at, int)
+                            else start_at
                         )
                         response_max_results = (
                             data.get("maxResults") if isinstance(data, dict) else None

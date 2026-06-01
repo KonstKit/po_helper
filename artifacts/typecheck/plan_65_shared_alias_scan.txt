@@ -1,4 +1,4 @@
-﻿frontend/src/pages\Dashboard.tsx:86:type WipWidgetState = 'no_sprint' | 'loading' | 'ready' | 'not_available' | 'error';
+frontend/src/pages\Dashboard.tsx:86:type WipWidgetState = 'no_sprint' | 'loading' | 'ready' | 'not_available' | 'error';
 frontend/src/pages\Dashboard.tsx:87:type BurndownWidgetState = 'no_sprint' | 'loading' | 'ready' | 'not_available' | 'error';
 frontend/src/pages\Dashboard.tsx:114:interface DashboardProjectCandidate {
 frontend/src/components\AdvancedFieldMapping.tsx:29:interface AdvancedFieldMappingProps {

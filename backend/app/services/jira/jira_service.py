@@ -295,7 +295,9 @@ class JiraService:
                 attempts.append((endpoint, status, meta))
 
                 if status >= 400:
-                    snippet = (response.text or "")[:200].replace("\r", " ").replace("\n", " ").strip()
+                    snippet = (
+                        (response.text or "")[:200].replace("\r", " ").replace("\n", " ").strip()
+                    )
                     if snippet:
                         logger.info(
                             "Jira validate: non-OK response via %s -> %s (%s): %s",
@@ -335,7 +337,9 @@ class JiraService:
                 attempts.append((endpoint, status, meta))
 
                 if status >= 400:
-                    snippet = (response.text or "")[:200].replace("\r", " ").replace("\n", " ").strip()
+                    snippet = (
+                        (response.text or "")[:200].replace("\r", " ").replace("\n", " ").strip()
+                    )
                     if snippet:
                         logger.info(
                             "Jira validate: non-OK response via %s -> %s (%s): %s",

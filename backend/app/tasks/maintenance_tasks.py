@@ -38,15 +38,11 @@ def cleanup_baselines_task() -> int:
     async def _cleanup() -> int:
         cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
         async with AsyncSessionLocal() as db:
-            result = await db.execute(
-                select(Baseline.id).where(Baseline.created_at < cutoff)
-            )
+            result = await db.execute(select(Baseline.id).where(Baseline.created_at < cutoff))
             baseline_ids = [row[0] for row in result.all()]
             if not baseline_ids:
                 return 0
-            await db.execute(
-                delete(BaselineItem).where(BaselineItem.baseline_id.in_(baseline_ids))
-            )
+            await db.execute(delete(BaselineItem).where(BaselineItem.baseline_id.in_(baseline_ids)))
             await db.execute(delete(Baseline).where(Baseline.id.in_(baseline_ids)))
             await db.commit()
             return len(baseline_ids)
@@ -64,9 +60,7 @@ async def cleanup_analytics_events(retention_days: int) -> int:
         return 0
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
     async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            delete(AnalyticsEvent).where(AnalyticsEvent.occurred_at < cutoff)
-        )
+        result = await db.execute(delete(AnalyticsEvent).where(AnalyticsEvent.occurred_at < cutoff))
         await db.commit()
         return int(result.rowcount or 0)
 
