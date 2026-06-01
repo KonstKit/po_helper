@@ -3,23 +3,6 @@
   "loc_total": 121841,
   "loc_nonempty": 105243,
   "folders": {
-    ".claude": {
-      "path": ".claude",
-      "loc_total": 38,
-      "loc_nonempty": 38,
-      "folders": {},
-      "files": {
-        "settings.local.json": {
-          "path": ".claude/settings.local.json",
-          "target": "prod",
-          "language": "JSON",
-          "loc_total": 38,
-          "loc_nonempty": 38,
-          "types": [],
-          "top_level_methods": []
-        }
-      }
-    },
     ".playwright-mcp": {
       "path": ".playwright-mcp",
       "loc_total": 0,

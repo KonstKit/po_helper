@@ -1,5 +1,4 @@
 path,target,language,extension,loc_total,loc_nonempty,bytes,sha256,encoding,line_endings
-.claude/settings.local.json,prod,JSON,.json,39,38,3098,e4f466e34ce8ad01b5b033f2de6f4df25e9ff071ac3cc01d66364a242cb4d209,utf-8,LF
 .env,prod,Unknown,,71,56,1744,46cca8c7c23638c78833dbdb88c0a7e1b7e31a1e892d085becb5b786a6094dd3,utf-8,LF
 .env.example,prod,Unknown,.example,41,33,932,4bace26c9e1feed996283fc4cceae23ae4417e238aabbfea88108aadeeafdc31,utf-8,LF
 .github/workflows/quality.yml,prod,YAML,.yml,19,16,335,3d261f8251b369b41ab74a5d5adcd011716a03d24aeb39c2f6ccfb814742c4a7,utf-8,LF
