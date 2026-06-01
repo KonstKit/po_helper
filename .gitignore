@@ -17,6 +17,15 @@ credentials.json
 *_secret*
 *_token*
 
+# Source/test modules whose filenames contain "secret"/"token" but are code,
+# not secret material. The broad patterns above would otherwise leave them
+# untracked, breaking imports/tests on a fresh checkout (e.g. CI).
+!backend/app/services/connector_secrets.py
+!backend/app/services/integration_secrets.py
+!backend/tests/test_auth_scoped_token.py
+!backend/tests/test_integration_secret_migration.py
+!backend/tests/test_scoped_token_endpoint.py
+
 # Python
 __pycache__/
 *.py[cod]
