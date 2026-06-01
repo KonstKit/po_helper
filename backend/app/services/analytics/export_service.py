@@ -102,6 +102,7 @@ async def process_export_task(
         if matrix_config_id:
             # Load saved matrix config as base
             from app.models.traceability import MatrixConfig as MatrixConfigModel
+
             config_stmt = select(MatrixConfigModel).where(MatrixConfigModel.id == matrix_config_id)
             config_result = await db.execute(config_stmt)
             matrix_config = config_result.scalar_one_or_none()
@@ -516,16 +517,23 @@ async def _generate_pdf(
                     ("ALIGN", (0, 1), (-1, -1), "LEFT"),
                     ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.Color(0.95, 0.95, 0.95)]),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [colors.white, colors.Color(0.95, 0.95, 0.95)],
+                    ),
                 ]
             )
         )
         elements.append(table)
     else:
         for chunk_idx in range(0, total_columns, max_data_cols):
-            display_columns = columns[chunk_idx:chunk_idx + max_data_cols]
+            display_columns = columns[chunk_idx : chunk_idx + max_data_cols]
 
-            chunk_label = f"Columns {chunk_idx + 1}-{chunk_idx + len(display_columns)} of {total_columns}"
+            chunk_label = (
+                f"Columns {chunk_idx + 1}-{chunk_idx + len(display_columns)} of {total_columns}"
+            )
             elements.append(Paragraph(chunk_label, styles["Italic"]))
             elements.append(Spacer(1, 6))
 
@@ -572,20 +580,27 @@ async def _generate_pdf(
 
             table = Table(table_data, colWidths=col_widths, repeatRows=1)
 
-            table_style = TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.27, 0.45, 0.77)),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, 0), 8),
-                ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-                ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-                ("FONTSIZE", (0, 1), (-1, -1), 7),
-                ("ALIGN", (0, 1), (3, -1), "LEFT"),
-                ("ALIGN", (4, 1), (-1, -1), "CENTER"),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.Color(0.95, 0.95, 0.95)]),
-            ])
+            table_style = TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.27, 0.45, 0.77)),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, 0), 8),
+                    ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                    ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+                    ("FONTSIZE", (0, 1), (-1, -1), 7),
+                    ("ALIGN", (0, 1), (3, -1), "LEFT"),
+                    ("ALIGN", (4, 1), (-1, -1), "CENTER"),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [colors.white, colors.Color(0.95, 0.95, 0.95)],
+                    ),
+                ]
+            )
 
             for row_idx, row in enumerate(rows, 1):
                 row_id = str(row.get("id"))

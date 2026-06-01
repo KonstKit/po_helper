@@ -9,9 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db, AsyncSessionLocal
-from app.models import Artifact, ArtifactLink, Task, ConfluencePage, User, Permissions
+from app.models import Artifact, ArtifactLink, User, Permissions
 from app.core.config import settings
 from app.api.deps import ensure_project_access, require_permission
 from app.core.rate_limit import limiter

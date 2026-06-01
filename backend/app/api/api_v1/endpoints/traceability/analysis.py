@@ -75,7 +75,9 @@ async def _traverse_chain(
             )
 
         if min_confidence > 0:
-            link_query = link_query.where(confidence_filter(ArtifactLink.confidence, min_confidence))
+            link_query = link_query.where(
+                confidence_filter(ArtifactLink.confidence, min_confidence)
+            )
 
         if project_id is not None:
             link_query = link_query.where(ArtifactLink.project_id == project_id)

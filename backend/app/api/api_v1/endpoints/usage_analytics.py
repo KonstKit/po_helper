@@ -20,8 +20,6 @@ from app.core.rate_limit import limiter
 from app.core.security import decode_token
 from app.models.rbac import Permissions
 from app.models.user import User
-
-logger = logging.getLogger(__name__)
 from app.schemas.analytics_event import (
     AnalyticsEventBatchIn,
     AnalyticsEventIn,
@@ -32,6 +30,8 @@ from app.schemas.analytics_event import (
     UsageSummaryOut,
 )
 from app.services import analytics_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -63,17 +63,12 @@ def _require_global_admin_strict():
                 ),
             )
         token_scopes = get_token_scopes()
-        if (
-            token_scopes is not None
-            and Permissions.ADMIN not in token_scopes
-        ):
+        if token_scopes is not None and Permissions.ADMIN not in token_scopes:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied. Required: {Permissions.ADMIN}",
             )
-        if token_scopes is None and not current_user.has_permission(
-            Permissions.ADMIN
-        ):
+        if token_scopes is None and not current_user.has_permission(Permissions.ADMIN):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied. Required: {Permissions.ADMIN}",

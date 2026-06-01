@@ -401,9 +401,7 @@ class MatrixConfig(Base):
         DateTime(timezone=True), onupdate=func.now()
     )
 
-    __table_args__ = (
-        Index("ix_matrix_config_project", "project_id", "is_default"),
-    )
+    __table_args__ = (Index("ix_matrix_config_project", "project_id", "is_default"),)
 
 
 class ExportTask(Base):
@@ -437,6 +435,4 @@ class ExportTask(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    __table_args__ = (
-        Index("ix_export_task_status", "status", "created_at"),
-    )
+    __table_args__ = (Index("ix_export_task_status", "status", "created_at"),)

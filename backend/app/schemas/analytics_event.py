@@ -41,9 +41,7 @@ class AnalyticsEventIn(_CamelModel):
 
     @field_validator("event_data")
     @classmethod
-    def _enforce_event_data_size(
-        cls, value: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+    def _enforce_event_data_size(cls, value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Reject oversized payloads at the boundary.
 
         Without an upper bound, clients could push arbitrarily large blobs
@@ -59,8 +57,7 @@ class AnalyticsEventIn(_CamelModel):
             raise ValueError("event_data must be JSON-serialisable")
         if len(encoded) > settings.ANALYTICS_EVENT_DATA_MAX_BYTES:
             raise ValueError(
-                "event_data exceeds "
-                f"{settings.ANALYTICS_EVENT_DATA_MAX_BYTES} bytes"
+                "event_data exceeds " f"{settings.ANALYTICS_EVENT_DATA_MAX_BYTES} bytes"
             )
         return value
 

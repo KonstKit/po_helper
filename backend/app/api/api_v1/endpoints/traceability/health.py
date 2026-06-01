@@ -341,7 +341,9 @@ def _compute_project_health_status(
     if last_sync:
         try:
             last_sync_dt = datetime.fromisoformat(last_sync.replace("Z", "+00:00"))
-            age_days = (_as_aware_utc(datetime.now(timezone.utc)) - _as_aware_utc(last_sync_dt)).days
+            age_days = (
+                _as_aware_utc(datetime.now(timezone.utc)) - _as_aware_utc(last_sync_dt)
+            ).days
             if age_days > 7:
                 return "stale"
         except ValueError:
@@ -359,7 +361,9 @@ def _compute_project_health_status(
     return "unknown"
 
 
-def _compute_overall_health(reachable_sources: int, total_sources: int, total_artifacts: int) -> tuple[str, float]:
+def _compute_overall_health(
+    reachable_sources: int, total_sources: int, total_artifacts: int
+) -> tuple[str, float]:
     if total_sources <= 0:
         return "critical", 0.0
 
@@ -399,7 +403,9 @@ async def _build_jira_source_health(
     base_url = (
         str(overrides.settings.get("base_url"))
         if overrides and overrides.settings.get("base_url")
-        else (integration.base_url if integration and integration.base_url else settings.JIRA_BASE_URL)
+        else (
+            integration.base_url if integration and integration.base_url else settings.JIRA_BASE_URL
+        )
     )
     token = (
         str(overrides.settings.get("api_token"))
@@ -473,13 +479,17 @@ async def _build_confluence_source_health(
         str(overrides.settings.get("base_url"))
         if overrides and overrides.settings.get("base_url")
         else (
-            integration.base_url if integration and integration.base_url else settings.CONFLUENCE_BASE_URL
+            integration.base_url
+            if integration and integration.base_url
+            else settings.CONFLUENCE_BASE_URL
         )
     )
     token = (
         str(overrides.settings.get("api_token"))
         if overrides and overrides.settings.get("api_token")
-        else (_safe_decrypt(integration.api_token) if integration else settings.CONFLUENCE_API_TOKEN)
+        else (
+            _safe_decrypt(integration.api_token) if integration else settings.CONFLUENCE_API_TOKEN
+        )
     )
     email = (
         str(overrides.settings.get("email"))
@@ -542,7 +552,9 @@ async def _build_git_source_health(
             "repository_count": 0,
         }
 
-    providers = {(getattr(repo.repository, "provider", None) or "").lower() for repo in repositories}
+    providers = {
+        (getattr(repo.repository, "provider", None) or "").lower() for repo in repositories
+    }
     providers.discard("")
     overrides = await get_connector_overrides_map(db, project_id, providers)
 
@@ -614,8 +626,7 @@ async def get_sync_health(
         )
         source_counts_result = await db.execute(source_counts_query)
         source_counts = {
-            row.source: int(getattr(row, "count", 0) or 0)
-            for row in source_counts_result.all()
+            row.source: int(getattr(row, "count", 0) or 0) for row in source_counts_result.all()
         }
 
         project_counts_query = (
@@ -644,7 +655,10 @@ async def get_sync_health(
     checked_at = datetime.now(timezone.utc).isoformat()
     jira_last_sync = _project_last_sync(selected_project) if selected_project else None
     if jira_last_sync is None:
-        jira_last_sync = next((value for value in (_project_last_sync(project) for project in projects) if value), None)
+        jira_last_sync = next(
+            (value for value in (_project_last_sync(project) for project in projects) if value),
+            None,
+        )
 
     confluence_last_sync = None
     git_artifact_count = int(source_counts.get("github", 0)) + int(source_counts.get("gitlab", 0))
@@ -736,7 +750,8 @@ async def get_detailed_sync_health(
     )
     has_link = exists(
         select(ArtifactLink.id).where(
-            (ArtifactLink.from_artifact_id == Artifact.id) | (ArtifactLink.to_artifact_id == Artifact.id)
+            (ArtifactLink.from_artifact_id == Artifact.id)
+            | (ArtifactLink.to_artifact_id == Artifact.id)
         )
     )
     orphan_count_query = select(sql_func.count(Artifact.id)).where(
@@ -1027,9 +1042,7 @@ async def run_consistency_check(
                 "title": row.title,
                 "updated_at": row.updated_at.isoformat() if row.updated_at else None,
                 "days_since_update": (
-                    (now_utc - _as_aware_utc(row.updated_at)).days
-                    if row.updated_at
-                    else None
+                    (now_utc - _as_aware_utc(row.updated_at)).days if row.updated_at else None
                 ),
             }
             for row in stale_artifacts

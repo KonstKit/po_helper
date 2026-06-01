@@ -60,7 +60,9 @@ async def recover_stale_sync_tasks(
         project_id = None
         task_id = None
     elif project_id is None and task_id is None:
-        raise HTTPException(status_code=400, detail="Either project_id/task_id is required, or all=true")
+        raise HTTPException(
+            status_code=400, detail="Either project_id/task_id is required, or all=true"
+        )
 
     recovered = await recover_stale_running_sync_tasks(
         db,

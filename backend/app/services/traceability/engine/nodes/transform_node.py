@@ -18,9 +18,7 @@ def is_supported_transform_type(transform_type: Any) -> bool:
 
 def format_unsupported_transform_message(transform_type: Any) -> str:
     supported = ", ".join(sorted(SUPPORTED_TRANSFORM_TYPES))
-    return (
-        f"Unsupported transform_type {transform_type!r}; supported values: {supported}"
-    )
+    return f"Unsupported transform_type {transform_type!r}; supported values: {supported}"
 
 
 class TransformNodeExecutor(NodeExecutor):

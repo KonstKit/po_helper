@@ -48,9 +48,7 @@ class CreateLinkActionExecutor(NodeExecutor):
                     "connect a second input source or set allow_self_linking=true."
                 )
                 return []
-            self._create_self_links(
-                artifacts, link_type, bidirectional, reverse_link_type, context
-            )
+            self._create_self_links(artifacts, link_type, bidirectional, reverse_link_type, context)
         elif len(incoming) == 2:
             source_edge = incoming[0]
             target_edge = incoming[1]

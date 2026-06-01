@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 async def _execute_rule_async(rule_id: int, trigger: str = "scheduled") -> Dict[str, Any]:
     """Execute a traceability rule asynchronously (default trigger: scheduled)."""
     from app.services.traceability.engine import RuleExecutionEngine
+
     # Note: RuleExecutionEngine uses sync SQLAlchemy, need sync session
     from app.core.database import SessionLocal
 
@@ -32,7 +33,9 @@ async def _execute_rule_async(rule_id: int, trigger: str = "scheduled") -> Dict[
         return result
 
 
-async def _execute_all_enabled_rules_async(project_id: Optional[int] = None) -> List[Dict[str, Any]]:
+async def _execute_all_enabled_rules_async(
+    project_id: Optional[int] = None,
+) -> List[Dict[str, Any]]:
     """Execute all enabled rules for a project."""
     from sqlalchemy import select
     from app.models.traceability_rule import TraceabilityRule
@@ -53,20 +56,24 @@ async def _execute_all_enabled_rules_async(project_id: Optional[int] = None) -> 
             try:
                 engine = RuleExecutionEngine(db)
                 result = engine.execute_rule(rule.id, trigger="scheduled")
-                results.append({
-                    "rule_id": rule.id,
-                    "rule_name": rule.name,
-                    "status": result.get("status"),
-                    "links_created": result.get("links_created", 0),
-                })
+                results.append(
+                    {
+                        "rule_id": rule.id,
+                        "rule_name": rule.name,
+                        "status": result.get("status"),
+                        "links_created": result.get("links_created", 0),
+                    }
+                )
             except Exception as e:
                 logger.error("Error executing rule %d: %s", rule.id, e)
-                results.append({
-                    "rule_id": rule.id,
-                    "rule_name": rule.name,
-                    "status": "error",
-                    "error": str(e),
-                })
+                results.append(
+                    {
+                        "rule_id": rule.id,
+                        "rule_name": rule.name,
+                        "status": "error",
+                        "error": str(e),
+                    }
+                )
 
     return results
 
@@ -378,11 +385,13 @@ def scheduled_rule_execution_task() -> Dict[str, Any]:
                     rule.next_scheduled_run = cron.get_next(datetime)
                     changed = True
 
-                    executed.append({
-                        "rule_id": rule.id,
-                        "rule_name": rule.name,
-                        "schedule_cron": rule.schedule_cron,
-                    })
+                    executed.append(
+                        {
+                            "rule_id": rule.id,
+                            "rule_name": rule.name,
+                            "schedule_cron": rule.schedule_cron,
+                        }
+                    )
 
             except Exception as e:
                 # Invalid cron/config should not create infinite error loops.
@@ -426,9 +435,7 @@ def batch_materialize_task(project_id: int) -> Dict[str, Any]:
     results = []
     for from_type, to_type in derivation_configs:
         try:
-            result = run_async(
-                _recompute_derived_links_async(project_id, from_type, to_type)
-            )
+            result = run_async(_recompute_derived_links_async(project_id, from_type, to_type))
             results.append(result)
         except Exception as e:
             logger.error(
@@ -437,11 +444,13 @@ def batch_materialize_task(project_id: int) -> Dict[str, Any]:
                 to_type,
                 e,
             )
-            results.append({
-                "from_type": from_type,
-                "to_type": to_type,
-                "error": str(e),
-            })
+            results.append(
+                {
+                    "from_type": from_type,
+                    "to_type": to_type,
+                    "error": str(e),
+                }
+            )
 
     return {
         "project_id": project_id,

@@ -263,6 +263,7 @@ async def github_project_pull_requests(
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Fetch pull requests from GitHub for the project's linked repository."""
+
     def _empty_pulls(reason: str) -> Dict[str, Any]:
         return {
             "repository": "",
