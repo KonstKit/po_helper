@@ -260,7 +260,7 @@ async def _query_artifacts(
         # Sanitize and limit input to prevent DoS and injection
         sanitized_query = (
             search_query.replace("\x00", "")[
-                  # Remove null bytes
+                # Remove null bytes
                 :500
             ]  # Limit length to prevent DoS
         )

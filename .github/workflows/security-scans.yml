@@ -7,6 +7,10 @@ on:
     - cron: "30 2 * * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   secret-scan:
     runs-on: ubuntu-latest
@@ -33,7 +37,7 @@ jobs:
         run: docker build -f docker/Dockerfile.frontend -t po-helper-frontend:${{ github.sha }} .
 
       - name: Scan backend image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: po-helper-backend:${{ github.sha }}
@@ -43,7 +47,7 @@ jobs:
           severity: HIGH,CRITICAL
 
       - name: Scan frontend image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: po-helper-frontend:${{ github.sha }}
