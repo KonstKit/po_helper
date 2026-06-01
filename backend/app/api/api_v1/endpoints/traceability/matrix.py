@@ -76,15 +76,11 @@ async def get_rtm_matrix_endpoint(
     min_confidence: float = Query(
         default=0.0, ge=0.0, le=1.0, description="Minimum confidence threshold"
     ),
-    search_query: Optional[str] = Query(
-        default=None, description="Text search in artifact titles"
-    ),
+    search_query: Optional[str] = Query(default=None, description="Text search in artifact titles"),
     direction: str = Query(
         default="both", description="Link direction: outgoing, incoming, or both"
     ),
-    include_orphans: bool = Query(
-        default=False, description="Include artifacts without links"
-    ),
+    include_orphans: bool = Query(default=False, description="Include artifacts without links"),
     row_skip: int = Query(default=0, ge=0, description="Skip N rows"),
     row_limit: int = Query(default=50, ge=1, le=500, description="Max rows to return"),
     col_skip: int = Query(default=0, ge=0, description="Skip N columns"),
@@ -222,12 +218,8 @@ async def get_coverage_analytics_endpoint(
     artifact_types: Optional[str] = Query(
         default=None, description="Artifact types to analyze (comma-separated)"
     ),
-    include_trends: bool = Query(
-        default=False, description="Include historical trend data"
-    ),
-    trend_days: int = Query(
-        default=30, ge=1, le=365, description="Days of trend data to include"
-    ),
+    include_trends: bool = Query(default=False, description="Include historical trend data"),
+    trend_days: int = Query(default=30, ge=1, le=365, description="Days of trend data to include"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission(Permissions.TRACEABILITY_VIEW)),
 ):
@@ -493,7 +485,9 @@ async def apply_matrix_config(
         await ensure_project_access(config.project_id, db, current_user)
 
     filters = RTMFilters(**config.filters_json) if config.filters_json else RTMFilters()
-    pagination = RTMPagination(**config.pagination_json) if config.pagination_json else RTMPagination()
+    pagination = (
+        RTMPagination(**config.pagination_json) if config.pagination_json else RTMPagination()
+    )
 
     result = await get_rtm_matrix(
         db=db,
@@ -616,7 +610,10 @@ async def create_export_task(
     else:
         # Run synchronously for development without Celery
         await _run_sync_export(
-            db, export_task, payload.project_id, payload.format,
+            db,
+            export_task,
+            payload.project_id,
+            payload.format,
             payload.filters.model_dump() if payload.filters else None,
             payload.include_details,
         )
@@ -628,7 +625,8 @@ async def create_export_task(
         progress_pct=export_task.progress_pct,
         download_url=(
             f"/api/v1/traceability/exports/{task_id}/download"
-            if export_task.status == "completed" else None
+            if export_task.status == "completed"
+            else None
         ),
         error_message=export_task.error_message,
         created_at=export_task.created_at,
@@ -837,8 +835,7 @@ async def _run_sync_export(
         # Allowlist: only "completed" is success, any other status is failure
         if result.get("status") != "completed":
             raise HTTPException(
-                status_code=500,
-                detail=f"Export failed: {result.get('message', 'Unknown error')}"
+                status_code=500, detail=f"Export failed: {result.get('message', 'Unknown error')}"
             )
 
     except HTTPException:

@@ -283,12 +283,8 @@ class LinkService:
         )
 
         # Invalidate derived links affected by this new link
-        await self._invalidate_derived_links(
-            from_artifact_id, project_id=link.project_id
-        )
-        await self._invalidate_derived_links(
-            to_artifact_id, project_id=link.project_id
-        )
+        await self._invalidate_derived_links(from_artifact_id, project_id=link.project_id)
+        await self._invalidate_derived_links(to_artifact_id, project_id=link.project_id)
 
         return link
 
@@ -347,20 +343,20 @@ class LinkService:
 
         # Batch audit
         if created and created_by_id:
-                await self._create_audit_log(
-                    actor_id=created_by_id,
-                    action="batch_create",
-                    entity_type="artifact_link",
-                    entity_id=0,  # Batch operation
-                    payload={
-                        "count": len(created),
-                        "link_ids": [link_item.id for link_item in created],
-                        "project_ids": sorted(
-                            {link_item.project_id for link_item in created if link_item.project_id}
-                        ),
-                        "created_via": created_via,
-                    },
-                )
+            await self._create_audit_log(
+                actor_id=created_by_id,
+                action="batch_create",
+                entity_type="artifact_link",
+                entity_id=0,  # Batch operation
+                payload={
+                    "count": len(created),
+                    "link_ids": [link_item.id for link_item in created],
+                    "project_ids": sorted(
+                        {link_item.project_id for link_item in created if link_item.project_id}
+                    ),
+                    "created_via": created_via,
+                },
+            )
 
         return created, errors
 
@@ -407,9 +403,7 @@ class LinkService:
 
     async def get_link(self, link_id: int) -> Optional[ArtifactLink]:
         """Get link by ID."""
-        result = await self.db.execute(
-            select(ArtifactLink).where(ArtifactLink.id == link_id)
-        )
+        result = await self.db.execute(select(ArtifactLink).where(ArtifactLink.id == link_id))
         return result.scalar_one_or_none()
 
     async def get_link_by_artifacts(
@@ -480,7 +474,7 @@ class LinkService:
         project_id: Optional[int] = None,
     ) -> Dict[str, List[ArtifactLink]]:
         """Get all links for an artifact (incoming and/or outgoing)."""
-        result = {"outgoing": [], "incoming": []}
+        result: Dict[str, List[ArtifactLink]] = {"outgoing": [], "incoming": []}
 
         if direction in ("outgoing", "both"):
             result["outgoing"] = await self.get_outgoing_links(
@@ -586,12 +580,8 @@ class LinkService:
 
         # Invalidate derived links if confidence changed
         if changes:
-            await self._invalidate_derived_links(
-                link.from_artifact_id, project_id=link.project_id
-            )
-            await self._invalidate_derived_links(
-                link.to_artifact_id, project_id=link.project_id
-            )
+            await self._invalidate_derived_links(link.from_artifact_id, project_id=link.project_id)
+            await self._invalidate_derived_links(link.to_artifact_id, project_id=link.project_id)
 
         return link
 
@@ -648,7 +638,7 @@ class LinkService:
             return False
 
         # Capture info for audit before deletion
-        link_info = {
+        link_info: Dict[str, Any] = {
             "from_artifact_id": link.from_artifact_id,
             "to_artifact_id": link.to_artifact_id,
             "link_type": link.link_type,
@@ -744,9 +734,7 @@ class LinkService:
         if from_id == to_id:
             raise ValueError("Cannot create self-referencing link")
 
-        result = await self.db.execute(
-            select(Artifact).where(Artifact.id.in_([from_id, to_id]))
-        )
+        result = await self.db.execute(select(Artifact).where(Artifact.id.in_([from_id, to_id])))
         artifacts = {a.id: a for a in result.scalars().all()}
 
         if from_id not in artifacts:
@@ -820,9 +808,7 @@ class LinkService:
             "created_at": to_artifact.created_at,
         }
 
-        return confidence_scoring_service.calculate_confidence(
-            from_dict, to_dict, link_type
-        )
+        return confidence_scoring_service.calculate_confidence(from_dict, to_dict, link_type)
 
     async def _create_audit_log(
         self,

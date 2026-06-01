@@ -381,9 +381,7 @@ class RTMFilters(BaseModel):
     row_statuses: Optional[List[str]] = Field(
         default=None, description="Filter rows by status (e.g., ['Open', 'In Progress'])"
     )
-    col_statuses: Optional[List[str]] = Field(
-        default=None, description="Filter columns by status"
-    )
+    col_statuses: Optional[List[str]] = Field(default=None, description="Filter columns by status")
     link_types: Optional[List[str]] = Field(
         default=None,
         description="Link types to include (e.g., ['implements', 'tests'])",
@@ -391,16 +389,12 @@ class RTMFilters(BaseModel):
     min_confidence: float = Field(
         default=0.0, ge=0.0, le=1.0, description="Minimum confidence threshold for links"
     )
-    search_query: Optional[str] = Field(
-        default=None, description="Text search in artifact titles"
-    )
+    search_query: Optional[str] = Field(default=None, description="Text search in artifact titles")
     direction: str = Field(
         default="both",
         description="Link direction: 'outgoing', 'incoming', or 'both'",
     )
-    include_orphans: bool = Field(
-        default=False, description="Include artifacts without links"
-    )
+    include_orphans: bool = Field(default=False, description="Include artifacts without links")
 
 
 class RTMPagination(BaseModel):
@@ -551,15 +545,11 @@ class ExportTaskCreate(BaseModel):
 
     project_id: int
     format: ExportFormatType = Field(description="Export format: csv, xlsx, or pdf")
-    matrix_config_id: Optional[int] = Field(
-        default=None, description="Use saved matrix config"
-    )
+    matrix_config_id: Optional[int] = Field(default=None, description="Use saved matrix config")
     filters: Optional[RTMFilters] = Field(
         default=None, description="Filters to apply (overrides config)"
     )
-    include_details: bool = Field(
-        default=False, description="Include detailed link information"
-    )
+    include_details: bool = Field(default=False, description="Include detailed link information")
 
 
 class ExportTaskStatus(BaseModel):

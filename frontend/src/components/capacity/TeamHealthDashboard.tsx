@@ -144,7 +144,7 @@ const HappinessGauge: React.FC<{ value?: number; size?: 'small' | 'large' }> = (
   value,
   size = 'large',
 }) => {
-  if (value === undefined) {
+  if (value == null || !Number.isFinite(value)) {
     return <Typography color="text.secondary">No data</Typography>;
   }
 

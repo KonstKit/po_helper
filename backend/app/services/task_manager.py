@@ -198,7 +198,9 @@ class TaskManager:
             return False
 
         task.cancellation_token.set()
-        self.update_task(task_id, status=TaskStatus.CANCELLED, completed_at=datetime.now(timezone.utc))
+        self.update_task(
+            task_id, status=TaskStatus.CANCELLED, completed_at=datetime.now(timezone.utc)
+        )
         return True
 
     def is_cancelled(self, task_id: str) -> bool:
@@ -226,7 +228,9 @@ class TaskManager:
 
         try:
             # Mark as running
-            self.update_task(task_id, status=TaskStatus.RUNNING, started_at=datetime.now(timezone.utc))
+            self.update_task(
+                task_id, status=TaskStatus.RUNNING, started_at=datetime.now(timezone.utc)
+            )
 
             # Inject task_id into kwargs for progress updates
             kwargs["task_id"] = task_id

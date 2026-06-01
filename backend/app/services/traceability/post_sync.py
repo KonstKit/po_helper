@@ -39,7 +39,9 @@ async def run_traceability_post_sync(
             )
 
         try:
-            execute_sync_complete_rules_task.delay(project_id=project_id, source=source, trigger=trigger)
+            execute_sync_complete_rules_task.delay(
+                project_id=project_id, source=source, trigger=trigger
+            )
         except Exception as exc:
             logger.warning(
                 "Failed to dispatch traceability sync-complete rules for project %s: %s",

@@ -2,6 +2,9 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
+import { Provider } from 'react-redux';
+import { configureStore } from '@reduxjs/toolkit';
+import projectReducer from '../../store/projectSlice';
 
 vi.mock('../../services/api', () => ({
   listReviewItems: vi.fn(),
@@ -35,6 +38,38 @@ const pendingItem = {
   meta: { external_id: 'REQ-42' },
 };
 
+// ReviewQueue now sources its project from the single global selector
+// (UX review C5) via `useSelectedProject`, which reads Redux. Render it under a
+// store preloaded with a project so the hook neither calls the project API nor
+// renders the "no projects" path.
+const sampleProject = {
+  id: 1,
+  jira_key: 'APOLLO',
+  name: 'Apollo',
+  status: 'active',
+  total_tasks: 3,
+};
+
+const renderRQ = () => {
+  const store = configureStore({
+    reducer: { project: projectReducer },
+    preloadedState: {
+      project: {
+        projects: [sampleProject],
+        currentProject: sampleProject,
+        loading: false,
+        error: null,
+        lastLoadedAt: null,
+      },
+    },
+  });
+  return render(
+    <Provider store={store}>
+      <ReviewQueue />
+    </Provider>
+  );
+};
+
 describe('ReviewQueue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -45,33 +80,33 @@ describe('ReviewQueue', () => {
   });
 
   it('lists pending review items with artifact identity', async () => {
-    render(<ReviewQueue />);
+    renderRQ();
     expect(await screen.findByText('REQ-42')).toBeInTheDocument();
     expect(mockedList).toHaveBeenCalled();
   });
 
   it('shows empty state when there are no items', async () => {
     mockedList.mockResolvedValueOnce({ total: 0, items: [] } as never);
-    render(<ReviewQueue />);
-    expect(await screen.findByText(/No review items match/i)).toBeInTheDocument();
+    renderRQ();
+    expect(await screen.findByText('No review items')).toBeInTheDocument();
   });
 
   it('shows an error with retry when loading fails', async () => {
     mockedList.mockRejectedValueOnce(new Error('load failed'));
-    render(<ReviewQueue />);
+    renderRQ();
     expect(await screen.findByText('load failed')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
   });
 
   it('claims a pending item', async () => {
-    render(<ReviewQueue />);
+    renderRQ();
     await screen.findByText('REQ-42');
     fireEvent.click(screen.getByRole('button', { name: 'Claim' }));
     await waitFor(() => expect(mockedClaim).toHaveBeenCalledWith(11));
   });
 
   it('resolves an item and refetches', async () => {
-    render(<ReviewQueue />);
+    renderRQ();
     await screen.findByText('REQ-42');
     fireEvent.click(screen.getByRole('button', { name: 'Resolve' }));
     await waitFor(() => expect(mockedResolve).toHaveBeenCalledWith(11));
@@ -80,7 +115,7 @@ describe('ReviewQueue', () => {
   });
 
   it('rejects an item', async () => {
-    render(<ReviewQueue />);
+    renderRQ();
     await screen.findByText('REQ-42');
     fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
     await waitFor(() => expect(mockedReject).toHaveBeenCalledWith(11));

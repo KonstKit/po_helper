@@ -93,12 +93,24 @@ const OrphanedArtifactsPanel: React.FC<OrphanedArtifactsPanelProps> = ({
     setPage(0);
   };
 
+  const selectTypeFilter = (nextType: string) => {
+    setTypeFilter(nextType);
+    setPage(0); // a new filter changes the result set, so restart pagination
+  };
+
   const handleTypeFilterChange = (event: SelectChangeEvent) => {
-    setTypeFilter(event.target.value);
-    setPage(0);
+    selectTypeFilter(event.target.value);
   };
 
   const availableTypes = data ? Object.keys(data.by_type) : [];
+
+  // The backend returns a project-wide `total`, but `by_type`/`by_source` are
+  // computed only over the rows on the current page. Surface that distinction
+  // honestly so a "1266 orphaned" headline isn't shown next to a 10-item
+  // breakdown as if they reconciled.
+  const pageCount = data?.data.length ?? 0;
+  const total = data?.meta.total ?? 0;
+  const isPaged = total > pageCount;
   return (
     <Paper sx={{ p: 2 }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
@@ -119,20 +131,36 @@ const OrphanedArtifactsPanel: React.FC<OrphanedArtifactsPanelProps> = ({
       {/* Stats */}
       {data && (
         <Box mb={2}>
-          <Stack direction="row" spacing={2} mb={2}>
+          <Stack direction="row" spacing={2} mb={1} alignItems="center" flexWrap="wrap" useFlexGap>
             <Chip
               icon={<LinkOff />}
-              label={`${data.meta.total} orphaned`}
+              label={
+                isPaged
+                  ? `Showing ${pageCount} of ${total.toLocaleString()} orphaned`
+                  : `${total.toLocaleString()} orphaned`
+              }
               color="warning"
               variant="outlined"
             />
+            {typeFilter && (
+              <Typography variant="caption" color="text.secondary">
+                Filtered by type: {typeFilter}
+              </Typography>
+            )}
           </Stack>
 
-          {/* Breakdown by type */}
+          {/* Breakdown by type. NOTE: the API computes these counts over the
+              current page only, not the whole project, so they are labelled as
+              such to stay consistent with the total above. */}
           <Typography variant="subtitle2" gutterBottom>
-            By Type:
+            By Type{isPaged ? ' (this page)' : ''}:
           </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap mb={2}>
+            {Object.entries(data.by_type).length === 0 && (
+              <Typography variant="caption" color="text.secondary">
+                None on this page
+              </Typography>
+            )}
             {Object.entries(data.by_type).map(([type, count]) => (
               <Chip
                 key={type}
@@ -143,17 +171,22 @@ const OrphanedArtifactsPanel: React.FC<OrphanedArtifactsPanelProps> = ({
                   borderColor: TYPE_COLORS[type] || TYPE_COLORS.default,
                 }}
                 variant="outlined"
-                onClick={() => setTypeFilter(type === typeFilter ? '' : type)}
+                onClick={() => selectTypeFilter(type === typeFilter ? '' : type)}
                 color={type === typeFilter ? 'primary' : 'default'}
               />
             ))}
           </Stack>
 
-          {/* Breakdown by source */}
+          {/* Breakdown by source (also page-scoped, see note above). */}
           <Typography variant="subtitle2" gutterBottom>
-            By Source:
+            By Source{isPaged ? ' (this page)' : ''}:
           </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            {Object.entries(data.by_source).length === 0 && (
+              <Typography variant="caption" color="text.secondary">
+                None on this page
+              </Typography>
+            )}
             {Object.entries(data.by_source).map(([source, count]) => (
               <Chip
                 key={source}
@@ -163,6 +196,13 @@ const OrphanedArtifactsPanel: React.FC<OrphanedArtifactsPanelProps> = ({
               />
             ))}
           </Stack>
+
+          {isPaged && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+              Breakdown reflects the {pageCount} artifact{pageCount === 1 ? '' : 's'} on this page.
+              Use the type filter or pagination below to explore all {total.toLocaleString()}.
+            </Typography>
+          )}
         </Box>
       )}
 
@@ -289,10 +329,13 @@ const OrphanedArtifactsPanel: React.FC<OrphanedArtifactsPanelProps> = ({
         </Table>
       </TableContainer>
 
-      {data && data.meta.total > rowsPerPage && (
+      {/* Always render pagination when there is at least one orphan so the
+          authoritative total and the visible page always reconcile (the headline
+          can read e.g. "Showing 10 of 1266" and the user can page through them). */}
+      {data && total > 0 && (
         <TablePagination
           component="div"
-          count={data.meta.total}
+          count={total}
           page={page}
           onPageChange={handlePageChange}
           rowsPerPage={rowsPerPage}

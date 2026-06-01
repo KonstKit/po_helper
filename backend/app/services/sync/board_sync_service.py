@@ -190,7 +190,7 @@ class BoardSyncService:
             self.jira_service.list_issues_in_sprint,
             sprint_jira_id,
         )
-        issue_keys = [item.get("key") for item in sprint_issues if item.get("key")]
+        issue_keys = [str(item.get("key")) for item in sprint_issues if item.get("key")]
 
         async with db.begin():
             # Find or create sprint

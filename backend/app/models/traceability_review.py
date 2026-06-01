@@ -7,7 +7,6 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
-    Integer,
     JSON,
     String,
     Text,
@@ -56,9 +55,7 @@ class TraceabilityReviewItem(Base):
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id"), index=True, nullable=True
     )
-    artifact_id: Mapped[int] = mapped_column(
-        ForeignKey("artifacts.id"), nullable=False, index=True
-    )
+    artifact_id: Mapped[int] = mapped_column(ForeignKey("artifacts.id"), nullable=False, index=True)
     rule_id: Mapped[int | None] = mapped_column(
         ForeignKey("traceability_rules.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -67,9 +64,7 @@ class TraceabilityReviewItem(Base):
     )
     node_id: Mapped[str] = mapped_column(String(128), nullable=False)
 
-    status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default=REVIEW_STATUS_PENDING
-    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default=REVIEW_STATUS_PENDING)
     priority: Mapped[str] = mapped_column(String(32), nullable=False, default="normal")
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 

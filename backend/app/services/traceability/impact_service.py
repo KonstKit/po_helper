@@ -153,9 +153,7 @@ class ImpactAnalysisService:
             project_id=project_id,
         )
 
-        return self._build_impact_analysis(
-            root, impacted, "forward", max_depth
-        )
+        return self._build_impact_analysis(root, impacted, "forward", max_depth)
 
     async def analyze_backward_impact(
         self,
@@ -195,9 +193,7 @@ class ImpactAnalysisService:
             project_id=project_id,
         )
 
-        return self._build_impact_analysis(
-            root, impacted, "backward", max_depth
-        )
+        return self._build_impact_analysis(root, impacted, "backward", max_depth)
 
     async def analyze_full_impact(
         self,
@@ -557,9 +553,7 @@ class ImpactAnalysisService:
 
     async def _get_artifact(self, artifact_id: int) -> Optional[Artifact]:
         """Get artifact by ID."""
-        result = await self.db.execute(
-            select(Artifact).where(Artifact.id == artifact_id)
-        )
+        result = await self.db.execute(select(Artifact).where(Artifact.id == artifact_id))
         return result.scalar_one_or_none()
 
     async def _traverse_impact(
@@ -580,13 +574,17 @@ class ImpactAnalysisService:
 
         # Get initial links
         if direction == "forward":
-            stmt = select(ArtifactLink, Artifact).join(
-                Artifact, Artifact.id == ArtifactLink.to_artifact_id
-            ).where(ArtifactLink.from_artifact_id == start_id)
+            stmt = (
+                select(ArtifactLink, Artifact)
+                .join(Artifact, Artifact.id == ArtifactLink.to_artifact_id)
+                .where(ArtifactLink.from_artifact_id == start_id)
+            )
         else:
-            stmt = select(ArtifactLink, Artifact).join(
-                Artifact, Artifact.id == ArtifactLink.from_artifact_id
-            ).where(ArtifactLink.to_artifact_id == start_id)
+            stmt = (
+                select(ArtifactLink, Artifact)
+                .join(Artifact, Artifact.id == ArtifactLink.from_artifact_id)
+                .where(ArtifactLink.to_artifact_id == start_id)
+            )
 
         if link_types:
             stmt = stmt.where(ArtifactLink.link_type.in_(link_types))
@@ -632,19 +630,25 @@ class ImpactAnalysisService:
 
             # Get next level links
             if direction == "forward":
-                next_stmt = select(ArtifactLink, Artifact).join(
-                    Artifact, Artifact.id == ArtifactLink.to_artifact_id
-                ).where(ArtifactLink.from_artifact_id == current_id)
+                next_stmt = (
+                    select(ArtifactLink, Artifact)
+                    .join(Artifact, Artifact.id == ArtifactLink.to_artifact_id)
+                    .where(ArtifactLink.from_artifact_id == current_id)
+                )
             else:
-                next_stmt = select(ArtifactLink, Artifact).join(
-                    Artifact, Artifact.id == ArtifactLink.from_artifact_id
-                ).where(ArtifactLink.to_artifact_id == current_id)
+                next_stmt = (
+                    select(ArtifactLink, Artifact)
+                    .join(Artifact, Artifact.id == ArtifactLink.from_artifact_id)
+                    .where(ArtifactLink.to_artifact_id == current_id)
+                )
 
             if link_types:
                 next_stmt = next_stmt.where(ArtifactLink.link_type.in_(link_types))
             if min_confidence is not None:
                 # Use confidence_filter to handle legacy 0..100 data normalization
-                next_stmt = next_stmt.where(confidence_filter(ArtifactLink.confidence, min_confidence))
+                next_stmt = next_stmt.where(
+                    confidence_filter(ArtifactLink.confidence, min_confidence)
+                )
             if project_id is not None:
                 next_stmt = next_stmt.where(ArtifactLink.project_id == project_id)
 
@@ -676,7 +680,10 @@ class ImpactAnalysisService:
 
             # Normalize legacy 0..100 confidence values to 0..1 scale
             normalized_node_conf = normalize_confidence(node.confidence)
-            if normalized_node_conf is not None and normalized_node_conf < self.LOW_CONFIDENCE_THRESHOLD:
+            if (
+                normalized_node_conf is not None
+                and normalized_node_conf < self.LOW_CONFIDENCE_THRESHOLD
+            ):
                 low_confidence += 1
 
         return ImpactAnalysis(

@@ -17,13 +17,23 @@ import {
   DialogActions,
   Snackbar,
   Alert,
+  Tooltip,
 } from '@mui/material';
 import type { SelectChangeEvent } from '@mui/material/Select';
 import {
   Download as DownloadIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
-import { DataGrid, GridColDef, GridToolbar, GridPaginationModel } from '@mui/x-data-grid';
+import {
+  DataGrid,
+  GridColDef,
+  GridPaginationModel,
+  GridToolbarContainer,
+  GridToolbarColumnsButton,
+  GridToolbarDensitySelector,
+  GridToolbarExport,
+  GridToolbarQuickFilter,
+} from '@mui/x-data-grid';
 import { listTasksPaginated, listProjects, setTaskBusinessValue, withRetry, type Project, type TaskItem } from '../services/api';
 import { getErrorMessage, logError } from '../utils/errorUtils';
 
@@ -66,6 +76,24 @@ const getPriorityChipColor = (priority?: string | null): 'default' | 'primary' |
       return 'default';
   }
 };
+
+/**
+ * Custom DataGrid toolbar.
+ *
+ * Intentionally omits GridToolbarFilterButton: domain-specific filtering
+ * (Status / Assignee / Project) lives in the dedicated top Filters panel, so
+ * the grid only exposes Columns / Density / Export plus a quick text search to
+ * avoid two competing filter entry points.
+ */
+const TasksGridToolbar = () => (
+  <GridToolbarContainer>
+    <GridToolbarColumnsButton />
+    <GridToolbarDensitySelector />
+    <GridToolbarExport />
+    <Box sx={{ flex: 1 }} />
+    <GridToolbarQuickFilter debounceMs={500} />
+  </GridToolbarContainer>
+);
 
 const Tasks = () => {
   const [filters, setFilters] = useState(defaultFilters);
@@ -173,7 +201,31 @@ const Tasks = () => {
 
   const columns: GridColDef<TaskRow>[] = useMemo(() => [
     { field: 'key', headerName: 'Key', width: 120 },
-    { field: 'summary', headerName: 'Summary', flex: 1, minWidth: 240 },
+    {
+      field: 'summary',
+      headerName: 'Summary',
+      flex: 1,
+      minWidth: 200,
+      maxWidth: 360,
+      renderCell: (params) => {
+        const text = params.value ? String(params.value) : '';
+        return (
+          <Tooltip title={text} placement="top-start">
+            <Box
+              component="span"
+              sx={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                width: '100%',
+              }}
+            >
+              {text}
+            </Box>
+          </Tooltip>
+        );
+      },
+    },
     {
       field: 'status',
       headerName: 'Status',
@@ -193,19 +245,19 @@ const Tasks = () => {
         );
       },
     },
-    { field: 'assignee', headerName: 'Assignee', width: 180 },
-    { field: 'project', headerName: 'Project', width: 200 },
+    { field: 'assignee', headerName: 'Assignee', width: 150 },
+    { field: 'project', headerName: 'Project', width: 160 },
     {
       field: 'estimate_hours',
       headerName: 'Estimate',
-      width: 120,
+      width: 110,
       type: 'number',
       valueFormatter: (params) => (params.value ? `${params.value}h` : '0h'),
     },
     {
       field: 'spent_hours',
       headerName: 'Spent',
-      width: 120,
+      width: 110,
       type: 'number',
       valueFormatter: (params) => (params.value ? `${params.value}h` : '0h'),
     },
@@ -329,13 +381,7 @@ const Tasks = () => {
           pageSizeOptions={[25, 50, 100]}
           checkboxSelection
           disableRowSelectionOnClick
-          slots={{ toolbar: GridToolbar }}
-          slotProps={{
-            toolbar: {
-              showQuickFilter: true,
-              quickFilterProps: { debounceMs: 500 },
-            },
-          }}
+          slots={{ toolbar: TasksGridToolbar }}
         />
       </Paper>
 

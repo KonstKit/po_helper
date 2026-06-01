@@ -64,14 +64,14 @@ async def put_jira_settings(
     current_user: User = Depends(require_permission(Permissions.SETTINGS_UPDATE)),
 ):
     row = await _get_integration(db, "jira")
-    base_url = (
-        payload.base_url if payload.base_url is not None else (row.base_url if row else None)
-    )
+    base_url = payload.base_url if payload.base_url is not None else (row.base_url if row else None)
     if base_url:
         base_url = base_url.strip()
     token_present = bool(payload.api_token) or bool(row.api_token if row else None)
-    use_pat = payload.use_pat if payload.use_pat is not None else not bool(
-        payload.email or (row.email if row else None)
+    use_pat = (
+        payload.use_pat
+        if payload.use_pat is not None
+        else not bool(payload.email or (row.email if row else None))
     )
     if not base_url:
         raise HTTPException(status_code=400, detail="Jira base URL is required")
@@ -87,9 +87,7 @@ async def put_jira_settings(
     async with transactional_session(db):
         # normalize blanks to None and persist according to mode
         row.base_url = base_url
-        row.email = (
-            None if use_pat else (payload.email if payload.email is not None else row.email)
-        )
+        row.email = None if use_pat else (payload.email if payload.email is not None else row.email)
         if payload.api_token is not None and payload.api_token != "":
             row.api_token = _encrypt_external_integration_token(payload.api_token, "Jira")
     await db.refresh(row)
@@ -155,16 +153,18 @@ async def test_jira_connection(
     """Test Jira connectivity using provided or stored credentials."""
     row = await _get_integration(db, "jira")
 
-    base_url = (
-        payload.base_url if payload.base_url is not None else (row.base_url if row else None)
-    )
+    base_url = payload.base_url if payload.base_url is not None else (row.base_url if row else None)
     if base_url:
         base_url = base_url.strip()
-    use_pat = payload.use_pat if payload.use_pat is not None else not bool(
-        payload.email or (row.email if row else None)
+    use_pat = (
+        payload.use_pat
+        if payload.use_pat is not None
+        else not bool(payload.email or (row.email if row else None))
     )
-    email = None if use_pat else (
-        payload.email if payload.email is not None else (row.email if row else None)
+    email = (
+        None
+        if use_pat
+        else (payload.email if payload.email is not None else (row.email if row else None))
     )
     if email:
         email = email.strip()
@@ -321,9 +321,7 @@ async def test_confluence_connection(
     """Test Confluence connectivity using provided or stored credentials."""
     row = await _get_integration(db, "confluence")
 
-    base_url = (
-        payload.base_url if payload.base_url is not None else (row.base_url if row else None)
-    )
+    base_url = payload.base_url if payload.base_url is not None else (row.base_url if row else None)
     if base_url:
         base_url = base_url.strip()
 
@@ -364,13 +362,21 @@ async def test_confluence_connection(
     except Exception as exc:
         message = str(exc)
         if "401" in message:
-            raise HTTPException(status_code=401, detail=f"Failed to connect to Confluence: {message}")
+            raise HTTPException(
+                status_code=401, detail=f"Failed to connect to Confluence: {message}"
+            )
         if "403" in message:
-            raise HTTPException(status_code=403, detail=f"Failed to connect to Confluence: {message}")
+            raise HTTPException(
+                status_code=403, detail=f"Failed to connect to Confluence: {message}"
+            )
         if "404" in message:
-            raise HTTPException(status_code=404, detail=f"Failed to connect to Confluence: {message}")
+            raise HTTPException(
+                status_code=404, detail=f"Failed to connect to Confluence: {message}"
+            )
         if "timeout" in message.lower():
-            raise HTTPException(status_code=504, detail=f"Failed to connect to Confluence: {message}")
+            raise HTTPException(
+                status_code=504, detail=f"Failed to connect to Confluence: {message}"
+            )
         raise HTTPException(status_code=400, detail=f"Failed to connect to Confluence: {message}")
 
     resolved_base_url = (confluence_service.base_url or base_url or "").rstrip("/")

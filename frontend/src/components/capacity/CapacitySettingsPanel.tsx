@@ -303,13 +303,20 @@ const CapacitySettingsPanel: React.FC<CapacitySettingsPanelProps> = ({
             <Card>
               <CardContent>
                 <Stack direction="row" spacing={1} alignItems="center">
-                  <SpeedIcon color="warning" />
+                  <SpeedIcon color={summary.team_members > 0 ? 'warning' : 'disabled'} />
                   <Typography variant="subtitle2" color="text.secondary">
                     Avg Focus Factor
                   </Typography>
                 </Stack>
-                <Typography variant="h4" sx={{ mt: 1 }} color="warning.main">
-                  {Math.round(summary.average_focus_factor * 100)}%
+                {/* Don't render a default as a warning when there is no team data (UX review L4). */}
+                <Typography
+                  variant="h4"
+                  sx={{ mt: 1 }}
+                  color={summary.team_members > 0 ? 'warning.main' : 'text.disabled'}
+                >
+                  {summary.team_members > 0
+                    ? `${Math.round((summary.average_focus_factor ?? 0) * 100)}%`
+                    : '—'}
                 </Typography>
               </CardContent>
             </Card>

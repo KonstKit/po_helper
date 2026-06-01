@@ -17,12 +17,12 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
 import type { SelectChangeEvent } from '@mui/material/Select';
 import { Refresh as RefreshIcon } from '@mui/icons-material';
+import SearchOffIcon from '@mui/icons-material/SearchOff';
 import {
   claimReviewItem,
   listReviewItems,
@@ -31,6 +31,8 @@ import {
 } from '../services/api';
 import type { ReviewItem, ReviewItemStatus } from '../services/api';
 import { getErrorMessage } from '../utils/errorUtils';
+import { useSelectedProject } from '../hooks/useSelectedProject';
+import EmptyState from '../components/common/EmptyState';
 
 type StatusFilter = 'all' | ReviewItemStatus;
 
@@ -65,22 +67,18 @@ const ReviewQueue: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending');
-  const [projectId, setProjectId] = useState<string>('');
+  // Project comes from the single global selector in the header (UX review C5),
+  // not a free-text "Project ID" field the user has to remember and type.
+  const { projectId, currentProject, projects, ready } = useSelectedProject();
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const fetchItems = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const parsedProject = projectId.trim() ? Number(projectId.trim()) : undefined;
       const response = await listReviewItems({
         status: statusFilter === 'all' ? undefined : statusFilter,
-        projectId:
-          parsedProject !== undefined
-          && Number.isInteger(parsedProject)
-          && parsedProject > 0
-            ? parsedProject
-            : undefined,
+        projectId: projectId && projectId > 0 ? projectId : undefined,
         limit: 100,
       });
       setItems(response.items);
@@ -93,8 +91,16 @@ const ReviewQueue: React.FC = () => {
   }, [statusFilter, projectId]);
 
   useEffect(() => {
+    // Codex (rounds 2-4): wait until the global project context has SETTLED
+    // (loaded or failed) before any fetch. `ready` covers the failure path too,
+    // so a failed project-list load no longer hangs this page on its spinner.
+    // Once settled, if projects exist but none is selected yet, wait one tick for
+    // the restore to set currentProject; otherwise fetch (scoped, or unscoped
+    // only when there genuinely are no projects — no race then).
+    if (!ready) return;
+    if (projectId == null && projects.length > 0) return;
     void fetchItems();
-  }, [fetchItems]);
+  }, [fetchItems, ready, projectId, projects.length]);
 
   const handleStatusFilterChange = (event: SelectChangeEvent<string>) => {
     const value = event.target.value;
@@ -149,15 +155,7 @@ const ReviewQueue: React.FC = () => {
         </Alert>
       )}
 
-      <Box sx={{ mb: 2, display: 'flex', gap: 2 }}>
-        <TextField
-          label="Project ID"
-          size="small"
-          value={projectId}
-          onChange={(e) => setProjectId(e.target.value)}
-          inputProps={{ 'aria-label': 'Project ID filter' }}
-          helperText="Required unless you are an admin"
-        />
+      <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
         <FormControl size="small" sx={{ minWidth: 160 }}>
           <InputLabel>Status</InputLabel>
           <Select value={statusFilter} label="Status" onChange={handleStatusFilterChange}>
@@ -169,10 +167,21 @@ const ReviewQueue: React.FC = () => {
             ))}
           </Select>
         </FormControl>
+        {currentProject && (
+          <Chip size="small" variant="outlined" label={`Project: ${currentProject.name}`} />
+        )}
       </Box>
 
       {items.length === 0 ? (
-        <Alert severity="info">No review items match the current filters.</Alert>
+        <EmptyState
+          icon={<SearchOffIcon />}
+          title="No review items"
+          description={
+            statusFilter === 'all'
+              ? 'Nothing is queued for manual review in this project. Items land here when a traceability rule with a "queue for review" action flags an artifact.'
+              : `No ${statusFilter} review items. Try the "All" status filter, or switch project in the header.`
+          }
+        />
       ) : (
         <TableContainer component={Paper}>
           <Table>

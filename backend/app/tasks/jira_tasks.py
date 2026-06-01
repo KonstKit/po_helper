@@ -27,9 +27,7 @@ logger = logging.getLogger(__name__)
 async def _load_active_projects() -> list[Project]:
     async with AsyncSessionLocal() as db:
         setting = (
-            await db.execute(
-                select(IntegrationSetting).where(IntegrationSetting.kind == "jira")
-            )
+            await db.execute(select(IntegrationSetting).where(IntegrationSetting.kind == "jira"))
         ).scalar_one_or_none()
         if not setting or not setting.api_token:
             return []

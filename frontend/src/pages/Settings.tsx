@@ -13,6 +13,13 @@ import {
   Tab,
   Tabs,
   Chip,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  FormHelperText,
+  Autocomplete,
+  InputAdornment,
 } from '@mui/material';
 import { Save as SaveIcon, Science as TestIcon, AutoAwesome as AutoAwesomeIcon } from '@mui/icons-material';
 import { getJiraSettings, putJiraSettings, getConfluenceSettings, putConfluenceSettings, testJiraConnection, testConfluenceConnection, testGithubConnection, testGitlabConnection, testTestrailConnection, getGithubSettings, putGithubSettings, getGitlabSettings, putGitlabSettings, getTestrailSettings, putTestrailSettings } from '../services/api';
@@ -75,6 +82,48 @@ type TestRailSettings = {
 const DEFAULT_JIRA_BASE_URL = 'https://company.atlassian.net';
 const DEFAULT_CONFLUENCE_BASE_URL = 'https://company.atlassian.net/wiki';
 
+// Common currencies for the General settings selector (ISO 4217 codes)
+const CURRENCY_OPTIONS: { code: string; label: string }[] = [
+  { code: 'USD', label: 'USD — US Dollar' },
+  { code: 'EUR', label: 'EUR — Euro' },
+  { code: 'GBP', label: 'GBP — British Pound' },
+  { code: 'JPY', label: 'JPY — Japanese Yen' },
+  { code: 'CHF', label: 'CHF — Swiss Franc' },
+  { code: 'CAD', label: 'CAD — Canadian Dollar' },
+  { code: 'AUD', label: 'AUD — Australian Dollar' },
+  { code: 'RUB', label: 'RUB — Russian Ruble' },
+  { code: 'AMD', label: 'AMD — Armenian Dram' },
+  { code: 'INR', label: 'INR — Indian Rupee' },
+  { code: 'CNY', label: 'CNY — Chinese Yuan' },
+];
+
+// Fallback IANA timezones used when Intl.supportedValuesOf is unavailable
+const FALLBACK_TIMEZONES = [
+  'UTC',
+  'Asia/Yerevan',
+  'Europe/London',
+  'Europe/Moscow',
+  'America/New_York',
+  'America/Los_Angeles',
+];
+
+function getTimezoneOptions(): string[] {
+  try {
+    const supportedValuesOf = (
+      Intl as unknown as { supportedValuesOf?: (key: string) => string[] }
+    ).supportedValuesOf;
+    if (typeof supportedValuesOf === 'function') {
+      const zones = supportedValuesOf('timeZone');
+      if (Array.isArray(zones) && zones.length > 0) {
+        return zones;
+      }
+    }
+  } catch {
+    // Intl.supportedValuesOf not available — fall through to fallback list
+  }
+  return FALLBACK_TIMEZONES;
+}
+
 function TabPanel(props: TabPanelProps) {
   const { children, value, index, ...other } = props;
 
@@ -128,6 +177,7 @@ const Settings = () => {
       timezone: detectTimezone(),
     };
   });
+  const [timezoneOptions] = useState<string[]>(() => getTimezoneOptions());
   const [message, setMessage] = useState<MessageState | null>(null);
   // Git providers
   const [githubSettings, setGithubSettings] = useState<GitProviderSettings>({ baseUrl: '', apiToken: '', webhookSecret: '' });
@@ -756,39 +806,65 @@ const saveJiraSettings = async () => {
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Currency"
-                value={generalSettings.currency}
-                onChange={(e) => handleGeneralSettingsChange('currency', e.target.value)}
-                helperText={
-                  smartDefaults
+              <FormControl fullWidth>
+                <InputLabel id="currency-select-label">Currency</InputLabel>
+                <Select
+                  labelId="currency-select-label"
+                  label="Currency"
+                  value={generalSettings.currency}
+                  onChange={(e) => handleGeneralSettingsChange('currency', e.target.value)}
+                  endAdornment={
+                    smartDefaults ? (
+                      <InputAdornment position="end" sx={{ mr: 3 }}>
+                        <AutoAwesomeIcon fontSize="small" color="action" />
+                      </InputAdornment>
+                    ) : undefined
+                  }
+                >
+                  {/* Preserve a previously saved value that isn't in the common list */}
+                  {generalSettings.currency &&
+                    !CURRENCY_OPTIONS.some((c) => c.code === generalSettings.currency) && (
+                      <MenuItem value={generalSettings.currency}>
+                        {generalSettings.currency}
+                      </MenuItem>
+                    )}
+                  {CURRENCY_OPTIONS.map((c) => (
+                    <MenuItem key={c.code} value={c.code}>
+                      {c.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+                <FormHelperText>
+                  {smartDefaults
                     ? `Detected from browser locale (${smartDefaults.currency})`
-                    : "Currency for budget calculations"
-                }
-                InputProps={{
-                  endAdornment: smartDefaults && (
-                    <AutoAwesomeIcon fontSize="small" color="action" sx={{ mr: 1 }} />
-                  ),
-                }}
-              />
+                    : 'Currency for budget calculations'}
+                </FormHelperText>
+              </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Timezone"
-                value={generalSettings.timezone}
-                onChange={(e) => handleGeneralSettingsChange('timezone', e.target.value)}
-                helperText={
-                  smartDefaults
-                    ? `Detected from browser (${smartDefaults.timezone})`
-                    : "Your local timezone"
+              <Autocomplete
+                options={
+                  generalSettings.timezone &&
+                  !timezoneOptions.includes(generalSettings.timezone)
+                    ? [generalSettings.timezone, ...timezoneOptions]
+                    : timezoneOptions
                 }
-                InputProps={{
-                  endAdornment: smartDefaults && (
-                    <AutoAwesomeIcon fontSize="small" color="action" sx={{ mr: 1 }} />
-                  ),
-                }}
+                value={generalSettings.timezone || null}
+                onChange={(_, newValue) =>
+                  handleGeneralSettingsChange('timezone', newValue ?? '')
+                }
+                autoHighlight
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Timezone"
+                    helperText={
+                      smartDefaults
+                        ? `Detected from browser (${smartDefaults.timezone})`
+                        : 'Your local timezone'
+                    }
+                  />
+                )}
               />
             </Grid>
             <Grid item xs={12}>

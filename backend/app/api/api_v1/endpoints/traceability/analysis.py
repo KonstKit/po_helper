@@ -75,7 +75,9 @@ async def _traverse_chain(
             )
 
         if min_confidence > 0:
-            link_query = link_query.where(confidence_filter(ArtifactLink.confidence, min_confidence))
+            link_query = link_query.where(
+                confidence_filter(ArtifactLink.confidence, min_confidence)
+            )
 
         if project_id is not None:
             link_query = link_query.where(ArtifactLink.project_id == project_id)
@@ -473,7 +475,7 @@ async def get_impact_analysis(
             _reason = _rec.get("reason")
             recommendation_texts.append(f"{_action} — {_reason}" if _reason else _action)
         else:
-            recommendation_texts.append(str(_rec))
+            recommendation_texts.append(str(_rec))  # type: ignore[unreachable]
 
     payload = {
         "source_artifact_id": start.id,

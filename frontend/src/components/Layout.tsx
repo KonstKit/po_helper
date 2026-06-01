@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar,
   Box,
@@ -38,12 +38,55 @@ import {
   ExpandMore,
   Speed as SprintCapacityIcon,
 } from '@mui/icons-material';
-import { Collapse } from '@mui/material';
-import { useDispatch } from 'react-redux';
+import { Collapse, Stack } from '@mui/material';
+import { useDispatch, useSelector } from 'react-redux';
 import { performLogout } from '../utils/logout';
 import { readStoredJson, writeStoredJson } from '../utils/browserStorage';
+import ProjectSelector from './common/ProjectSelector';
+import type { RootState } from '../store/store';
 
 const drawerWidth = 240;
+
+// Canonical page titles for the header (UX review M1/M2): one vocabulary shared
+// with the sidebar, so the header title always matches where the user is.
+const ROUTE_TITLES: Record<string, string> = {
+  '/': 'Dashboard',
+  '/projects': 'Projects',
+  '/tasks': 'Tasks',
+  '/analytics': 'Analytics',
+  '/sprint-capacity': 'Sprint Capacity',
+  '/knowledge': 'Knowledge',
+  '/traceability': 'Traceability',
+  '/traceability/visualization': 'D3 Visualization',
+  '/traceability/flow-builder': 'Rule Builder',
+  '/traceability/rules': 'Rules',
+  '/traceability/review': 'Review Queue',
+  '/traceability/history': 'Execution History',
+  '/quality': 'Quality',
+  '/testing': 'Test Results',
+  '/jira-fields': 'Jira Fields',
+  '/settings': 'Settings',
+  '/profile': 'Profile',
+};
+
+// The header project selector is shown ONLY on routes that actually consume the
+// global selection (codex P2). Showing it elsewhere (Quality, Tasks, Sprint
+// Capacity, Project Details, Knowledge) was misleading: those pages keep their
+// own/local project state, so changing it in the header did nothing visible.
+// Dashboard ('/') is handled as an exact match in `showProjectSelector` below.
+const PROJECT_SELECTOR_ROUTES = ['/analytics', '/traceability/visualization', '/traceability/review'];
+
+function resolveRouteTitle(pathname: string): string {
+  if (/^\/projects\/[^/]+/.test(pathname)) return 'Project Details';
+  const keys = Object.keys(ROUTE_TITLES).sort((a, b) => b.length - a.length);
+  for (const k of keys) {
+    if (pathname === k || (k !== '/' && pathname.startsWith(k + '/')) || pathname.startsWith(k)) {
+      if (k === '/' && pathname !== '/') continue;
+      return ROUTE_TITLES[k];
+    }
+  }
+  return 'PO Helper';
+}
 
 interface NavigationItem {
   text: string;
@@ -107,6 +150,13 @@ export default function Layout() {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const location = useLocation();
+  const user = useSelector((s: RootState) => s.auth.user);
+  const pageTitle = resolveRouteTitle(location.pathname);
+  const showProjectSelector =
+    location.pathname === '/' ||
+    PROJECT_SELECTOR_ROUTES.some((p) => location.pathname.startsWith(p));
+  const userName = user?.full_name || user?.username || user?.email || 'Account';
 
   // Load collapsed state from localStorage
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
@@ -250,32 +300,53 @@ export default function Layout() {
           ml: { sm: `${drawerWidth}px` },
         }}
       >
-        <Toolbar>
+        <Toolbar sx={{ gap: 1 }}>
           <IconButton
             color="inherit"
             aria-label="open drawer"
             edge="start"
             onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: { sm: 'none' } }}
+            sx={{ mr: 1, display: { sm: 'none' } }}
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            Product Owner Helper
+          <Typography variant="h6" noWrap component="h1" sx={{ flexGrow: 1, fontWeight: 600 }}>
+            {pageTitle}
           </Typography>
-          <IconButton onClick={handleMenuClick} sx={{ p: 0 }}>
-            <Avatar sx={{ bgcolor: 'secondary.main' }}>
-              <PersonIcon />
-            </Avatar>
+          {showProjectSelector && <ProjectSelector compact />}
+          <IconButton onClick={handleMenuClick} sx={{ ml: 1, borderRadius: 2 }} aria-label="account menu">
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Avatar sx={{ bgcolor: 'secondary.main', width: 32, height: 32 }}>
+                <PersonIcon fontSize="small" />
+              </Avatar>
+              <Typography
+                variant="body2"
+                sx={{ display: { xs: 'none', md: 'block' }, maxWidth: 160, color: 'text.primary' }}
+                noWrap
+              >
+                {userName}
+              </Typography>
+            </Stack>
           </IconButton>
           <Menu
             anchorEl={anchorEl}
             open={Boolean(anchorEl)}
             onClose={handleMenuClose}
           >
-            <MenuItem onClick={() => { handleMenuClose(); navigate('/profile'); }}>Profile</MenuItem>
+            <MenuItem disabled sx={{ opacity: '1 !important', display: 'block', py: 1 }}>
+              <Typography variant="subtitle2" noWrap>{userName}</Typography>
+              {user?.email && (
+                <Typography variant="caption" color="text.secondary" noWrap component="div">
+                  {user.email}
+                </Typography>
+              )}
+            </MenuItem>
+            <Divider />
+            <MenuItem onClick={() => { handleMenuClose(); navigate('/profile'); }}>
+              <PersonIcon sx={{ mr: 1 }} fontSize="small" /> Profile
+            </MenuItem>
             <MenuItem onClick={handleLogout}>
-              <LogoutIcon sx={{ mr: 1 }} /> Logout
+              <LogoutIcon sx={{ mr: 1 }} fontSize="small" /> Logout
             </MenuItem>
           </Menu>
         </Toolbar>

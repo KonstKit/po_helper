@@ -40,9 +40,7 @@ async def testrail_status(
     overrides = await get_connector_overrides(db, project_id, "testrail")
     override_settings = overrides.settings if overrides else {}
 
-    base_url = (
-        override_settings.get("base_url") or (row.base_url if row and row.base_url else None)
-    )
+    base_url = override_settings.get("base_url") or (row.base_url if row and row.base_url else None)
     has_token = bool(
         override_settings.get("api_token")
         or override_settings.get("token")
@@ -143,7 +141,7 @@ async def sync_testrail(
         lookback_days=lookback_days,
         trigger="manual",
     )
-    payload = {"sync": asdict(result)}
+    payload: dict = {"sync": asdict(result)}
 
     if link:
         try:

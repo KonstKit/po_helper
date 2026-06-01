@@ -289,7 +289,10 @@ const Login = () => {
             >
               Sign In
             </Button>
-            <Divider sx={{ my: 2 }}>OR</Divider>
+            {/* Divider only when an alternative (SSO) sign-in method follows */}
+            {(oauthProviders?.google || oauthProviders?.microsoft) && (
+              <Divider sx={{ my: 2 }} />
+            )}
 
             {/* OAuth2 SSO Buttons */}
             {oauthProviders?.google && (

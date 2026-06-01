@@ -57,6 +57,9 @@ import { getErrorMessage, logError } from '../../utils/errorUtils';
 interface SyncHealthDashboardProps {
   projectId?: number;
   onProjectSelect?: (projectId: number | undefined) => void;
+  /** When false, hides the "All Projects" option — used where the page is scoped
+   * to the single global project, so an "all" selection would be a no-op (codex P2). */
+  allowAllProjects?: boolean;
 }
 
 const HEALTH_COLORS: Record<string, string> = {
@@ -114,6 +117,7 @@ const healthSummaryText = (healthData: SyncHealthResponse): string =>
 const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
   projectId: initialProjectId,
   onProjectSelect,
+  allowAllProjects = true,
 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -332,7 +336,7 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
                             Coverage
                           </Typography>
                           <Typography variant="body2">
-                            {detailedData.link_coverage.coverage_pct.toFixed(1)}%
+                            {(detailedData.link_coverage.coverage_pct ?? 0).toFixed(1)}%
                           </Typography>
                         </Stack>
                         <LinearProgress
@@ -424,7 +428,7 @@ const SyncHealthDashboard: React.FC<SyncHealthDashboardProps> = ({
               label="Filter by Project"
               onChange={(e: SelectChangeEvent) => handleProjectChange(parseProjectValue(e.target.value))}
             >
-              <MenuItem value="">All Projects</MenuItem>
+              {allowAllProjects && <MenuItem value="">All Projects</MenuItem>}
               {projects.map((p) => (
                 <MenuItem key={p.id} value={String(p.id)}>
                   {p.name || p.jira_key}

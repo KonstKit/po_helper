@@ -1,10 +1,9 @@
 import type { ChartData } from 'chart.js';
-import type { KPIMetric } from '../../components/KPIBar';
 import type { VelocityDataPoint } from '../../components/VelocityChart';
 import type { BurndownResponse, VelocityResponse } from '../../services/api';
 import { categorizeStatus, isDoneStatus } from '../../hooks/useTaskStatuses';
 import type { Task } from '../../store/taskSlice';
-import type { DateRangeOption } from './dashboardContract';
+import type { DateRangeOption, KPIMetric } from './dashboardContract';
 import { getDateRangeDays } from './dashboardContract';
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
@@ -536,6 +535,35 @@ export const formatDueDate = (value?: string | null): string => {
   return parsed.toLocaleDateString();
 };
 
+// Minimum week-over-week percentage swing before the velocity tile treats the
+// change as a real up/down move. Below this it reads as flat (neutral), so the
+// arrow, the change colour and the status badge never contradict each other.
+const VELOCITY_CHANGE_EPSILON = 0.5;
+
+type KpiStatus = NonNullable<KPIMetric['status']>;
+type KpiTrend = NonNullable<KPIMetric['trend']>;
+
+/**
+ * Semantic status for a "higher is better" completion-style percentage (M9).
+ * green = on track, amber = at risk, red = below threshold.
+ */
+export const resolveCompletionStatus = (percent: number): KpiStatus => {
+  if (percent >= 80) return 'success';
+  if (percent >= 60) return 'warning';
+  return 'error';
+};
+
+/**
+ * Semantic status for a "lower is better" problem count such as overdue +
+ * blocked tasks (M9). Zero is the *absence* of a problem, so it reads as
+ * neutral/informational rather than an accidental green success.
+ */
+export const resolveAtRiskStatus = (count: number): KpiStatus => {
+  if (count <= 0) return 'neutral';
+  if (count < 5) return 'warning';
+  return 'error';
+};
+
 export const buildKpiMetrics = (
   stats: DashboardStats,
   velocitySeries: number[],
@@ -555,40 +583,46 @@ export const buildKpiMetrics = (
   const isPartialScope = options?.isPartialScope === true;
   const velocityValue = typeof options?.velocityValue === 'number' ? options.velocityValue : stats.velocity;
 
+  // C3: when a week-over-week change percentage is shown, derive the tile's
+  // arrow + status from the SIGN of that change so they can never disagree with
+  // the number rendered next to them (no "down arrow / increasing"). When there
+  // is no comparable prior week, no change % is shown, so we can safely fall
+  // back to the longer-term API trend for the arrow without contradiction.
+  const hasVelocityChange = velocitySeries.length >= 2;
+  const velocityKpiTrend: KpiTrend = !hasVelocityChange
+    ? velocityTrend
+    : velocityChange > VELOCITY_CHANGE_EPSILON
+      ? 'up'
+      : velocityChange < -VELOCITY_CHANGE_EPSILON
+        ? 'down'
+        : 'flat';
+  const velocityKpiStatus: KpiStatus =
+    velocityKpiTrend === 'up' ? 'success' : velocityKpiTrend === 'down' ? 'warning' : 'neutral';
+  const atRiskCount = overdueTasks.length + activeBlockers.length;
+
   return [
     {
       label: 'Velocity',
       value: velocityValue,
       unit: 'hrs',
-      change: velocityChange,
-      trend: velocityTrend,
-      status: velocityTrend === 'up' ? 'success' : velocityTrend === 'down' ? 'warning' : 'neutral',
-      tooltip: 'Total hours completed in last 2 weeks',
+      change: hasVelocityChange ? velocityChange : undefined,
+      trend: velocityKpiTrend,
+      status: velocityKpiStatus,
+      tooltip: 'Hours completed in the last 2 weeks vs the prior week',
     },
     {
       label: 'On Time',
       value: isPartialScope ? '--' : completionRate,
       unit: isPartialScope ? undefined : '%',
-      status: isPartialScope
-        ? 'neutral'
-        : completionRate >= 80
-          ? 'success'
-          : completionRate >= 60
-            ? 'warning'
-            : 'error',
+      status: isPartialScope ? 'neutral' : resolveCompletionStatus(completionRate),
       tooltip: isPartialScope
         ? 'Task completion rate hidden because only partial task scope is loaded.'
         : 'Task completion rate',
     },
     {
       label: 'At Risk',
-      value: overdueTasks.length + activeBlockers.length,
-      status:
-        overdueTasks.length + activeBlockers.length === 0
-          ? 'success'
-          : overdueTasks.length + activeBlockers.length < 5
-            ? 'warning'
-            : 'error',
+      value: atRiskCount,
+      status: resolveAtRiskStatus(atRiskCount),
       tooltip: isPartialScope
         ? 'Overdue and blocked tasks (partial scope).'
         : 'Overdue and blocked tasks',
