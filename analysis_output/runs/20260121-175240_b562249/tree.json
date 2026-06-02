@@ -3,23 +3,6 @@
   "loc_total": 2427943,
   "loc_nonempty": 2410619,
   "folders": {
-    ".claude": {
-      "path": ".claude",
-      "loc_total": 39,
-      "loc_nonempty": 38,
-      "folders": {},
-      "files": {
-        "settings.local.json": {
-          "path": ".claude/settings.local.json",
-          "target": "prod",
-          "language": "JSON",
-          "loc_total": 39,
-          "loc_nonempty": 38,
-          "types": [],
-          "top_level_methods": []
-        }
-      }
-    },
     ".github": {
       "path": ".github",
       "loc_total": 19,
