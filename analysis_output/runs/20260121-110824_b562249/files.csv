@@ -1,5 +1,4 @@
 path,target,language,extension,loc_total,loc_nonempty,bytes,sha256
-.claude/settings.local.json,prod,JSON,.json,38,38,3098,e4f466e34ce8ad01b5b033f2de6f4df25e9ff071ac3cc01d66364a242cb4d209
 .env,unknown,Unknown,,70,56,1744,46cca8c7c23638c78833dbdb88c0a7e1b7e31a1e892d085becb5b786a6094dd3
 .env.example,unknown,Unknown,.example,40,33,935,ed643476e9d9f463ab1f9d5db2af367c6bd66932902cbb204c5df845c4300014
 .gitignore,unknown,Unknown,,89,76,910,8701d2a41943cae6de86b63585ca5fe9a2f774f607cb4b9603e7787c0afd0598
