@@ -80,6 +80,13 @@ const TraceabilityVisualization: React.FC = () => {
   // artifact Autocomplete and to seed a sensible default graph on load.
   const [artifactOptions, setArtifactOptions] = useState<ArtifactSummary[]>([]);
   const [artifactOptionsLoading, setArtifactOptionsLoading] = useState(false);
+  // Server-side search results for the artifact picker, so artifacts beyond the
+  // initial page (`artifactOptions`) remain selectable (M10). `null` = not
+  // searching → the picker falls back to `artifactOptions`.
+  const [artifactSearchResults, setArtifactSearchResults] = useState<ArtifactSummary[] | null>(null);
+  const [artifactSearchLoading, setArtifactSearchLoading] = useState(false);
+  const artifactSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const artifactSearchSeqRef = useRef(0);
   // The projectId that `artifactOptions` currently belong to. Guards the default-
   // graph effect from seeding a selection from the previous project's options in
   // the render right after a switch (before the refetch clears them).
@@ -177,6 +184,22 @@ const TraceabilityVisualization: React.FC = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  // Reset the picker's server-search state on a project switch so a previous
+  // project's matches never leak into the new project's picker (M10).
+  useEffect(() => {
+    artifactSearchSeqRef.current += 1; // cancel any in-flight search
+    setArtifactSearchResults(null);
+    setArtifactSearchLoading(false);
+  }, [projectId]);
+
+  // Clear any pending debounced search on unmount.
+  useEffect(
+    () => () => {
+      if (artifactSearchTimerRef.current) clearTimeout(artifactSearchTimerRef.current);
+    },
+    [],
+  );
 
   // Auto-load a sensible default graph when a project is active and nothing has
   // been selected yet (no URL artifact, no prior pick). This removes the friction
@@ -296,12 +319,79 @@ const TraceabilityVisualization: React.FC = () => {
   // deep-linked id that is not in the first page of options stays `null` (the
   // graph still renders by id; the picker just shows no chip for it).
   const selectedOption = useMemo(
-    () => artifactOptions.find((a) => a.id === selectedArtifactId) ?? null,
-    [artifactOptions, selectedArtifactId]
+    () =>
+      (artifactSearchResults ?? []).find((a) => a.id === selectedArtifactId) ??
+      artifactOptions.find((a) => a.id === selectedArtifactId) ??
+      null,
+    [artifactSearchResults, artifactOptions, selectedArtifactId]
   );
+
+  // What the Autocomplete shows: server-search results while searching, else the
+  // initial page. Always include the selected option so MUI can render its
+  // label even when it isn't in the current result set (M10).
+  const artifactPickerOptions = useMemo(() => {
+    const base = artifactSearchResults ?? artifactOptions;
+    if (selectedOption && !base.some((a) => a.id === selectedOption.id)) {
+      return [selectedOption, ...base];
+    }
+    return base;
+  }, [artifactSearchResults, artifactOptions, selectedOption]);
 
   const artifactOptionLabel = (a: ArtifactSummary) =>
     `${a.display_key || a.external_id}${a.title ? ` — ${a.title}` : ''}`;
+
+  // Server-side artifact search for the picker so artifacts beyond the initial
+  // page are selectable (M10). The matrix endpoint's `search_query` matches
+  // title/key/external_id. The sequence ref drops out-of-order responses; the
+  // project-switch effect cancels in-flight searches.
+  const runArtifactSearch = useCallback(
+    (query: string) => {
+      if (projectId == null) return;
+      setArtifactSearchLoading(true);
+      const seq = (artifactSearchSeqRef.current += 1);
+      getRTMMatrix({ projectId, searchQuery: query, rowLimit: 50, colLimit: 1 })
+        .then((res) => {
+          if (seq !== artifactSearchSeqRef.current) return;
+          setArtifactSearchResults(Array.isArray(res?.rows) ? res.rows : []);
+        })
+        .catch((error) => {
+          if (seq !== artifactSearchSeqRef.current) return;
+          logError('Failed to search artifacts for traceability picker', error);
+          setArtifactSearchResults([]);
+        })
+        .finally(() => {
+          if (seq === artifactSearchSeqRef.current) setArtifactSearchLoading(false);
+        });
+    },
+    [projectId]
+  );
+
+  const handleArtifactInputChange = useCallback(
+    (_event: React.SyntheticEvent, value: string, reason: string) => {
+      if (artifactSearchTimerRef.current) {
+        clearTimeout(artifactSearchTimerRef.current);
+      }
+      // Picking an option emits reason 'reset' — ignore it so a selection does
+      // not fire a search. 'clear' (the X) and an emptied input revert to the
+      // initial page of options.
+      if (reason === 'clear') {
+        artifactSearchSeqRef.current += 1;
+        setArtifactSearchResults(null);
+        setArtifactSearchLoading(false);
+        return;
+      }
+      if (reason !== 'input') return;
+      const query = value.trim();
+      if (query === '') {
+        artifactSearchSeqRef.current += 1;
+        setArtifactSearchResults(null);
+        setArtifactSearchLoading(false);
+        return;
+      }
+      artifactSearchTimerRef.current = setTimeout(() => runArtifactSearch(query), 300);
+    },
+    [runArtifactSearch]
+  );
 
   // Child panels and APIs expect `number | undefined`; the global hook yields
   // `number | null`. Normalize once for all downstream call sites.
@@ -337,10 +427,12 @@ const TraceabilityVisualization: React.FC = () => {
           <Autocomplete<ArtifactSummary>
             size="small"
             sx={{ minWidth: 320, flexGrow: 1 }}
-            options={artifactOptions}
-            loading={artifactOptionsLoading}
+            options={artifactPickerOptions}
+            loading={artifactOptionsLoading || artifactSearchLoading}
             value={selectedOption}
             onChange={(_, value) => handleArtifactPick(value)}
+            onInputChange={handleArtifactInputChange}
+            filterOptions={(opts) => opts}
             getOptionLabel={artifactOptionLabel}
             isOptionEqualToValue={(option, value) => option.id === value.id}
             noOptionsText={
