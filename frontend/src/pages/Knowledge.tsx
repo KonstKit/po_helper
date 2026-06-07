@@ -74,6 +74,9 @@ const Knowledge = () => {
   const restoredDataRef = useRef(false);
   // Guards the initial auto-load so it fires at most once per mount.
   const didAutoLoadRef = useRef(false);
+  // Skips the persist effect's first run so it cannot write the initial (empty)
+  // state over the just-restored snapshot before restore's updates apply (M6).
+  const persistInitializedRef = useRef(false);
 
   // Restore state on mount
   useEffect(() => {
@@ -111,6 +114,15 @@ const Knowledge = () => {
 
   // Persist state on change
   useEffect(() => {
+    // Skip the first run: on mount the restore effect's setState()s are
+    // scheduled but not yet applied, so this closure still holds the initial
+    // (empty) state. Writing it would transiently clobber the just-restored
+    // snapshot (it self-corrects on the next render, but risks loss on a fast
+    // unmount and double-writes on every mount).
+    if (!persistInitializedRef.current) {
+      persistInitializedRef.current = true;
+      return;
+    }
     const snapshot = {
       spaceQuery,
       spaces,
