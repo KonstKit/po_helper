@@ -34,6 +34,7 @@ const Traceability = lazy(() => import('./pages/Traceability'));
 const TraceabilityFlowBuilder = lazy(() => import('./pages/TraceabilityFlowBuilder'));
 const TraceabilityExecutionHistory = lazy(() => import('./pages/TraceabilityExecutionHistory'));
 const TraceabilityVisualization = lazy(() => import('./pages/TraceabilityVisualization'));
+const TraceabilitySyncHealth = lazy(() => import('./pages/TraceabilitySyncHealth'));
 const RulesManagement = lazy(() => import('./pages/RulesManagement'));
 const ReviewQueue = lazy(() => import('./pages/ReviewQueue'));
 const SprintCapacity = lazy(() => import('./pages/SprintCapacity'));
@@ -177,6 +178,7 @@ function App() {
               <Route path="traceability/flow-builder" element={<TraceabilityFlowBuilder />} />
               <Route path="traceability/history" element={<TraceabilityExecutionHistory />} />
               <Route path="traceability/visualization" element={<TraceabilityVisualization />} />
+              <Route path="traceability/sync-health" element={<TraceabilitySyncHealth />} />
               <Route path="traceability/rules" element={<RulesManagement />} />
               <Route path="traceability/review" element={<ReviewQueue />} />
               <Route path="sprint-capacity" element={<SprintCapacity />} />
