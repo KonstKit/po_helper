@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar,
@@ -37,6 +37,7 @@ import {
   ExpandLess,
   ExpandMore,
   Speed as SprintCapacityIcon,
+  MonitorHeart as SyncHealthIcon,
 } from '@mui/icons-material';
 import { Collapse, Stack } from '@mui/material';
 import { useDispatch, useSelector } from 'react-redux';
@@ -93,6 +94,8 @@ interface NavigationItem {
   icon: React.ReactNode;
   path: string;
   children?: NavigationItem[];
+  /** When true, only shown to admins (is_superuser). */
+  adminOnly?: boolean;
 }
 
 interface NavigationGroup {
@@ -125,6 +128,12 @@ const navigationGroups: NavigationGroup[] = [
           { text: 'Rules', icon: <AssignmentIcon />, path: '/traceability/rules' },
           { text: 'Review Queue', icon: <QualityIcon />, path: '/traceability/review' },
           { text: 'Execution History', icon: <HistoryIcon />, path: '/traceability/history' },
+          {
+            text: 'Sync Health (All Projects)',
+            icon: <SyncHealthIcon />,
+            path: '/traceability/sync-health',
+            adminOnly: true,
+          },
         ],
       },
       { text: 'Quality', icon: <QualityIcon />, path: '/quality' },
@@ -152,6 +161,24 @@ export default function Layout() {
   const dispatch = useDispatch();
   const location = useLocation();
   const user = useSelector((s: RootState) => s.auth.user);
+  const isAdmin = Boolean(user?.is_superuser);
+  // Hide admin-only entries (e.g. cross-project Sync Health) from non-admins.
+  const visibleGroups = useMemo(
+    () =>
+      navigationGroups
+        .map((group) => ({
+          ...group,
+          items: group.items
+            .filter((item) => isAdmin || !item.adminOnly)
+            .map((item) =>
+              item.children
+                ? { ...item, children: item.children.filter((child) => isAdmin || !child.adminOnly) }
+                : item,
+            ),
+        }))
+        .filter((group) => group.items.length > 0),
+    [isAdmin],
+  );
   const pageTitle = resolveRouteTitle(location.pathname);
   const showProjectSelector =
     location.pathname === '/' ||
@@ -208,7 +235,7 @@ export default function Layout() {
       </Toolbar>
       <Divider />
       <List>
-        {navigationGroups.map((group, groupIndex) => (
+        {visibleGroups.map((group, groupIndex) => (
           <React.Fragment key={groupIndex}>
             {/* Primary navigation (no label, always visible) */}
             {!group.label && (
