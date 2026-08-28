@@ -5,6 +5,7 @@ from contextlib import contextmanager, asynccontextmanager
 from typing import Optional, Dict, Any, Type
 
 from fastapi import HTTPException
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
 
@@ -129,10 +130,12 @@ def handle_api_error(
             logger.error("%s: %s (%s)", log_message, str(e), exception_type, exc_info=True)
 
         # Raise HTTPException. Client-facing (4xx) domain errors keep their
-        # message; server-side failures (5xx) return a generic detail so
-        # internals (DB errors, stack traces, hostnames) never leak.
-        if http_status >= 500:
-            detail = "Internal server error. Check server logs for details."
+        # message; internal failures (5xx, any DB/driver error) return a
+        # generic detail so constraint names, SQL fragments and hostnames
+        # never leak. SQLAlchemy exceptions can map to 409 (IntegrityError)
+        # and must be sanitized the same way as 500s.
+        if http_status >= 500 or isinstance(e, SQLAlchemyError):
+            detail = "Request could not be completed. Check server logs for details."
         else:
             detail = str(e) if str(e) else f"{exception_type} occurred"
         raise HTTPException(status_code=http_status, detail=detail)
@@ -216,8 +219,8 @@ async def async_handle_api_error(
         else:
             logger.error("%s: %s (%s)", log_message, str(e), exception_type, exc_info=True)
 
-        if http_status >= 500:
-            detail = "Internal server error. Check server logs for details."
+        if http_status >= 500 or isinstance(e, SQLAlchemyError):
+            detail = "Request could not be completed. Check server logs for details."
         else:
             detail = str(e) if str(e) else f"{exception_type} occurred"
         raise HTTPException(status_code=http_status, detail=detail)
