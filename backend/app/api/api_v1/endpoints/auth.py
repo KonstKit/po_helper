@@ -1,4 +1,5 @@
 from datetime import timedelta
+import hmac
 import logging
 from typing import Any, Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query, Response
@@ -28,6 +29,7 @@ from app.core.oauth_state import (
     validate_redirect_uri_override,
     verify_oauth_state,
 )
+from app.core.ws_tickets import issue_ws_ticket
 from app.core.mfa import (
     setup_mfa,
     verify_totp,
@@ -203,6 +205,29 @@ async def login(
     # Validate via response model, then return as Response for SlowAPI headers
     token_payload = Token(access_token=access_token, token_type="bearer").model_dump()
     return JSONResponse(content=token_payload)
+
+
+class WSTicketResponse(BaseModel):
+    """Single-use ticket for the WebSocket handshake (see app/core/ws_tickets.py)."""
+
+    ticket: str
+    expires_in: int
+
+
+@router.post("/ws-ticket", response_model=WSTicketResponse)
+async def issue_websocket_ticket(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+) -> WSTicketResponse:
+    """Exchange the caller's JWT for a one-time WS ticket.
+
+    Browsers cannot set headers on a WebSocket handshake; passing this
+    short-lived ticket in the query string keeps the long-lived JWT out
+    of URLs (proxy/access logs, DevTools network capture).
+    """
+    ticket = issue_ws_ticket(current_user.email)
+    response.headers["Cache-Control"] = "no-store"
+    return WSTicketResponse(ticket=ticket, expires_in=60)
 
 
 @router.post("/scoped-token", response_model=Token)
@@ -394,6 +419,7 @@ async def google_oauth_start(
 @router.get("/oauth2/google/callback")
 async def google_oauth_callback(
     request: Request,
+    response: Response,
     code: str = Query(..., description="Authorization code from Google"),
     state: str = Query(..., description="State parameter for CSRF protection"),
     db: AsyncSession = Depends(get_db),
@@ -402,7 +428,7 @@ async def google_oauth_callback(
     Handle Google OAuth2 callback.
     Exchanges code for tokens and creates/links user account.
     """
-    redirect_override = _verify_oauth_callback_state(request, state, "google")
+    redirect_override = _verify_oauth_callback_state(request, response, state, "google")
     try:
         client = (
             type(google_oauth)(redirect_uri=redirect_override)
@@ -475,6 +501,7 @@ async def microsoft_oauth_start(
 @router.get("/oauth2/microsoft/callback")
 async def microsoft_oauth_callback(
     request: Request,
+    response: Response,
     code: str = Query(..., description="Authorization code from Microsoft"),
     state: str = Query(..., description="State parameter for CSRF protection"),
     db: AsyncSession = Depends(get_db),
@@ -483,7 +510,7 @@ async def microsoft_oauth_callback(
     Handle Microsoft OAuth2 callback.
     Exchanges code for tokens and creates/links user account.
     """
-    redirect_override = _verify_oauth_callback_state(request, state, "microsoft")
+    redirect_override = _verify_oauth_callback_state(request, response, state, "microsoft")
     try:
         client = (
             type(microsoft_oauth)(redirect_uri=redirect_override)
@@ -526,19 +553,31 @@ async def microsoft_oauth_callback(
 
 def _set_oauth_state_cookie(response: Response, state: str, request: Request) -> None:
     """Bind the OAuth state to the browser that started the flow."""
+    # Behind a TLS-terminating proxy the ASGI scheme is http; trust the
+    # forwarded protocol header so the cookie stays Secure in production.
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    scheme = (
+        forwarded_proto.split(",")[0].strip().lower()
+        if forwarded_proto
+        else request.url.scheme
+    )
     response.set_cookie(
         OAUTH_STATE_COOKIE,
         state,
         max_age=settings.OAUTH_STATE_MAX_AGE_SECONDS,
         httponly=True,
         samesite="lax",
-        secure=request.url.scheme == "https",
+        secure=scheme == "https",
         path="/",
     )
 
 
+def _clear_oauth_state_cookie(response: Response) -> None:
+    response.delete_cookie(OAUTH_STATE_COOKIE, path="/")
+
+
 def _verify_oauth_callback_state(
-    request: Request, state: str, provider: str
+    request: Request, response: Response, state: str, provider: str
 ) -> Optional[str]:
     """Reject forged, expired, or cross-browser OAuth callbacks.
 
@@ -555,13 +594,15 @@ def _verify_oauth_callback_state(
         )
 
     cookie_state = request.cookies.get(OAUTH_STATE_COOKIE)
-    if not cookie_state or cookie_state != state:
+    if not cookie_state or not hmac.compare_digest(cookie_state, state):
         logger.warning("OAuth state cookie mismatch (%s)", provider)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="OAuth2 state validation failed",
         )
 
+    # Single-use: consume the binding cookie once the flow completes.
+    _clear_oauth_state_cookie(response)
     return payload.get("redirect_uri")
 
 

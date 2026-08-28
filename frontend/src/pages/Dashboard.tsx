@@ -32,8 +32,7 @@ import {
   type SprintWipStatus,
   type VelocityResponse,
   type ValueMetricsResponse,
-  buildWebSocketUrl,
-} from '../services/api';
+  openWebSocket,} from '../services/api';
 import DashboardSkeleton from '../components/DashboardSkeleton';
 import EmptyState from '../components/EmptyState';
 import { DashboardFilters } from '../components/DashboardFilters';
@@ -449,41 +448,58 @@ const Dashboard: React.FC = () => {
       return;
     }
 
-    const socket = new WebSocket(buildWebSocketUrl());
-    wsRef.current = socket;
+    let disposed = false;
+    let socket: WebSocket | null = null;
 
-    socket.onmessage = async (event) => {
-      try {
-        const message = JSON.parse(event.data || '{}');
-        if (message?.type === 'jira_sync_complete' && Number(message?.project_id) === currentProjectId) {
-          await dispatch(loadProjectData({ projectId: currentProjectId, force: true }));
-          await refreshProjectMetricsRef.current?.();
-          setLoadError(null);
-        } else if (message?.type === 'jira_sync_failed' && Number(message?.project_id) === currentProjectId) {
-          const detail = typeof message?.detail === 'string' ? message.detail : '';
-          setLoadError(detail ? `Background sync failed: ${detail}` : 'Background sync failed.');
+    void (async () => {
+      const opened = await openWebSocket();
+      if (disposed || !opened) return;
+      socket = opened;
+      if (wsRef.current) {
+        try {
+          wsRef.current.close();
+        } catch (error) {
+          emitDashboardRuntimeWarning('websocketCloseFailed', {
+            error: toErrorMessage(error),
+          });
         }
-      } catch (error) {
-        emitDashboardRuntimeWarning('websocketMessageFailed', {
+      }
+      wsRef.current = opened;
+
+      opened.onmessage = async (event) => {
+        try {
+          const message = JSON.parse(event.data || '{}');
+          if (message?.type === 'jira_sync_complete' && Number(message?.project_id) === currentProjectId) {
+            await dispatch(loadProjectData({ projectId: currentProjectId, force: true }));
+            await refreshProjectMetricsRef.current?.();
+            setLoadError(null);
+          } else if (message?.type === 'jira_sync_failed' && Number(message?.project_id) === currentProjectId) {
+            const detail = typeof message?.detail === 'string' ? message.detail : '';
+            setLoadError(detail ? `Background sync failed: ${detail}` : 'Background sync failed.');
+          }
+        } catch (error) {
+          emitDashboardRuntimeWarning('websocketMessageFailed', {
+            error: toErrorMessage(error),
+          });
+        }
+      };
+
+      opened.onerror = (error) => {
+        emitDashboardRuntimeWarning('websocketError', {
           error: toErrorMessage(error),
         });
-      }
-    };
+      };
 
-    socket.onerror = (error) => {
-      emitDashboardRuntimeWarning('websocketError', {
-        error: toErrorMessage(error),
-      });
-    };
-
-    socket.onclose = () => {
-      if (wsRef.current === socket) {
-        wsRef.current = null;
-      }
-    };
+      opened.onclose = () => {
+        if (wsRef.current === opened) {
+          wsRef.current = null;
+        }
+      };
+    })();
 
     return () => {
-      if (wsRef.current === socket) {
+      disposed = true;
+      if (wsRef.current === socket && socket) {
         try {
           socket.close();
         } catch (error) {
