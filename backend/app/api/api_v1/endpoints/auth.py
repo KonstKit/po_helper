@@ -743,7 +743,7 @@ class MFASetupResponse(BaseModel):
 class MFAVerifyRequest(BaseModel):
     """Request to verify MFA code (authenticated MFA management endpoints)."""
 
-    code: str = Field(..., min_length=6, max_length=12, description="6-digit TOTP or backup code")
+    code: str = Field(..., min_length=6, max_length=32, description="6-digit TOTP or backup code")
 
 
 class MFALoginVerifyRequest(BaseModel):
@@ -753,7 +753,7 @@ class MFALoginVerifyRequest(BaseModel):
     (proxy/access logs).
     """
 
-    code: str = Field(..., min_length=6, max_length=12, description="6-digit TOTP or backup code")
+    code: str = Field(..., min_length=6, max_length=32, description="6-digit TOTP or backup code")
     temp_token: str = Field(
         ...,
         min_length=1,

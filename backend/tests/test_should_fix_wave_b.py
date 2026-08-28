@@ -247,6 +247,45 @@ async def test_legacy_plaintext_mfa_storage_upgraded_on_use(client, monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_new_backup_code_usable_through_the_api(client):
+    """Codex r2 MF1 regression: 19-char backup codes must pass DTO
+    validation and complete a real MFA login through the HTTP path."""
+    import time as _time
+    from datetime import datetime
+
+    token = await _register_and_login(client, "mfa-bc@example.com", "mfa_bc_user")
+    with _real_integration_access():
+        setup = await client.post(
+            "/api/v1/auth/mfa/setup", headers={"Authorization": f"Bearer {token}"}
+        )
+    secret = setup.json()["secret"]
+    backup_code = setup.json()["backup_codes"][0]
+    assert len(backup_code) == 19  # XXXX-XXXX-XXXX-XXXX
+
+    with _real_integration_access():
+        enable = await client.post(
+            "/api/v1/auth/mfa/verify",
+            json={"code": pyotp.TOTP(secret).now()},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert enable.status_code == 200, enable.text
+
+    login = await client.post(
+        "/api/v1/auth/login",
+        data={"username": "mfa-bc@example.com", "password": "StrongPassword123!"},
+    )
+    temp_token = login.json()["temp_token"]
+
+    # TOTP consumed the current window; the backup code bypasses TOTP anyway
+    mfa_login = await client.post(
+        "/api/v1/auth/mfa/verify-login",
+        json={"code": backup_code, "temp_token": temp_token},
+    )
+    assert mfa_login.status_code == 200, mfa_login.text
+    assert mfa_login.json().get("token_type") == "bearer"
+
+
+@pytest.mark.asyncio
 async def test_concurrent_totp_claims_allow_exactly_one(client):
     """Two parallel verify-login calls with the same code: the conditional
     UPDATE must let exactly one through (Codex r1 MF2)."""
@@ -343,10 +382,14 @@ def test_migration_038_downgrade_refuses_wave_b_data():
         assert m038._wave_b_data_exists(conn) is True
         with pytest.raises(RuntimeError, match="Cannot downgrade"):
             m038.downgrade()
-        # clean the wave-B data -> downgrade path proceeds (no raise)
+        # bcrypt digests alone must also block (legacy plaintext must not)
         conn.execute(text("UPDATE users SET mfa_secret = NULL"))
+        conn.execute(text("UPDATE users SET mfa_backup_codes = '[\"$2b$12abc\"]'"))
         conn.commit()
-        assert m038._wave_b_data_exists(conn) is False
+        assert m038._wave_b_data_exists(conn) is True
+        conn.execute(text("UPDATE users SET mfa_backup_codes = '[\"ABCD-1234\"]'"))
+        conn.commit()
+        assert m038._wave_b_data_exists(conn) is False  # legacy plaintext is fine
         m038.downgrade()  # runs through the stubbed batch ops
     engine.dispose()
 
@@ -376,7 +419,11 @@ def test_compose_proxy_trust_uses_literal_static_ip():
         assert any(cfg.get("subnet") == "172.28.0.0/24" for cfg in networks)
         frontend_nets = compose["services"]["frontend"]["networks"]
         assert frontend_nets["po_net"]["ipv4_address"] == nginx_ip
-        assert "po_net" in compose["services"]["backend"]["networks"]
+        # the frontend must share ONLY po_net with the backend: two shared
+        # networks would let nginx reach backend via an untrusted source IP
+        assert list(frontend_nets.keys()) == ["po_net"], (compose_name, frontend_nets)
+        backend_nets = compose["services"]["backend"]["networks"]
+        assert "po_net" in backend_nets, backend_nets
 
 
 # ---------------------------------------------------------------------------
