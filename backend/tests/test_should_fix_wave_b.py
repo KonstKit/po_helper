@@ -23,7 +23,7 @@ from app.api.deps import _resolve_current_user
 from app.core.config import settings
 from app.core.crypto import AES_GCM_PREFIX, decrypt_str, encrypt_str
 from app.core.database import AsyncSessionLocal
-from app.core.mfa import hash_backup_codes, verify_backup_code
+from app.core.mfa import verify_backup_code
 from app.core.rate_limit import _resolve_storage_uri
 from app.main import app
 from app.models import User
@@ -250,9 +250,6 @@ async def test_legacy_plaintext_mfa_storage_upgraded_on_use(client, monkeypatch)
 async def test_new_backup_code_usable_through_the_api(client):
     """Codex r2 MF1 regression: 19-char backup codes must pass DTO
     validation and complete a real MFA login through the HTTP path."""
-    import time as _time
-    from datetime import datetime
-
     token = await _register_and_login(client, "mfa-bc@example.com", "mfa_bc_user")
     with _real_integration_access():
         setup = await client.post(
