@@ -45,6 +45,13 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Atomic lease release for get_or_set single-flight: deletes the key only
+# when it still holds the caller's token (compare-and-delete).
+_FLIGHT_RELEASE_LUA = (
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+    "return redis.call('del', KEYS[1]) else return 0 end"
+)
+
 T = TypeVar("T")
 
 
@@ -617,14 +624,15 @@ class EnhancedCacheService:
         if cached is not None:
             return cached
 
-        # Get or create lock for this key. The dict is bounded: an unused,
-        # uncontended lock is removed right away, and a hard cap protects
-        # against pathological key cardinality (a stale entry is simply
-        # replaced - waiters keep their own reference).
+        # Get or create lock for this key. Contract: the dict holds only
+        # IDLE locks up to the cap; past the cap, only currently-locked
+        # entries may survive pruning, so growth is bounded by live
+        # concurrency, never by key cardinality (idle entries are always
+        # evictable - review C-CACHE-002).
         lock = self._locks.get(key)
         if lock is None:
             if len(self._locks) >= self._MAX_PER_KEY_LOCKS:
-                self._locks = {k: v for k, v in self._locks.items() if v.locked() or k == key}
+                self._locks = {k: v for k, v in self._locks.items() if v.locked()}
             lock = self._locks.get(key) or asyncio.Lock()
             self._locks[key] = lock
 
@@ -672,10 +680,11 @@ class EnhancedCacheService:
         finally:
             if flight_token is not None and self._async_redis is not None:
                 try:
-                    # best-effort release: only delete our own lease
-                    current = await self._async_redis.get(flight_key)
-                    if current == flight_token:
-                        await self._async_redis.delete(flight_key)
+                    # Atomic compare-and-delete: a plain GET+compare+DELETE
+                    # could remove a NEW lease another worker acquired after
+                    # ours expired (review C-CACHE-001). The script deletes
+                    # the key only when it still holds our token.
+                    await self._async_redis.eval(_FLIGHT_RELEASE_LUA, 1, flight_key, flight_token)
                 except Exception as e:
                     logger.warning("Redis flight release failed (key=%s): %s", key, e)
 

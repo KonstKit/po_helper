@@ -321,37 +321,80 @@ class LinkService:
 
         # Pre-pass: drop specs whose link already exists with ONE query,
         # instead of each create_link doing its own existence round-trip.
+        # The match key mirrors create_link's dedup tuple exactly -
+        # (tenant_id, effective_project_id, from, to, link_type) - so a
+        # link that is distinct for another tenant/project is NOT skipped
+        # (review C-LINK-001). Rows whose endpoints no longer exist
+        # (broken links) are excluded from the skip set so create_link
+        # still reports the validation error for such specs.
         # Duplicates within the batch itself are still caught by
         # create_link's post-flush check (see the note above).
-        if skip_duplicates:
-            from sqlalchemy import tuple_
+        if skip_duplicates and links_data:
+            from sqlalchemy import and_ as sa_and_, exists
 
-            spec_keys = [
-                (spec["from_artifact_id"], spec["to_artifact_id"], spec["link_type"])
-                for spec in links_data
-            ]
+            from_artifact_ids = {spec["from_artifact_id"] for spec in links_data}
+            artifact_rows = (
+                await self.db.execute(
+                    select(Artifact.id, Artifact.project_id).where(
+                        Artifact.id.in_(from_artifact_ids)
+                    )
+                )
+            ).all()
+            artifact_projects: Dict[int, Optional[int]] = {row[0]: row[1] for row in artifact_rows}
+            spec_keys = []
+            for spec in links_data:
+                effective_project_id = spec.get("project_id") or artifact_projects.get(
+                    spec["from_artifact_id"]
+                )
+                spec_keys.append(
+                    (
+                        spec.get("tenant_id"),
+                        effective_project_id,
+                        spec["from_artifact_id"],
+                        spec["to_artifact_id"],
+                        spec["link_type"],
+                    )
+                )
+
+            # NULL-safe full-key match: tuple-IN cannot compare NULL
+            # tenant/project columns, so build an explicit OR of AND
+            # predicates (IS NULL where the spec value is None).
+            def _null_eq(column, value):
+                return column.is_(None) if value is None else column == value
+
+            match = or_(
+                *[
+                    sa_and_(
+                        _null_eq(ArtifactLink.tenant_id, tenant),
+                        _null_eq(ArtifactLink.project_id, project),
+                        ArtifactLink.from_artifact_id == from_id,
+                        ArtifactLink.to_artifact_id == to_id,
+                        ArtifactLink.link_type == link_type,
+                    )
+                    for tenant, project, from_id, to_id, link_type in spec_keys
+                ]
+            )
             existing = await self.db.execute(
                 select(
-                    ArtifactLink.id,
+                    ArtifactLink.tenant_id,
+                    ArtifactLink.project_id,
                     ArtifactLink.from_artifact_id,
                     ArtifactLink.to_artifact_id,
                     ArtifactLink.link_type,
                 ).where(
-                    tuple_(
-                        ArtifactLink.from_artifact_id,
-                        ArtifactLink.to_artifact_id,
-                        ArtifactLink.link_type,
-                    ).in_(spec_keys)
+                    match,
+                    # both endpoints must still exist (not a broken link)
+                    exists().where(Artifact.id == ArtifactLink.from_artifact_id),
+                    exists().where(Artifact.id == ArtifactLink.to_artifact_id),
                 )
             )
+            # normalize NULLs so the set membership below matches spec keys
             existing_keys = {
-                (from_id, to_id, link_type) for _, from_id, to_id, link_type in existing.all()
+                (tenant, project, from_id, to_id, link_type)
+                for tenant, project, from_id, to_id, link_type in existing.all()
             }
             links_data = [
-                spec
-                for spec in links_data
-                if (spec["from_artifact_id"], spec["to_artifact_id"], spec["link_type"])
-                not in existing_keys
+                spec for spec, key in zip(links_data, spec_keys) if key not in existing_keys
             ]
 
         for link_spec in links_data:

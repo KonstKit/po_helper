@@ -22,8 +22,11 @@
 
 > Статус: **волна A выполнена** (PR #7, merged), **волна B выполнена**
 > (PR #8, merged), **волна C выполнена** (C1: все 8 N+1-хотспотов
-> забатчены с тестами-счётчиками запросов; C2: selectinload(Project.owner);
-> C3: bounded per-key locks + Redis single-flight + WARNING-деградация).
+> забатчены; C2: закрыт ревертом — owner сериализуется как owner_id,
+> N+1 не существовал; C3: bounded locks + Redis single-flight с атомарным
+> Lua-релизом + WARNING-деградация). Покрытие тестами-счётчиками: rules,
+> health, analysis, metrics, ci, suggestions, jira-fields (import);
+> calibrate требует живой Jira и покрыт косвенно.
 > (ветка feat/should-fix-wave-b: B1 шифрование MFA + хэш кодов с
 > upgrade-on-read, B2 TOTP anti-replay, B3 Redis rate limiter + RATE_LIMIT_*
 > + proxy-headers, B4 ALLOW_DEBUG_DEMO_USER, B5 запрет plaintext-fallback).
