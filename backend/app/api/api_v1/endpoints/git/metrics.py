@@ -405,33 +405,39 @@ async def get_commits_for_issue(db: AsyncSession, jira_key: str) -> Dict[str, An
     # Map to Commit rows and include repo info
     commits: List[Dict[str, Any]] = []
 
+    # Batch-load commit rows and repositories: two queries total instead
+    # of two queries per commit artifact.
+    shas = [artifact.external_id for artifact in commit_artifacts if artifact.external_id]
+    commits_by_sha: dict = {}
+    if shas:
+        try:
+            res_cm = await db.execute(select(CommitModel).where(CommitModel.sha.in_(shas)))
+            commits_by_sha = {cm.sha: cm for cm in res_cm.scalars().all()}
+        except Exception as e:
+            logger.warning(f"Failed to batch-load commit models: {e}")
+
+    repo_ids = {cm.repository_id for cm in commits_by_sha.values() if cm.repository_id is not None}
+    repos_by_id: dict = {}
+    if repo_ids:
+        try:
+            res_repo = await db.execute(select(Repository).where(Repository.id.in_(repo_ids)))
+            repos_by_id = {repo.id: repo for repo in res_repo.scalars().all()}
+        except Exception as e:
+            logger.warning(f"Failed to batch-load repositories: {e}")
+
     for artifact in commit_artifacts:
         sha = artifact.external_id
-
-        # Get commit details
-        commit_model = None
-        try:
-            res_cm = await db.execute(select(CommitModel).where(CommitModel.sha == sha))
-            commit_model = res_cm.scalars().first()
-        except Exception as e:
-            logger.warning(f"Failed to get commit model for {sha}: {e}")
+        commit_model = commits_by_sha.get(sha)
 
         # Get repository info
         repo_info = None
-        if commit_model and commit_model.repository_id:
-            try:
-                res_repo = await db.execute(
-                    select(Repository).where(Repository.id == commit_model.repository_id)
-                )
-                repo = res_repo.scalar_one_or_none()
-                if repo:
-                    repo_info = {
-                        "provider": repo.provider,
-                        "slug": repo.repo_slug,
-                        "default_branch": repo.default_branch,
-                    }
-            except Exception as e:
-                logger.warning(f"Failed to get repository info: {e}")
+        repo = repos_by_id.get(commit_model.repository_id) if commit_model else None
+        if repo:
+            repo_info = {
+                "provider": repo.provider,
+                "slug": repo.repo_slug,
+                "default_branch": repo.default_branch,
+            }
 
         commits.append(
             {

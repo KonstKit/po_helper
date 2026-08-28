@@ -477,10 +477,13 @@ async def bulk_approve_suggestions(
         "errors": [],
     }
 
+    # one SELECT for the whole bulk payload instead of one per id
+    preload = await db.execute(select(SuggestedLink).where(SuggestedLink.id.in_(suggestion_ids)))
+    suggestions_by_id = {s.id: s for s in preload.scalars().all()}
+
     for sugg_id in suggestion_ids:
         try:
-            result = await db.execute(select(SuggestedLink).where(SuggestedLink.id == sugg_id))
-            suggestion = result.scalar_one_or_none()
+            suggestion = suggestions_by_id.get(sugg_id)
 
             if not suggestion:
                 results["errors"].append({"id": sugg_id, "error": "Not found"})
