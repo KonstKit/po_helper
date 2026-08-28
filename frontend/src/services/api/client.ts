@@ -25,6 +25,17 @@ declare global {
 /** Base URL for API v1 endpoints */
 export const API_BASE_URL = "/api/v1";
 
+/**
+ * Absolute URL of the live-updates WebSocket with the auth token attached.
+ * Browsers cannot set headers on a WebSocket handshake, so the JWT goes
+ * in the query string (the socket is rejected server-side without it).
+ */
+export const buildWebSocketUrl = (): string => {
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const token = localStorage.getItem("token") ?? "";
+  return `${protocol}://${window.location.host}/api/v1/ws?token=${encodeURIComponent(token)}`;
+};
+
 /** Default cache TTL in milliseconds (1 minute) */
 export const CACHE_TTL = 60000;
 

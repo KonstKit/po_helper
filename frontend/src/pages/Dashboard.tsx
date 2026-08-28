@@ -32,6 +32,7 @@ import {
   type SprintWipStatus,
   type VelocityResponse,
   type ValueMetricsResponse,
+  buildWebSocketUrl,
 } from '../services/api';
 import DashboardSkeleton from '../components/DashboardSkeleton';
 import EmptyState from '../components/EmptyState';
@@ -448,8 +449,7 @@ const Dashboard: React.FC = () => {
       return;
     }
 
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const socket = new WebSocket(`${protocol}://${window.location.host}/api/v1/ws`);
+    const socket = new WebSocket(buildWebSocketUrl());
     wsRef.current = socket;
 
     socket.onmessage = async (event) => {

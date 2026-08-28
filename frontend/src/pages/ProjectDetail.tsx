@@ -58,6 +58,7 @@ import {
   listGitlabProjects,
   purgeProject,
   getTeamMembersActivity,
+  buildWebSocketUrl,
 } from "../services/api";
 import type {
   ProjectRepositoryLink,
@@ -1379,9 +1380,7 @@ const ProjectDetail = () => {
         const integ = await getIntegrationsStatus();
         const ok = integ?.jira?.configured && integ?.jira?.has_token;
         if (!ok) return; // don't open WS if Jira not configured
-        const proto = window.location.protocol === "https:" ? "wss" : "ws";
-        const base = window.location.host;
-        const ws = new WebSocket(`${proto}://${base}/api/v1/ws`);
+        const ws = new WebSocket(buildWebSocketUrl());
         wsRef.current = ws;
         ws.onmessage = async (ev) => {
           try {
