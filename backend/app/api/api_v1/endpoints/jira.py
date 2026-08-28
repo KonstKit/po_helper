@@ -110,16 +110,8 @@ async def _call_jira(func, *args, **kwargs):
     return await asyncio.to_thread(func, *args, **kwargs)
 
 
-@router.post("/connect")
-async def connect_to_jira(
-    payload: JiraConnectRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(
-        require_integration_permission(Permissions.INTEGRATION_MANAGE)
-    ),
-):
-    """Connect to Jira instance and validate credentials."""
-    del current_user
+async def _connect_to_jira_impl(payload: JiraConnectRequest, db: AsyncSession) -> dict:
+    """Shared connect+validate+save logic (auth is enforced by the endpoints)."""
     with handle_api_error(
         operation="connect_to_jira", exception_map={JiraAuthError: 401, JiraUnexpectedResponse: 502}
     ):
@@ -169,6 +161,19 @@ async def connect_to_jira(
             logger.info("Jira credentials saved to database")
 
         return {"status": "connected", "message": "Successfully connected to Jira"}
+
+
+@router.post("/connect")
+async def connect_to_jira(
+    payload: JiraConnectRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(
+        require_integration_permission(Permissions.INTEGRATION_MANAGE)
+    ),
+):
+    """Connect to Jira instance and validate credentials."""
+    del current_user
+    return await _connect_to_jira_impl(payload, db)
 
 
 @router.get("/status")
@@ -437,16 +442,15 @@ async def connect_to_jira_pat(
 ):
     """Convenience endpoint to connect with PAT (Bearer) explicitly and persist credentials."""
     del current_user
-    return await connect_to_jira(
-        payload=JiraConnectRequest(
+    return await _connect_to_jira_impl(
+        JiraConnectRequest(
             base_url=payload.base_url,
             api_token=payload.api_token,
             email=None,
             save=payload.save,
             use_pat=True,
         ),
-        db=db,
-        current_user=None,
+        db,
     )
 
 
