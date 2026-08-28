@@ -38,11 +38,13 @@ services:
       dockerfile: docker/Dockerfile.backend
     # --proxy-headers + forwarded-allow-ips (B3): trust only the
     # compose-internal nginx proxy so rate limiting and logging see real
-    # client IPs instead of the docker gateway address.
+    # client IPs instead of the docker gateway address. uvicorn matches
+    # trusted proxies by literal IP (no CIDR), so the frontend service
+    # pins a static address on a dedicated network below.
     command: >
       sh -c "uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
       --proxy-headers
-      --forwarded-allow-ips=$${UVICORN_FORWARDED_ALLOW_IPS:-172.16.0.0/12}"
+      --forwarded-allow-ips=$${UVICORN_FORWARDED_ALLOW_IPS:-172.28.0.2}"
     ports:
       - "8000:8000"
     env_file:
@@ -58,11 +60,16 @@ services:
       - ./backend/alembic:/app/alembic
       - ./backend/alembic.ini:/app/alembic.ini
     restart: unless-stopped
+    networks:
+      - po_net
 
   frontend:
     build:
       context: .
       dockerfile: docker/Dockerfile.frontend
+    networks:
+      po_net:
+        ipv4_address: 172.28.0.2
     ports:
       - "3000:80"
     env_file:
@@ -123,3 +130,10 @@ volumes:
   postgres_data:
   redis_data:
   frontend_node_modules:
+
+networks:
+  po_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
