@@ -169,6 +169,14 @@ class Settings(BaseSettings):
     # OAuth behavior
     OAUTH_AUTO_CREATE_USERS: bool = True  # Auto-create users on first OAuth login
     OAUTH_ALLOWED_DOMAINS: List[str] = []  # Empty = all domains allowed
+    # Exact-match allow list for client-supplied redirect_uri overrides;
+    # empty list forbids overrides entirely (configured default is used).
+    OAUTH_ALLOWED_REDIRECT_URIS: List[str] = []
+    # Linking an OAuth identity to an existing password-account by email
+    # requires explicit opt-in (account-takeover vector otherwise).
+    OAUTH_ALLOW_EMAIL_LINKING: bool = False
+    # Signed-state TTL for the OAuth2 authorization-code flow (seconds).
+    OAUTH_STATE_MAX_AGE_SECONDS: int = 600
 
     @property
     def google_oauth_configured(self) -> bool:

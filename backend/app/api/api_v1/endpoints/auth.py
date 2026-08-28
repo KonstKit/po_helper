@@ -21,6 +21,13 @@ from app.core.oauth import (
     get_oauth_providers,
     is_email_allowed,
 )
+from app.core.oauth_state import (
+    OAUTH_STATE_COOKIE,
+    OAuthStateError,
+    create_oauth_state,
+    validate_redirect_uri_override,
+    verify_oauth_state,
+)
 from app.core.mfa import (
     setup_mfa,
     verify_totp,
@@ -357,6 +364,8 @@ async def get_available_providers() -> OAuth2ProvidersResponse:
 
 @router.get("/oauth2/google", response_model=OAuth2AuthURL)
 async def google_oauth_start(
+    request: Request,
+    response: Response,
     redirect_uri: Optional[str] = Query(None, description="Override default redirect URI"),
 ) -> OAuth2AuthURL:
     """
@@ -364,12 +373,17 @@ async def google_oauth_start(
     Returns authorization URL for frontend to redirect user.
     """
     try:
-        if redirect_uri:
-            client = type(google_oauth)(redirect_uri=redirect_uri)
-            auth_url, state = client.get_authorization_url()
-        else:
-            auth_url, state = google_oauth.get_authorization_url()
+        override = validate_redirect_uri_override(redirect_uri)
+        client = type(google_oauth)(redirect_uri=override) if override else google_oauth
+        state = create_oauth_state("google", redirect_uri=override)
+        auth_url, _ = client.get_authorization_url(state=state)
+        _set_oauth_state_cookie(response, state, request)
         return OAuth2AuthURL(authorization_url=auth_url, state=state)
+    except OAuthStateError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"redirect_uri not allowed: {e}",
+        )
     except OAuth2Error as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -379,6 +393,7 @@ async def google_oauth_start(
 
 @router.get("/oauth2/google/callback")
 async def google_oauth_callback(
+    request: Request,
     code: str = Query(..., description="Authorization code from Google"),
     state: str = Query(..., description="State parameter for CSRF protection"),
     db: AsyncSession = Depends(get_db),
@@ -387,16 +402,22 @@ async def google_oauth_callback(
     Handle Google OAuth2 callback.
     Exchanges code for tokens and creates/links user account.
     """
+    redirect_override = _verify_oauth_callback_state(request, state, "google")
     try:
+        client = (
+            type(google_oauth)(redirect_uri=redirect_override)
+            if redirect_override
+            else google_oauth
+        )
         # Exchange code for tokens
-        token_response = await google_oauth.exchange_code(code)
+        token_response = await client.exchange_code(code)
         access_token = token_response.get("access_token")
 
         if not access_token:
             raise OAuth2Error("no_access_token", "Token response missing access_token")
 
         # Get user info from Google
-        user_info = await google_oauth.get_user_info(access_token)
+        user_info = await client.get_user_info(access_token)
 
         # Process OAuth login
         user = await _process_oauth_login(db, user_info)
@@ -424,6 +445,8 @@ async def google_oauth_callback(
 
 @router.get("/oauth2/microsoft", response_model=OAuth2AuthURL)
 async def microsoft_oauth_start(
+    request: Request,
+    response: Response,
     redirect_uri: Optional[str] = Query(None, description="Override default redirect URI"),
 ) -> OAuth2AuthURL:
     """
@@ -431,12 +454,17 @@ async def microsoft_oauth_start(
     Returns authorization URL for frontend to redirect user.
     """
     try:
-        if redirect_uri:
-            client = type(microsoft_oauth)(redirect_uri=redirect_uri)
-            auth_url, state = client.get_authorization_url()
-        else:
-            auth_url, state = microsoft_oauth.get_authorization_url()
+        override = validate_redirect_uri_override(redirect_uri)
+        client = type(microsoft_oauth)(redirect_uri=override) if override else microsoft_oauth
+        state = create_oauth_state("microsoft", redirect_uri=override)
+        auth_url, _ = client.get_authorization_url(state=state)
+        _set_oauth_state_cookie(response, state, request)
         return OAuth2AuthURL(authorization_url=auth_url, state=state)
+    except OAuthStateError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"redirect_uri not allowed: {e}",
+        )
     except OAuth2Error as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -446,6 +474,7 @@ async def microsoft_oauth_start(
 
 @router.get("/oauth2/microsoft/callback")
 async def microsoft_oauth_callback(
+    request: Request,
     code: str = Query(..., description="Authorization code from Microsoft"),
     state: str = Query(..., description="State parameter for CSRF protection"),
     db: AsyncSession = Depends(get_db),
@@ -454,16 +483,22 @@ async def microsoft_oauth_callback(
     Handle Microsoft OAuth2 callback.
     Exchanges code for tokens and creates/links user account.
     """
+    redirect_override = _verify_oauth_callback_state(request, state, "microsoft")
     try:
+        client = (
+            type(microsoft_oauth)(redirect_uri=redirect_override)
+            if redirect_override
+            else microsoft_oauth
+        )
         # Exchange code for tokens
-        token_response = await microsoft_oauth.exchange_code(code)
+        token_response = await client.exchange_code(code)
         access_token = token_response.get("access_token")
 
         if not access_token:
             raise OAuth2Error("no_access_token", "Token response missing access_token")
 
         # Get user info from Microsoft Graph
-        user_info = await microsoft_oauth.get_user_info(access_token)
+        user_info = await client.get_user_info(access_token)
 
         # Process OAuth login
         user = await _process_oauth_login(db, user_info)
@@ -487,6 +522,47 @@ async def microsoft_oauth_callback(
 # -----------------------------------------------------------------------------
 # OAuth2 Helper Functions
 # -----------------------------------------------------------------------------
+
+
+def _set_oauth_state_cookie(response: Response, state: str, request: Request) -> None:
+    """Bind the OAuth state to the browser that started the flow."""
+    response.set_cookie(
+        OAUTH_STATE_COOKIE,
+        state,
+        max_age=settings.OAUTH_STATE_MAX_AGE_SECONDS,
+        httponly=True,
+        samesite="lax",
+        secure=request.url.scheme == "https",
+        path="/",
+    )
+
+
+def _verify_oauth_callback_state(
+    request: Request, state: str, provider: str
+) -> Optional[str]:
+    """Reject forged, expired, or cross-browser OAuth callbacks.
+
+    Returns the redirect_uri the flow started with (None = client default),
+    taken from the verified state payload.
+    """
+    try:
+        payload = verify_oauth_state(state, provider=provider)
+    except OAuthStateError as e:
+        logger.warning("OAuth state validation failed (%s): %s", provider, e)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="OAuth2 state validation failed",
+        )
+
+    cookie_state = request.cookies.get(OAUTH_STATE_COOKIE)
+    if not cookie_state or cookie_state != state:
+        logger.warning("OAuth state cookie mismatch (%s)", provider)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="OAuth2 state validation failed",
+        )
+
+    return payload.get("redirect_uri")
 
 
 async def _process_oauth_login(db: AsyncSession, user_info: OAuth2UserInfo) -> User:
@@ -521,7 +597,26 @@ async def _process_oauth_login(db: AsyncSession, user_info: OAuth2UserInfo) -> U
     user = result.scalar_one_or_none()
 
     if user:
-        # Link OAuth identity to existing account
+        # Linking an OAuth identity to an existing password-account grants
+        # login access by email alone, so it requires a provider-verified
+        # email and an explicit opt-in.
+        if not settings.OAUTH_ALLOW_EMAIL_LINKING:
+            logger.warning(
+                "OAuth login: refused linking %s to existing account %s "
+                "(OAUTH_ALLOW_EMAIL_LINKING disabled)",
+                user_info.provider,
+                user.email,
+            )
+            raise OAuth2Error(
+                "email_linking_disabled",
+                "An account with this email already exists. Sign in with your password "
+                "to link OAuth providers from your profile settings.",
+            )
+        if not user_info.email_verified:
+            raise OAuth2Error(
+                "email_not_verified",
+                "Provider has not verified this email address; linking is not allowed",
+            )
         user.oauth_provider = user_info.provider
         user.oauth_id = user_info.provider_id
         user.oauth_email = user_info.email
@@ -533,6 +628,11 @@ async def _process_oauth_login(db: AsyncSession, user_info: OAuth2UserInfo) -> U
         return user
 
     # Create new user from OAuth
+    if not user_info.email_verified:
+        raise OAuth2Error(
+            "email_not_verified",
+            "Provider has not verified this email address; registration is not allowed",
+        )
     username = _generate_username_from_email(user_info.email)
 
     # Ensure username is unique
@@ -728,6 +828,7 @@ async def verify_mfa_setup(
 @limiter.limit("3/minute")
 async def disable_mfa(
     request: Request,
+    response: Response,
     body: MFAVerifyRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -776,6 +877,7 @@ async def disable_mfa(
 @limiter.limit("2/minute")
 async def regenerate_backup_codes(
     request: Request,
+    response: Response,
     body: MFAVerifyRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
