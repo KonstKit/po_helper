@@ -383,6 +383,39 @@ async def ensure_project_access(
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Project access denied")
 
 
+def _enforce_permission(current_user: User, permission: str) -> None:
+    """Raise 403 unless the user (or its token scopes) grants the permission."""
+    token_scopes = get_token_scopes()
+    if (
+        token_scopes is not None
+        and permission not in token_scopes
+        and Permissions.ADMIN not in token_scopes
+    ):
+        logger.warning(
+            "Scoped permission denied: user=%s (id=%s) attempted %s with scopes=%s",
+            current_user.email,
+            current_user.id,
+            permission,
+            ",".join(token_scopes),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Permission denied. Required: {permission}",
+        )
+
+    if token_scopes is None and not current_user.has_permission(permission):
+        logger.warning(
+            "Permission denied: user=%s (id=%s) attempted %s",
+            current_user.email,
+            current_user.id,
+            permission,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Permission denied. Required: {permission}",
+        )
+
+
 def require_permission(permission: str):
     """
     Dependency that checks if the current user has a specific permission.
@@ -405,35 +438,26 @@ def require_permission(permission: str):
     """
 
     async def _check_permission(current_user: User = Depends(get_current_user)) -> User:
-        token_scopes = get_token_scopes()
-        if (
-            token_scopes is not None
-            and permission not in token_scopes
-            and Permissions.ADMIN not in token_scopes
-        ):
-            logger.warning(
-                "Scoped permission denied: user=%s (id=%s) attempted %s with scopes=%s",
-                current_user.email,
-                current_user.id,
-                permission,
-                ",".join(token_scopes),
-            )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Permission denied. Required: {permission}",
-            )
-
-        if token_scopes is None and not current_user.has_permission(permission):
-            logger.warning(
-                "Permission denied: user=%s (id=%s) attempted %s",
-                current_user.email,
-                current_user.id,
-                permission,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Permission denied. Required: {permission}",
-            )
+        _enforce_permission(current_user, permission)
         return current_user
 
     return _check_permission
+
+
+def require_integration_permission(permission: str):
+    """Permission gate for mutating integration endpoints.
+
+    Builds on require_integration_access: real users must hold ``permission``
+    on top of being authenticated. The unauthenticated local-demo bypass
+    (loopback-only) still applies and returns None.
+    """
+
+    async def _check_integration_permission(
+        current_user: User | None = Depends(require_integration_access),
+    ) -> User | None:
+        if current_user is None:
+            return None
+        _enforce_permission(current_user, permission)
+        return current_user
+
+    return _check_integration_permission
