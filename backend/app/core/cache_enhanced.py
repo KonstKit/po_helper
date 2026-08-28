@@ -13,6 +13,7 @@ This module provides:
 from __future__ import annotations
 
 import asyncio
+import secrets
 import hashlib
 import json
 import logging
@@ -522,6 +523,11 @@ class EnhancedCacheService:
     - Batch invalidation
     """
 
+    _MAX_PER_KEY_LOCKS = 10_000
+    _FLIGHT_LEASE_SECONDS = 10
+    _FLIGHT_POLL_INTERVAL = 0.1
+    _FLIGHT_POLLS = 50
+
     def __init__(self, redis_url: Optional[str] = None):
         self._redis_url = redis_url
         self._async_redis: Optional[Any] = None
@@ -579,7 +585,7 @@ class EnhancedCacheService:
                     metrics.inc("cache_hits_total", labels={"type": cache_type})
                     return json.loads(value)
             except Exception as e:
-                logger.debug(f"Redis get failed for {key}: {e}")
+                logger.warning("Redis cache get degraded to memory (key=%s): %s", key, e)
 
         # Fallback to memory cache
         if key in self._memory_cache:
@@ -611,26 +617,67 @@ class EnhancedCacheService:
         if cached is not None:
             return cached
 
-        # Get or create lock for this key
-        if key not in self._locks:
-            self._locks[key] = asyncio.Lock()
+        # Get or create lock for this key. The dict is bounded: an unused,
+        # uncontended lock is removed right away, and a hard cap protects
+        # against pathological key cardinality (a stale entry is simply
+        # replaced - waiters keep their own reference).
+        lock = self._locks.get(key)
+        if lock is None:
+            if len(self._locks) >= self._MAX_PER_KEY_LOCKS:
+                self._locks = {k: v for k, v in self._locks.items() if v.locked() or k == key}
+            lock = self._locks.get(key) or asyncio.Lock()
+            self._locks[key] = lock
 
-        async with self._locks[key]:
-            # Double-check after acquiring lock
-            cached = await self.get(key, tier)
-            if cached is not None:
-                return cached
+        # Cross-process single-flight: with several workers the local lock
+        # alone still lets one rebuild per process. Try to hold a short
+        # Redis lease; losers poll briefly for the winner's value and fall
+        # back to computing themselves after the lease window (degraded,
+        # never deadlocked). Without Redis the local lock still applies.
+        flight_token = None
+        flight_key = f"{key}:flight"
+        if self._async_redis is not None:
+            try:
+                flight_token = secrets.token_hex(8)
+                got = await self._async_redis.set(
+                    flight_key, flight_token, nx=True, ex=self._FLIGHT_LEASE_SECONDS
+                )
+                if not got:
+                    for _ in range(self._FLIGHT_POLLS):
+                        await asyncio.sleep(self._FLIGHT_POLL_INTERVAL)
+                        winner = await self.get(key, tier)
+                        if winner is not None:
+                            return winner
+                    flight_token = None  # lease lost/expired - compute locally
+            except Exception as e:
+                logger.warning("Redis flight lock degraded (key=%s): %s", key, e)
+                flight_token = None
 
-            # Compute value
-            if asyncio.iscoroutinefunction(factory):
-                value = await factory()
-            else:
-                value = factory()
+        try:
+            async with lock:
+                # Double-check after acquiring lock
+                cached = await self.get(key, tier)
+                if cached is not None:
+                    return cached
 
-            # Store in cache
-            await self.set(key, value, tier)
+                # Compute value
+                if asyncio.iscoroutinefunction(factory):
+                    value = await factory()
+                else:
+                    value = factory()
 
-            return value
+                # Store in cache
+                await self.set(key, value, tier)
+
+                return value
+        finally:
+            if flight_token is not None and self._async_redis is not None:
+                try:
+                    # best-effort release: only delete our own lease
+                    current = await self._async_redis.get(flight_key)
+                    if current == flight_token:
+                        await self._async_redis.delete(flight_key)
+                except Exception as e:
+                    logger.warning("Redis flight release failed (key=%s): %s", key, e)
 
     async def set(
         self,
@@ -658,7 +705,7 @@ class EnhancedCacheService:
                 await self._async_redis.setex(key, ttl, serialized)
                 return True
             except Exception as e:
-                logger.debug(f"Redis set failed for {key}: {e}")
+                logger.warning("Redis cache set degraded to memory (key=%s): %s", key, e)
 
         # Fallback to memory cache
         now = time.time()
