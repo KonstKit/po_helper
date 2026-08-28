@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 from app.core.config import settings
@@ -40,6 +40,7 @@ from app.core.mfa import (
     encrypt_mfa_secret,
     decrypt_mfa_secret,
 )
+from app.core.mfa import _is_kdf_backup_code
 from app.core.request_context import get_token_scopes, get_token_tenant_id
 from app.models import User, Role, Project
 from app.models.rbac import Permissions
@@ -786,14 +787,16 @@ async def _upgrade_mfa_storage(db: AsyncSession, user: User) -> None:
 
     Secrets written before encryption and backup codes written before
     hashing are migrated in place: the secret is re-encrypted, plaintext
-    codes are replaced by their SHA-256 digests. No invalidation needed -
+    codes are replaced by their bcrypt digests. No invalidation needed -
     verification semantics are unchanged.
     """
     changed = False
     if user.mfa_secret and not user.mfa_secret.startswith(AES_GCM_PREFIX):
         user.mfa_secret = encrypt_mfa_secret(user.mfa_secret)
         changed = True
-    if user.mfa_backup_codes and any(len(code) != 64 for code in user.mfa_backup_codes):
+    if user.mfa_backup_codes and any(
+        not _is_kdf_backup_code(code) for code in user.mfa_backup_codes
+    ):
         user.mfa_backup_codes = hash_backup_codes(user.mfa_backup_codes)
         changed = True
     if changed:
@@ -801,15 +804,34 @@ async def _upgrade_mfa_storage(db: AsyncSession, user: User) -> None:
         logger.info("Upgraded legacy MFA storage to encrypted/hashed for %s", user.email)
 
 
-def _accept_totp_code(user: User, accepted_counter: int | None) -> bool:
-    """TOTP verdict with anti-replay: a code from an already-used (or older)
-    time interval is rejected even though it is still within its +/-1 window."""
+async def _claim_totp_counter(db: AsyncSession, user: User, accepted_counter: int | None) -> bool:
+    """Atomically claim a TOTP interval for anti-replay.
+
+    A conditional UPDATE (not a read-modify-write of the ORM attribute)
+    so two concurrent verify-login calls cannot both pass the check: the
+    second rowcount=0 loses, exactly one request succeeds.
+    """
     if accepted_counter is None:
         return False
-    if user.mfa_last_used_counter is not None and accepted_counter <= user.mfa_last_used_counter:
-        logger.warning("Rejected replayed TOTP code for %s", user.email)
+    result = await db.execute(
+        update(User)
+        .where(
+            User.id == user.id,
+            or_(
+                User.mfa_last_used_counter.is_(None),
+                User.mfa_last_used_counter < accepted_counter,
+            ),
+        )
+        .values(mfa_last_used_counter=accepted_counter)
+    )
+    await db.commit()
+    if result.rowcount != 1:
+        logger.warning(
+            "Rejected replayed or concurrent TOTP code for %s (counter=%s)",
+            user.email,
+            accepted_counter,
+        )
         return False
-    user.mfa_last_used_counter = accepted_counter
     return True
 
 
@@ -903,7 +925,7 @@ async def verify_mfa_setup(
     await _upgrade_mfa_storage(db, current_user)
     secret = decrypt_mfa_secret(current_user.mfa_secret)
     accepted_counter = verify_totp_with_counter(secret, body.code)
-    if not _accept_totp_code(current_user, accepted_counter):
+    if not await _claim_totp_counter(db, current_user, accepted_counter):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid verification code. Please check your authenticator app.",
@@ -946,7 +968,9 @@ async def disable_mfa(
     secret = decrypt_mfa_secret(current_user.mfa_secret)
 
     # Verify with TOTP or backup code
-    code_valid = _accept_totp_code(current_user, verify_totp_with_counter(secret, body.code))
+    code_valid = await _claim_totp_counter(
+        db, current_user, verify_totp_with_counter(secret, body.code)
+    )
 
     if not code_valid and current_user.mfa_backup_codes:
         # Try backup code
@@ -993,8 +1017,10 @@ async def regenerate_backup_codes(
 
     await _upgrade_mfa_storage(db, current_user)
     secret = current_user.mfa_secret
-    if not secret or not _accept_totp_code(
-        current_user, verify_totp_with_counter(decrypt_mfa_secret(secret), body.code)
+    if not secret or not await _claim_totp_counter(
+        db,
+        current_user,
+        verify_totp_with_counter(decrypt_mfa_secret(secret), body.code),
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1059,8 +1085,10 @@ async def verify_mfa_login(
     await _upgrade_mfa_storage(db, user)
 
     # Try TOTP verification (rejecting replays of an already-used code)
-    code_valid = _accept_totp_code(
-        user, verify_totp_with_counter(decrypt_mfa_secret(user.mfa_secret), body.code)
+    code_valid = await _claim_totp_counter(
+        db,
+        user,
+        verify_totp_with_counter(decrypt_mfa_secret(user.mfa_secret), body.code),
     )
 
     # If TOTP fails, try backup code

@@ -10,7 +10,6 @@ Provides TOTP-based MFA implementation compatible with:
 """
 
 import base64
-import hashlib
 import io
 import logging
 import secrets
@@ -35,7 +34,10 @@ logger = logging.getLogger(__name__)
 # Constants
 TOTP_INTERVAL = 30  # seconds
 TOTP_DIGITS = 6
-BACKUP_CODE_LENGTH = 8
+# 16 hex chars = 64 bits of entropy: with a slow per-code KDF (bcrypt) this
+# makes offline brute-force of a leaked digest infeasible (32-bit codes of
+# the old format were brute-forceable despite hashing).
+BACKUP_CODE_LENGTH = 16
 BACKUP_CODE_COUNT = 10
 
 
@@ -72,10 +74,9 @@ def generate_backup_codes(count: int = BACKUP_CODE_COUNT) -> list[str]:
     """
     codes = []
     for _ in range(count):
-        # Generate alphanumeric codes (easier to type than pure hex)
         code = secrets.token_hex(BACKUP_CODE_LENGTH // 2).upper()
-        # Format as XXXX-XXXX for readability
-        formatted = f"{code[:4]}-{code[4:]}"
+        # Format as XXXX-XXXX-XXXX-XXXX for readability
+        formatted = "-".join(code[i : i + 4] for i in range(0, len(code), 4))
         codes.append(formatted)
     return codes
 
@@ -193,21 +194,43 @@ def _normalize_backup_code(code: str) -> str:
     return code.upper().replace(" ", "").replace("-", "")
 
 
-def _is_hashed_backup_code(entry: str) -> bool:
-    """SHA-256 hex digests are 64 chars; legacy plaintext codes are 8."""
-    return len(entry) == 64 and all(c in "0123456789abcdef" for c in entry.lower())
+def _is_kdf_backup_code(entry: str) -> bool:
+    """bcrypt digests start with $2 (passlib emits $2b$...)."""
+    return entry.startswith("$2")
 
 
 def hash_backup_code(code: str) -> str:
-    """SHA-256 digest of a normalized backup code (safe to store)."""
-    return hashlib.sha256(_normalize_backup_code(code).encode("utf-8")).hexdigest()
+    """bcrypt digest of a normalized backup code (slow KDF, safe at rest).
+
+    Codes carry 64 bits of entropy and are shown once, but a leaked digest
+    must still resist offline brute-force - hence a memory-hard KDF rather
+    than a fast digest like SHA-256. Uses the bcrypt package directly:
+    passlib 1.7.4 is incompatible with bcrypt>=4.1 at runtime.
+    """
+    import bcrypt as _bcrypt
+
+    return _bcrypt.hashpw(_normalize_backup_code(code).encode("utf-8"), _bcrypt.gensalt()).decode(
+        "ascii"
+    )
+
+
+def _verify_kdf_backup_code(candidate: str, stored: str) -> bool:
+    import bcrypt as _bcrypt
+
+    try:
+        return _bcrypt.checkpw(
+            _normalize_backup_code(candidate).encode("utf-8"),
+            stored.encode("ascii"),
+        )
+    except (ValueError, TypeError):
+        return False
 
 
 def verify_backup_code(code: str, stored_codes: list[str]) -> Tuple[bool, Optional[int]]:
     """
     Verify a backup code and return index if valid.
 
-    Stored entries are SHA-256 digests (see hash_backup_codes); entries
+    Stored entries are bcrypt digests (see hash_backup_codes); entries
     written before hashing was introduced are matched as legacy plaintext
     and should be upgraded by the caller (see auth._upgrade_mfa_storage).
     """
@@ -215,11 +238,10 @@ def verify_backup_code(code: str, stored_codes: list[str]) -> Tuple[bool, Option
         return False, None
 
     candidate = _normalize_backup_code(code)
-    candidate_digest = hash_backup_code(candidate)
 
     for idx, stored_code in enumerate(stored_codes):
-        if _is_hashed_backup_code(stored_code):
-            if secrets.compare_digest(candidate_digest, stored_code.lower()):
+        if _is_kdf_backup_code(stored_code):
+            if _verify_kdf_backup_code(candidate, stored_code):
                 return True, idx
         else:
             legacy_normalized = _normalize_backup_code(stored_code)
@@ -231,11 +253,11 @@ def verify_backup_code(code: str, stored_codes: list[str]) -> Tuple[bool, Option
 
 def hash_backup_codes(codes: list[str]) -> list[str]:
     """
-    Hash backup codes for secure storage.
+    Hash backup codes for secure storage (bcrypt per code).
 
-    Codes are single-use random values shown to the user once, so a fast
-    digest is sufficient (unlike passwords); SHA-256 keeps them useless
-    at rest while constant-time comparison preserves verification.
+    Codes are single-use random values shown to the user once; the slow KDF
+    exists for the leaked-database scenario, online use is already gated by
+    one-time consumption and endpoint rate limits.
     """
     return [hash_backup_code(code) for code in codes]
 
