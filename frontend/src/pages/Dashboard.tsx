@@ -453,7 +453,18 @@ const Dashboard: React.FC = () => {
 
     void (async () => {
       const opened = await openWebSocket();
-      if (disposed || !opened) return;
+      if (!opened) return;
+      if (disposed) {
+        // effect unmounted while the ticket was being fetched - do not leak the socket
+        try {
+          opened.close();
+        } catch (error) {
+          emitDashboardRuntimeWarning('websocketCloseFailed', {
+            error: toErrorMessage(error),
+          });
+        }
+        return;
+      }
       socket = opened;
       if (wsRef.current) {
         try {
