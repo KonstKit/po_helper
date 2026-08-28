@@ -1,7 +1,7 @@
 import asyncio
 from typing import Optional, Dict, Any
 from urllib.parse import urlparse
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from time import perf_counter
@@ -10,6 +10,7 @@ from app.models.rbac import Permissions
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.crypto import encrypt_integration_secret
+from app.core.rate_limit import limiter
 from app.core.metrics import metrics
 from app.services.jira_sync import perform_project_sync
 from app.tasks.jira_tasks import sync_jira_project
@@ -270,7 +271,10 @@ async def get_project_issues(
 
 
 @router.post("/projects/{project_key}/sync")
+@limiter.limit(settings.RATE_LIMIT_SYNC)
 async def sync_project_data(
+    request: Request,
+    response: Response,
     project_key: str,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),

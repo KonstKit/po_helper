@@ -1,5 +1,5 @@
 from urllib.parse import urlparse
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from fastapi.responses import StreamingResponse
 from typing import Optional, AsyncGenerator, Any, cast
 from pydantic import BaseModel
@@ -10,6 +10,8 @@ from bs4 import BeautifulSoup
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.crypto import encrypt_integration_secret
+from app.core.rate_limit import limiter
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.confluence import ConfluencePage
 from app.models import User
@@ -287,7 +289,10 @@ async def _upsert_confluence_page(
 
 
 @router.post("/sync")
+@limiter.limit(settings.RATE_LIMIT_SYNC)
 async def sync_confluence(
+    request: Request,
+    response: Response,
     space: Optional[str] = None,
     q: Optional[str] = None,
     limit: int = 50,
@@ -379,7 +384,10 @@ async def sync_confluence(
 
 
 @router.get("/sync-sse")
+@limiter.limit(settings.RATE_LIMIT_SYNC)
 async def sync_confluence_sse(
+    request: Request,
+    response: Response,
     space: Optional[str] = None,
     q: Optional[str] = None,
     limit: int = 50,
@@ -521,7 +529,10 @@ async def sync_confluence_sse(
 
 
 @router.post("/sync-celery")
+@limiter.limit(settings.RATE_LIMIT_SYNC)
 async def start_celery_sync(
+    request: Request,
+    response: Response,
     space: Optional[str] = None,
     q: Optional[str] = None,
     full: bool = True,
@@ -606,7 +617,10 @@ async def stream_celery_sync(
 
 
 @router.post("/subtree/{page_id}/sync")
+@limiter.limit(settings.RATE_LIMIT_SYNC)
 async def sync_subtree(
+    request: Request,
+    response: Response,
     page_id: str,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),

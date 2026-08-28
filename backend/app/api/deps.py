@@ -285,7 +285,11 @@ async def _resolve_current_user(
 
     _clear_auth_context()
 
-    if allow_debug_demo_fallback and settings.DEBUG:
+    if allow_debug_demo_fallback and settings.DEBUG and settings.ALLOW_DEBUG_DEMO_USER:
+        logger.warning(
+            "Debug demo user fallback used (DEBUG + ALLOW_DEBUG_DEMO_USER): "
+            "granting an admin session without authentication"
+        )
         user = await _get_or_create_demo_user(db)
         result = await db.execute(
             select(User).options(selectinload(User.roles)).where(User.id == user.id)

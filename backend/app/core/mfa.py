@@ -13,6 +13,8 @@ import base64
 import io
 import logging
 import secrets
+import time
+from datetime import datetime
 from typing import Optional, Tuple
 from dataclasses import dataclass
 
@@ -21,13 +23,21 @@ import qrcode
 from qrcode.image.pure import PyPNGImage
 
 from app.core.config import settings
+from app.core.crypto import (
+    AES_GCM_PREFIX,
+    decrypt_str,
+    encrypt_integration_secret,
+)
 
 logger = logging.getLogger(__name__)
 
 # Constants
 TOTP_INTERVAL = 30  # seconds
 TOTP_DIGITS = 6
-BACKUP_CODE_LENGTH = 8
+# 16 hex chars = 64 bits of entropy: with a slow per-code KDF (bcrypt) this
+# makes offline brute-force of a leaked digest infeasible (32-bit codes of
+# the old format were brute-forceable despite hashing).
+BACKUP_CODE_LENGTH = 16
 BACKUP_CODE_COUNT = 10
 
 
@@ -64,10 +74,9 @@ def generate_backup_codes(count: int = BACKUP_CODE_COUNT) -> list[str]:
     """
     codes = []
     for _ in range(count):
-        # Generate alphanumeric codes (easier to type than pure hex)
         code = secrets.token_hex(BACKUP_CODE_LENGTH // 2).upper()
-        # Format as XXXX-XXXX for readability
-        formatted = f"{code[:4]}-{code[4:]}"
+        # Format as XXXX-XXXX-XXXX-XXXX for readability
+        formatted = "-".join(code[i : i + 4] for i in range(0, len(code), 4))
         codes.append(formatted)
     return codes
 
@@ -143,73 +152,135 @@ def setup_mfa(email: str) -> MFASetupData:
     )
 
 
-def verify_totp(secret: str, code: str) -> bool:
-    """
-    Verify a TOTP code against the secret.
+def _normalize_totp_code(code: str) -> str:
+    return code.replace(" ", "").replace("-", "")
 
-    Args:
-        secret: User's TOTP secret
-        code: 6-digit code from authenticator app
 
-    Returns:
-        True if code is valid
+def verify_totp_with_counter(secret: str, code: str) -> Optional[int]:
+    """Verify a TOTP code and return the matched time interval counter.
+
+    Accepts the same +/-1 window as before (clock skew), but returns the
+    counter of the interval that matched so callers can reject replayed
+    codes (anti-replay) instead of accepting the same code for ~90s.
+    Returns None when the code is invalid.
     """
     if not secret or not code:
-        return False
+        return None
 
-    # Clean up code (remove spaces, dashes)
-    code = code.replace(" ", "").replace("-", "")
-
+    code = _normalize_totp_code(code)
     if len(code) != TOTP_DIGITS or not code.isdigit():
-        return False
+        return None
 
     totp = pyotp.TOTP(secret)
+    now = int(time.time())
+    for offset_seconds in (-TOTP_INTERVAL, 0, TOTP_INTERVAL):
+        moment = now + offset_seconds
+        if totp.verify(code, for_time=datetime.fromtimestamp(moment)):
+            return moment // TOTP_INTERVAL
+    return None
 
-    # Allow 1 time window before/after for clock skew
-    return totp.verify(code, valid_window=1)
+
+def verify_totp(secret: str, code: str) -> bool:
+    """
+    Verify a TOTP code against the secret (window +/-1 for clock skew).
+
+    Prefer verify_totp_with_counter + a last-used check: this helper
+    accepts a replayed code within its validity window.
+    """
+    return verify_totp_with_counter(secret, code) is not None
+
+
+def _normalize_backup_code(code: str) -> str:
+    return code.upper().replace(" ", "").replace("-", "")
+
+
+def _is_kdf_backup_code(entry: str) -> bool:
+    """bcrypt digests start with $2 (passlib emits $2b$...)."""
+    return entry.startswith("$2")
+
+
+def hash_backup_code(code: str) -> str:
+    """bcrypt digest of a normalized backup code (slow KDF, safe at rest).
+
+    Codes carry 64 bits of entropy and are shown once, but a leaked digest
+    must still resist offline brute-force - hence a memory-hard KDF rather
+    than a fast digest like SHA-256. Uses the bcrypt package directly:
+    passlib 1.7.4 is incompatible with bcrypt>=4.1 at runtime.
+    """
+    import bcrypt as _bcrypt
+
+    return _bcrypt.hashpw(_normalize_backup_code(code).encode("utf-8"), _bcrypt.gensalt()).decode(
+        "ascii"
+    )
+
+
+def _verify_kdf_backup_code(candidate: str, stored: str) -> bool:
+    import bcrypt as _bcrypt
+
+    try:
+        return _bcrypt.checkpw(
+            _normalize_backup_code(candidate).encode("utf-8"),
+            stored.encode("ascii"),
+        )
+    except (ValueError, TypeError):
+        return False
 
 
 def verify_backup_code(code: str, stored_codes: list[str]) -> Tuple[bool, Optional[int]]:
     """
     Verify a backup code and return index if valid.
 
-    Args:
-        code: Backup code entered by user
-        stored_codes: List of remaining backup codes
-
-    Returns:
-        Tuple of (is_valid, index_to_remove)
+    Stored entries are bcrypt digests (see hash_backup_codes); entries
+    written before hashing was introduced are matched as legacy plaintext
+    and should be upgraded by the caller (see auth._upgrade_mfa_storage).
     """
     if not code or not stored_codes:
         return False, None
 
-    # Normalize code
-    code = code.upper().replace(" ", "").replace("-", "")
+    candidate = _normalize_backup_code(code)
 
     for idx, stored_code in enumerate(stored_codes):
-        stored_normalized = stored_code.upper().replace("-", "")
-        if secrets.compare_digest(code, stored_normalized):
-            return True, idx
+        if _is_kdf_backup_code(stored_code):
+            if _verify_kdf_backup_code(candidate, stored_code):
+                return True, idx
+        else:
+            legacy_normalized = _normalize_backup_code(stored_code)
+            if secrets.compare_digest(candidate, legacy_normalized):
+                return True, idx
 
     return False, None
 
 
 def hash_backup_codes(codes: list[str]) -> list[str]:
     """
-    Hash backup codes for secure storage.
+    Hash backup codes for secure storage (bcrypt per code).
 
-    Note: In production, you might want to use bcrypt/argon2 for these.
-    For simplicity, we store them as-is but compare securely.
-
-    Args:
-        codes: Plain backup codes
-
-    Returns:
-        Codes suitable for storage (currently just the codes)
+    Codes are single-use random values shown to the user once; the slow KDF
+    exists for the leaked-database scenario, online use is already gated by
+    one-time consumption and endpoint rate limits.
     """
-    # For now, we store codes directly but use constant-time comparison
-    # In production, consider hashing each code individually
-    return codes
+    return [hash_backup_code(code) for code in codes]
+
+
+def encrypt_mfa_secret(secret: str) -> str:
+    """Encrypt a TOTP secret for at-rest storage (AES-GCM, ENCRYPTION_SECRET)."""
+    encrypted = encrypt_integration_secret(secret)
+    assert encrypted is not None
+    return encrypted
+
+
+def decrypt_mfa_secret(stored: str) -> str:
+    """Decrypt a stored TOTP secret.
+
+    Values without the encrypted prefix are pre-encryption plaintext
+    (written before wave B); callers upgrade them via re-encryption.
+    """
+    if stored.startswith(AES_GCM_PREFIX):
+        decrypted = decrypt_str(stored)
+        if decrypted is None:
+            raise MFAError("secret_decryption_failed", "Stored MFA secret could not be decrypted")
+        return decrypted
+    return stored
 
 
 def get_current_totp(secret: str) -> str:

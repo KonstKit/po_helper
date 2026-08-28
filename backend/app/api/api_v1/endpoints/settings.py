@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 import asyncio
 import logging
 import json
@@ -485,6 +485,12 @@ async def put_github_settings(
                 if (token_bundle is not None and token_bundle != "")
                 else row.api_token
             )
+        except RuntimeError as exc:
+            # B5: encryption refused to store plaintext (no secret configured)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="GitHub token could not be encrypted: no ENCRYPTION_SECRET configured on the server.",
+            ) from exc
         except Exception as exc:
             logger.warning("Failed to encrypt/save GitHub token bundle: %s", exc)
     await db.refresh(row)
@@ -710,6 +716,12 @@ async def put_gitlab_settings(
                 if (token_bundle is not None and token_bundle != "")
                 else row.api_token
             )
+        except RuntimeError as exc:
+            # B5: encryption refused to store plaintext (no secret configured)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="GitLab token could not be encrypted: no ENCRYPTION_SECRET configured on the server.",
+            ) from exc
         except Exception as exc:
             logger.warning("Failed to encrypt/save GitLab token bundle: %s", exc)
     await db.refresh(row)
@@ -998,6 +1010,12 @@ async def put_bitbucket_settings(
                 )
             if token_bundle:
                 row.api_token = encrypt_str(token_bundle)
+        except RuntimeError as exc:
+            # B5: encryption refused to store plaintext (no secret configured)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Bitbucket token could not be encrypted: no ENCRYPTION_SECRET configured on the server.",
+            ) from exc
         except Exception as exc:
             logger.warning("Failed to encrypt/save Bitbucket token bundle: %s", exc)
 

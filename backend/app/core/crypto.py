@@ -118,7 +118,10 @@ def encrypt_str(plaintext: Optional[str]) -> Optional[str]:
         return None
     aesgcm = _get_aesgcm()
     if not aesgcm:
-        return plaintext
+        raise RuntimeError(
+            "SECRET_KEY or ENCRYPTION_SECRET must be configured to encrypt "
+            "secrets; refusing to store plaintext."
+        )
     nonce = os.urandom(12)
     ciphertext = aesgcm.encrypt(nonce, plaintext.encode("utf-8"), associated_data=None)
     token = base64.urlsafe_b64encode(nonce + ciphertext).decode("utf-8")

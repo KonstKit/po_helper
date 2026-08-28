@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 from app.core.config import settings
@@ -30,13 +30,17 @@ from app.core.oauth_state import (
     verify_oauth_state,
 )
 from app.core.ws_tickets import issue_ws_ticket
+from app.core.crypto import AES_GCM_PREFIX
 from app.core.mfa import (
     setup_mfa,
-    verify_totp,
+    verify_totp_with_counter,
     verify_backup_code,
     generate_backup_codes,
     hash_backup_codes,
+    encrypt_mfa_secret,
+    decrypt_mfa_secret,
 )
+from app.core.mfa import _is_kdf_backup_code
 from app.core.request_context import get_token_scopes, get_token_tenant_id
 from app.models import User, Role, Project
 from app.models.rbac import Permissions
@@ -154,7 +158,7 @@ def _effective_permissions(user: User) -> set[str]:
 
 
 @router.post("/login")
-@limiter.limit("5/minute")
+@limiter.limit(settings.RATE_LIMIT_AUTH)
 async def login(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -739,7 +743,7 @@ class MFASetupResponse(BaseModel):
 class MFAVerifyRequest(BaseModel):
     """Request to verify MFA code (authenticated MFA management endpoints)."""
 
-    code: str = Field(..., min_length=6, max_length=12, description="6-digit TOTP or backup code")
+    code: str = Field(..., min_length=6, max_length=32, description="6-digit TOTP or backup code")
 
 
 class MFALoginVerifyRequest(BaseModel):
@@ -749,7 +753,7 @@ class MFALoginVerifyRequest(BaseModel):
     (proxy/access logs).
     """
 
-    code: str = Field(..., min_length=6, max_length=12, description="6-digit TOTP or backup code")
+    code: str = Field(..., min_length=6, max_length=32, description="6-digit TOTP or backup code")
     temp_token: str = Field(
         ...,
         min_length=1,
@@ -776,6 +780,59 @@ class MFALoginRequired(BaseModel):
 
     mfa_required: bool = True
     temp_token: str = Field(..., description="Temporary token for MFA verification")
+
+
+async def _upgrade_mfa_storage(db: AsyncSession, user: User) -> None:
+    """Upgrade legacy plaintext MFA storage on first touch (wave B).
+
+    Secrets written before encryption and backup codes written before
+    hashing are migrated in place: the secret is re-encrypted, plaintext
+    codes are replaced by their bcrypt digests. No invalidation needed -
+    verification semantics are unchanged.
+    """
+    changed = False
+    if user.mfa_secret and not user.mfa_secret.startswith(AES_GCM_PREFIX):
+        user.mfa_secret = encrypt_mfa_secret(user.mfa_secret)
+        changed = True
+    if user.mfa_backup_codes and any(
+        not _is_kdf_backup_code(code) for code in user.mfa_backup_codes
+    ):
+        user.mfa_backup_codes = hash_backup_codes(user.mfa_backup_codes)
+        changed = True
+    if changed:
+        await db.commit()
+        logger.info("Upgraded legacy MFA storage to encrypted/hashed for %s", user.email)
+
+
+async def _claim_totp_counter(db: AsyncSession, user: User, accepted_counter: int | None) -> bool:
+    """Atomically claim a TOTP interval for anti-replay.
+
+    A conditional UPDATE (not a read-modify-write of the ORM attribute)
+    so two concurrent verify-login calls cannot both pass the check: the
+    second rowcount=0 loses, exactly one request succeeds.
+    """
+    if accepted_counter is None:
+        return False
+    result = await db.execute(
+        update(User)
+        .where(
+            User.id == user.id,
+            or_(
+                User.mfa_last_used_counter.is_(None),
+                User.mfa_last_used_counter < accepted_counter,
+            ),
+        )
+        .values(mfa_last_used_counter=accepted_counter)
+    )
+    await db.commit()
+    if result.rowcount != 1:
+        logger.warning(
+            "Rejected replayed or concurrent TOTP code for %s (counter=%s)",
+            user.email,
+            accepted_counter,
+        )
+        return False
+    return True
 
 
 @router.get("/mfa/status", response_model=MFAStatusResponse)
@@ -815,9 +872,16 @@ async def initiate_mfa_setup(
     # Generate new MFA setup data
     mfa_data = setup_mfa(current_user.email)
 
-    # Store secret temporarily (will be confirmed on verify)
-    # The secret is stored but mfa_enabled remains False until verified
-    current_user.mfa_secret = mfa_data.secret
+    # Store the secret AES-GCM-encrypted; backup codes as SHA-256 digests.
+    # The secret is stored but mfa_enabled remains False until verified.
+    try:
+        current_user.mfa_secret = encrypt_mfa_secret(mfa_data.secret)
+    except RuntimeError as exc:
+        logger.error("MFA setup blocked: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="MFA is unavailable: the server has no ENCRYPTION_SECRET configured.",
+        )
     current_user.mfa_backup_codes = hash_backup_codes(mfa_data.backup_codes)
 
     await db.commit()
@@ -858,8 +922,10 @@ async def verify_mfa_setup(
             detail="MFA setup not initiated. Call /mfa/setup first.",
         )
 
-    secret = current_user.mfa_secret
-    if not secret or not verify_totp(secret, body.code):
+    await _upgrade_mfa_storage(db, current_user)
+    secret = decrypt_mfa_secret(current_user.mfa_secret)
+    accepted_counter = verify_totp_with_counter(secret, body.code)
+    if not await _claim_totp_counter(db, current_user, accepted_counter):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid verification code. Please check your authenticator app.",
@@ -895,12 +961,16 @@ async def disable_mfa(
     if not current_user.mfa_enabled:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="MFA is not enabled")
 
-    secret = current_user.mfa_secret
-    if not secret:
+    if not current_user.mfa_secret:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="MFA secret missing")
 
+    await _upgrade_mfa_storage(db, current_user)
+    secret = decrypt_mfa_secret(current_user.mfa_secret)
+
     # Verify with TOTP or backup code
-    code_valid = verify_totp(secret, body.code)
+    code_valid = await _claim_totp_counter(
+        db, current_user, verify_totp_with_counter(secret, body.code)
+    )
 
     if not code_valid and current_user.mfa_backup_codes:
         # Try backup code
@@ -945,8 +1015,13 @@ async def regenerate_backup_codes(
     if not current_user.mfa_enabled:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="MFA is not enabled")
 
+    await _upgrade_mfa_storage(db, current_user)
     secret = current_user.mfa_secret
-    if not secret or not verify_totp(secret, body.code):
+    if not secret or not await _claim_totp_counter(
+        db,
+        current_user,
+        verify_totp_with_counter(decrypt_mfa_secret(secret), body.code),
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid verification code. Use your authenticator app code.",
@@ -1007,8 +1082,14 @@ async def verify_mfa_login(
     if not user.mfa_secret:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="MFA secret missing")
 
-    # Try TOTP verification
-    code_valid = verify_totp(user.mfa_secret, body.code)
+    await _upgrade_mfa_storage(db, user)
+
+    # Try TOTP verification (rejecting replays of an already-used code)
+    code_valid = await _claim_totp_counter(
+        db,
+        user,
+        verify_totp_with_counter(decrypt_mfa_secret(user.mfa_secret), body.code),
+    )
 
     # If TOTP fails, try backup code
     if not code_valid and user.mfa_backup_codes:
@@ -1018,7 +1099,6 @@ async def verify_mfa_login(
             codes = list(user.mfa_backup_codes)
             codes.pop(code_index)
             user.mfa_backup_codes = codes
-            await db.commit()
             code_valid = True
             logger.info(f"MFA login with backup code for user {email}")
 
@@ -1026,6 +1106,9 @@ async def verify_mfa_login(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid verification code"
         )
+
+    # Persist the anti-replay counter (TOTP) / consumed backup code
+    await db.commit()
 
     # Generate full access token
     access_token = create_access_token(
