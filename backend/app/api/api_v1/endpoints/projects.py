@@ -5,6 +5,7 @@ from time import perf_counter
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, cast, Integer, delete, or_
+from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
@@ -31,7 +32,9 @@ logger = logging.getLogger(__name__)
 
 
 def _visible_projects_query(current_user: User):
-    query = select(Project).order_by(Project.id.asc())
+    # eager-load owner: serialization touches it for every row and lazy
+    # loads would turn the list endpoint into an N+1
+    query = select(Project).options(selectinload(Project.owner)).order_by(Project.id.asc())
     token_tenant_id = get_token_tenant_id()
 
     if token_tenant_id is not None:
