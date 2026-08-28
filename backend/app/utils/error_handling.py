@@ -128,8 +128,13 @@ def handle_api_error(
         else:  # error
             logger.error("%s: %s (%s)", log_message, str(e), exception_type, exc_info=True)
 
-        # Raise HTTPException
-        detail = str(e) if str(e) else f"{exception_type} occurred"
+        # Raise HTTPException. Client-facing (4xx) domain errors keep their
+        # message; server-side failures (5xx) return a generic detail so
+        # internals (DB errors, stack traces, hostnames) never leak.
+        if http_status >= 500:
+            detail = "Internal server error. Check server logs for details."
+        else:
+            detail = str(e) if str(e) else f"{exception_type} occurred"
         raise HTTPException(status_code=http_status, detail=detail)
 
 
@@ -211,5 +216,8 @@ async def async_handle_api_error(
         else:
             logger.error("%s: %s (%s)", log_message, str(e), exception_type, exc_info=True)
 
-        detail = str(e) if str(e) else f"{exception_type} occurred"
+        if http_status >= 500:
+            detail = "Internal server error. Check server logs for details."
+        else:
+            detail = str(e) if str(e) else f"{exception_type} occurred"
         raise HTTPException(status_code=http_status, detail=detail)
