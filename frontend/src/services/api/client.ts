@@ -26,14 +26,32 @@ declare global {
 export const API_BASE_URL = "/api/v1";
 
 /**
- * Absolute URL of the live-updates WebSocket with the auth token attached.
- * Browsers cannot set headers on a WebSocket handshake, so the JWT goes
- * in the query string (the socket is rejected server-side without it).
+ * Open the live-updates WebSocket.
+ *
+ * Browsers cannot set headers on a WebSocket handshake, so the JWT is
+ * first exchanged for a short-lived single-use ticket over an
+ * authenticated HTTP call; only the ticket goes into the URL (never the
+ * token itself). Returns null when there is no session or the ticket
+ * could not be obtained - callers must not open a socket in that case.
  */
-export const buildWebSocketUrl = (): string => {
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const token = localStorage.getItem("token") ?? "";
-  return `${protocol}://${window.location.host}/api/v1/ws?token=${encodeURIComponent(token)}`;
+export const openWebSocket = async (): Promise<WebSocket | null> => {
+  const token = localStorage.getItem('token');
+  if (!token) return null;
+  try {
+    const response = await api.post<{ ticket: string }>(
+      '/v1/auth/ws-ticket',
+      {},
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    const ticket = response.data?.ticket;
+    if (!ticket) return null;
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    return new WebSocket(
+      `${protocol}://${window.location.host}/api/v1/ws?ticket=${encodeURIComponent(ticket)}`,
+    );
+  } catch {
+    return null;
+  }
 };
 
 /** Default cache TTL in milliseconds (1 minute) */
