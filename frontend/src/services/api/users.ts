@@ -209,9 +209,9 @@ export const regenerateBackupCodes = async (code: string): Promise<{ backup_code
  * Called after initial login returns mfa_required=true.
  */
 export const verifyMFALogin = async (code: string, tempToken: string): Promise<OAuth2Token> => {
-  const { data } = await api.post<OAuth2Token>(
-    `/v1/auth/mfa/verify-login?temp_token=${encodeURIComponent(tempToken)}`,
-    { code }
-  );
+  const { data } = await api.post<OAuth2Token>("/v1/auth/mfa/verify-login", {
+    code,
+    temp_token: tempToken,
+  });
   return data;
 };
