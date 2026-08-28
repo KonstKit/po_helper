@@ -739,9 +739,24 @@ class MFASetupResponse(BaseModel):
 
 
 class MFAVerifyRequest(BaseModel):
-    """Request to verify MFA code."""
+    """Request to verify MFA code (authenticated MFA management endpoints)."""
 
     code: str = Field(..., min_length=6, max_length=12, description="6-digit TOTP or backup code")
+
+
+class MFALoginVerifyRequest(BaseModel):
+    """Request to complete an MFA login (unauthenticated endpoint).
+
+    Carries the mfa_pending token in the body so it never lands in URLs
+    (proxy/access logs).
+    """
+
+    code: str = Field(..., min_length=6, max_length=12, description="6-digit TOTP or backup code")
+    temp_token: str = Field(
+        ...,
+        min_length=1,
+        description="Temporary mfa_pending token returned by the initial login",
+    )
 
 
 class MFAStatusResponse(BaseModel):
@@ -955,8 +970,7 @@ async def regenerate_backup_codes(
 async def verify_mfa_login(
     request: Request,
     response: Response,
-    body: MFAVerifyRequest,
-    temp_token: str = Query(..., description="Temporary token from login"),
+    body: MFALoginVerifyRequest,
     db: AsyncSession = Depends(get_db),
 ) -> Token:
     """
@@ -964,7 +978,10 @@ async def verify_mfa_login(
 
     Called after initial login returns mfa_required=True.
     Accepts either TOTP code or backup code.
+    The mfa_pending token travels in the request body so it never lands in
+    URLs (proxy/access logs).
     """
+    temp_token = body.temp_token
     from app.core.security import decode_token
 
     # Decode the temporary token
