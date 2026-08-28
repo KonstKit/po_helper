@@ -228,6 +228,14 @@ def _is_local_origin(origin: str) -> bool:
 
 
 def _validate_runtime_security_settings() -> None:
+    if (settings.is_production or settings.is_staging) and settings.SECRET_KEY == (
+        settings.SECRET_KEY_PLACEHOLDER
+    ):
+        raise RuntimeError(
+            "SECRET_KEY is still the well-known placeholder; generate a unique "
+            "secret before running in staging/production."
+        )
+
     if (
         settings.is_production or settings.is_staging
     ) and not settings.has_strong_dedicated_encryption_secret:

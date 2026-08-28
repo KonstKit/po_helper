@@ -58,6 +58,7 @@ import {
   listGitlabProjects,
   purgeProject,
   getTeamMembersActivity,
+  openWebSocket,
 } from "../services/api";
 import type {
   ProjectRepositoryLink,
@@ -1379,9 +1380,17 @@ const ProjectDetail = () => {
         const integ = await getIntegrationsStatus();
         const ok = integ?.jira?.configured && integ?.jira?.has_token;
         if (!ok) return; // don't open WS if Jira not configured
-        const proto = window.location.protocol === "https:" ? "wss" : "ws";
-        const base = window.location.host;
-        const ws = new WebSocket(`${proto}://${base}/api/v1/ws`);
+        const ws = await openWebSocket();
+        if (!ws) return; // no session or ticket issue - do not open a socket
+        if (closed) {
+          // effect cleanup ran while the ticket was being fetched - do not leak the socket
+          try {
+            ws.close();
+          } catch {
+            /* already closed */
+          }
+          return;
+        }
         wsRef.current = ws;
         ws.onmessage = async (ev) => {
           try {

@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from time import perf_counter
-from app.api.deps import require_integration_access
+from app.api.deps import require_integration_access, require_integration_permission
+from app.models.rbac import Permissions
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.crypto import encrypt_integration_secret
@@ -109,14 +110,8 @@ async def _call_jira(func, *args, **kwargs):
     return await asyncio.to_thread(func, *args, **kwargs)
 
 
-@router.post("/connect")
-async def connect_to_jira(
-    payload: JiraConnectRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(require_integration_access),
-):
-    """Connect to Jira instance and validate credentials."""
-    del current_user
+async def _connect_to_jira_impl(payload: JiraConnectRequest, db: AsyncSession) -> dict:
+    """Shared connect+validate+save logic (auth is enforced by the endpoints)."""
     with handle_api_error(
         operation="connect_to_jira", exception_map={JiraAuthError: 401, JiraUnexpectedResponse: 502}
     ):
@@ -166,6 +161,19 @@ async def connect_to_jira(
             logger.info("Jira credentials saved to database")
 
         return {"status": "connected", "message": "Successfully connected to Jira"}
+
+
+@router.post("/connect")
+async def connect_to_jira(
+    payload: JiraConnectRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(
+        require_integration_permission(Permissions.INTEGRATION_MANAGE)
+    ),
+):
+    """Connect to Jira instance and validate credentials."""
+    del current_user
+    return await _connect_to_jira_impl(payload, db)
 
 
 @router.get("/status")
@@ -266,7 +274,7 @@ async def sync_project_data(
     project_key: str,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(require_integration_access),
+    current_user: User | None = Depends(require_integration_permission(Permissions.PROJECT_UPDATE)),
 ):
     """Sync project data from Jira to database.
     Be tolerant: if fetching project meta fails (e.g., restricted), still try to sync issues.
@@ -426,20 +434,21 @@ async def get_issue_worklogs(
 async def connect_to_jira_pat(
     payload: JiraPatConnectRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(require_integration_access),
+    current_user: User | None = Depends(
+        require_integration_permission(Permissions.INTEGRATION_MANAGE)
+    ),
 ):
     """Convenience endpoint to connect with PAT (Bearer) explicitly and persist credentials."""
     del current_user
-    return await connect_to_jira(
-        payload=JiraConnectRequest(
+    return await _connect_to_jira_impl(
+        JiraConnectRequest(
             base_url=payload.base_url,
             api_token=payload.api_token,
             email=None,
             save=payload.save,
             use_pat=True,
         ),
-        db=db,
-        current_user=None,
+        db,
     )
 
 
