@@ -1,0 +1,15 @@
+# Container-image scan suppressions with justification.
+# Re-evaluate each entry when the base image or trivy DB is updated.
+
+# GHSA-6v7p-g79w-8964 (msgpack) and CVE-2025-47273 (setuptools):
+# trivy attributes these to the backend image, but neither package version
+# exists in any image layer:
+#   - pip installs setuptools 84.0.0 (>=78.1.1 pinned in the Dockerfile);
+#   - msgpack>=1.2.1 is force-installed in the Dockerfile;
+#   - Debian's python3-msgpack / python3-setuptools are absent (apt purge
+#     reports them as not installed).
+# trivy itself warns "Third-party SBOM may lead to inaccurate vulnerability
+# detection" for this image. Remove these entries if a future scan shows a
+# concrete file path carrying the vulnerable versions.
+GHSA-6v7p-g79w-8964
+CVE-2025-47273
