@@ -12,6 +12,8 @@ B5: encrypt_str refuses to store plaintext without any configured secret.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 import pyotp
 from fastapi import HTTPException
@@ -92,6 +94,21 @@ def test_encrypt_str_roundtrip_with_secret():
     assert decrypt_str(encrypted) == token
 
 
+@pytest.mark.asyncio
+async def test_settings_token_save_fails_loudly_without_secrets(client, monkeypatch):
+    """Codex r1 MF4: when encryption refuses to store plaintext, the
+    settings endpoints must return an explicit 503 - not a silent 200."""
+    monkeypatch.setattr(settings, "ENCRYPTION_SECRET", None)
+    monkeypatch.setattr(settings, "SECRET_KEY", "")
+
+    response = await client.put(
+        "/api/v1/settings/github",
+        json={"base_url": "https://api.github.com", "api_token": "ghp_x"},
+    )
+    assert response.status_code == 503
+    assert "ENCRYPTION_SECRET" in response.json()["detail"]
+
+
 # ---------------------------------------------------------------------------
 # B1 + B2: MFA storage hardening and TOTP anti-replay
 # ---------------------------------------------------------------------------
@@ -110,10 +127,10 @@ async def test_mfa_setup_stores_encrypted_secret_and_hashed_codes(client):
     plain_codes = response.json()["backup_codes"]
 
     user = await _get_user_by_email("mfa-b1@example.com")
-    # at rest: encrypted secret, hashed backup codes
+    # at rest: encrypted secret, bcrypt-hashed backup codes
     assert user.mfa_secret.startswith(AES_GCM_PREFIX)
     assert user.mfa_secret != secret
-    assert all(len(code) == 64 for code in user.mfa_backup_codes or [])
+    assert all(code.startswith("$2") for code in user.mfa_backup_codes or [])
     assert secret not in (user.mfa_backup_codes or [])
     # verification still works against the digests
     valid, idx = verify_backup_code(plain_codes[0], user.mfa_backup_codes or [])
@@ -148,10 +165,14 @@ async def test_mfa_login_flow_and_totp_replay_rejected(client):
     temp_token = login.json()["temp_token"]
 
     # the setup step above already consumed the current window's code
-    # (anti-replay), so use the next window's code for the login step
-    from datetime import datetime, timedelta
+    # (anti-replay), so use exactly the NEXT interval: now+32s can be two
+    # windows ahead when the current window has <2s left (+1 is the max
+    # the verifier accepts)
+    import time as _time
+    from datetime import datetime
 
-    fresh_code = pyotp.TOTP(secret).at(datetime.now() + timedelta(seconds=32))
+    next_interval = (int(_time.time()) // 30 + 1) * 30
+    fresh_code = pyotp.TOTP(secret).at(datetime.fromtimestamp(next_interval))
     first = await client.post(
         "/api/v1/auth/mfa/verify-login",
         json={"code": fresh_code, "temp_token": temp_token},
@@ -209,7 +230,7 @@ async def test_legacy_plaintext_mfa_storage_upgraded_on_use(client, monkeypatch)
 
     user = await _get_user_by_email(email)
     assert user.mfa_secret.startswith(AES_GCM_PREFIX)  # upgraded
-    assert all(len(c) == 64 for c in user.mfa_backup_codes or [])  # hashed
+    assert all(c.startswith("$2") for c in user.mfa_backup_codes or [])  # bcrypt
 
     # legacy backup code still verifies against the upgraded digests
     login2 = await client.post(
@@ -223,6 +244,139 @@ async def test_legacy_plaintext_mfa_storage_upgraded_on_use(client, monkeypatch)
     assert backup_login.status_code == 200, backup_login.text
     user = await _get_user_by_email(email)
     assert len(user.mfa_backup_codes or []) == 1  # used code consumed
+
+
+@pytest.mark.asyncio
+async def test_concurrent_totp_claims_allow_exactly_one(client):
+    """Two parallel verify-login calls with the same code: the conditional
+    UPDATE must let exactly one through (Codex r1 MF2)."""
+    import asyncio
+    import time as _time
+    from datetime import datetime
+
+    from httpx import AsyncClient
+
+    from app.core.database import AsyncSessionLocal
+    from app.core.security import get_password_hash
+
+    email = "mfa-race@example.com"
+    secret = pyotp.random_base32()
+    async with AsyncSessionLocal() as db:
+        db.add(
+            User(
+                email=email,
+                username="mfa_race_user",
+                hashed_password=get_password_hash("StrongPassword123!"),
+                is_active=True,
+                mfa_enabled=True,
+                mfa_secret=secret,
+                mfa_backup_codes=None,
+            )
+        )
+        await db.commit()
+
+    async with AsyncClient(app=app, base_url="http://test") as raw_client:
+        tokens = []
+        for _ in range(2):
+            login = await raw_client.post(
+                "/api/v1/auth/login",
+                data={"username": email, "password": "StrongPassword123!"},
+            )
+            tokens.append(login.json()["temp_token"])
+        code = pyotp.TOTP(secret).at(datetime.fromtimestamp((int(_time.time()) // 30 + 1) * 30))
+        results = await asyncio.gather(
+            *[
+                raw_client.post(
+                    "/api/v1/auth/mfa/verify-login",
+                    json={"code": code, "temp_token": token},
+                )
+                for token in tokens
+            ]
+        )
+    statuses = sorted(r.status_code for r in results)
+    assert statuses[0] == 200, [r.text for r in results]
+    assert all(s != 200 for s in statuses[1:]), statuses
+
+
+def test_migration_038_downgrade_refuses_wave_b_data():
+    """Downgrade must fail loudly when encrypted secrets / hashed codes
+    exist instead of crashing halfway on PostgreSQL (Codex r1 MF5)."""
+    import importlib.util
+    from pathlib import Path
+
+    from sqlalchemy import create_engine, text
+
+    spec = importlib.util.spec_from_file_location(
+        "m038",
+        Path(__file__).parent.parent / "alembic" / "versions" / "038_add_mfa_security.py",
+    )
+    m038 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m038)
+
+    class _Batch:
+        def __enter__(self) -> "_Batch":
+            return self
+
+        def __exit__(self, *args: object) -> bool:
+            return False
+
+        def drop_column(self, *a: object, **k: object) -> None:  # noqa: D401
+            pass
+
+        def alter_column(self, *a: object, **k: object) -> None:  # noqa: D401
+            pass
+
+    engine = create_engine("sqlite://")
+    with engine.connect() as conn:
+        # alembic's `op` proxy only works inside a migration; stub it
+        m038.op = SimpleNamespace(  # type: ignore[assignment]
+            get_bind=lambda: conn,
+            batch_alter_table=lambda table: _Batch(),
+        )
+        conn.execute(
+            text(
+                "CREATE TABLE users (id INTEGER PRIMARY KEY, mfa_secret TEXT, mfa_backup_codes TEXT, mfa_enabled BOOLEAN, mfa_last_used_counter INTEGER)"
+            )
+        )
+        conn.execute(text("INSERT INTO users (mfa_secret) VALUES ('encgcm:AAAA')"))
+        conn.commit()
+        assert m038._wave_b_data_exists(conn) is True
+        with pytest.raises(RuntimeError, match="Cannot downgrade"):
+            m038.downgrade()
+        # clean the wave-B data -> downgrade path proceeds (no raise)
+        conn.execute(text("UPDATE users SET mfa_secret = NULL"))
+        conn.commit()
+        assert m038._wave_b_data_exists(conn) is False
+        m038.downgrade()  # runs through the stubbed batch ops
+    engine.dispose()
+
+
+def test_compose_proxy_trust_uses_literal_static_ip():
+    """B3 config: uvicorn trusts a literal nginx IP (no CIDR support in
+    ProxyHeadersMiddleware); nginx pins that address via ipam."""
+    from pathlib import Path
+
+    import yaml
+
+    repo_root = Path(__file__).resolve().parents[2]
+    nginx_ip = "172.28.0.2"
+    for compose_name in ("docker-compose.yml", "docker-compose.pohelper.deploy.yml"):
+        compose = yaml.safe_load((repo_root / compose_name).read_text())
+        backend_cmd = compose["services"]["backend"]["command"]
+        assert "--proxy-headers" in backend_cmd, compose_name
+        assert (
+            f"--forwarded-allow-ips=$${{UVICORN_FORWARDED_ALLOW_IPS:-{nginx_ip}}}" in backend_cmd
+        ), (
+            compose_name,
+            backend_cmd,
+        )
+        # no CIDR trust left
+        assert "172.16.0.0/12" not in backend_cmd
+        networks = compose["networks"]["po_net"]["ipam"]["config"]
+        assert any(cfg.get("subnet") == "172.28.0.0/24" for cfg in networks)
+        frontend_nets = compose["services"]["frontend"]["networks"]
+        assert frontend_nets["po_net"]["ipv4_address"] == nginx_ip
+        assert "po_net" in compose["services"]["backend"]["networks"]
 
 
 # ---------------------------------------------------------------------------
