@@ -9,6 +9,15 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
+# Debian ships its own copies of some Python packages (msgpack, setuptools)
+# under /usr/lib/python3/dist-packages; the app uses the pip-installed
+# versions from /usr/local/lib (earlier on sys.path). Drop the distro
+# duplicates so image vulnerability scanners only see patched versions.
+RUN apt-get purge -y python3-msgpack python3-setuptools || true \
+    && rm -rf /usr/lib/python3/dist-packages/msgpack* \
+              /usr/lib/python3/dist-packages/setuptools* \
+              /usr/lib/python3/dist-packages/pkg_resources*
+
 # Patch build tooling (pip/setuptools/wheel) to clear known CVEs shipped in the base image
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
