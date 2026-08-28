@@ -486,7 +486,7 @@ async def put_github_settings(
                 else row.api_token
             )
         except Exception as exc:
-            logger.warning("Failed to encrypt/save Confluence token bundle: %s", exc)
+            logger.warning("Failed to encrypt/save GitHub token bundle: %s", exc)
     await db.refresh(row)
     return {
         "kind": "github",
@@ -711,7 +711,7 @@ async def put_gitlab_settings(
                 else row.api_token
             )
         except Exception as exc:
-            logger.warning("Failed to encrypt/save GitHub token bundle: %s", exc)
+            logger.warning("Failed to encrypt/save GitLab token bundle: %s", exc)
     await db.refresh(row)
     return {
         "kind": "gitlab",
@@ -999,7 +999,7 @@ async def put_bitbucket_settings(
             if token_bundle:
                 row.api_token = encrypt_str(token_bundle)
         except Exception as exc:
-            logger.warning("Failed to encrypt/save TestRail token bundle: %s", exc)
+            logger.warning("Failed to encrypt/save Bitbucket token bundle: %s", exc)
 
     await db.refresh(row)
     return {
