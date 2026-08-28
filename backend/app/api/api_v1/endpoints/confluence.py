@@ -294,9 +294,7 @@ async def sync_confluence(
     start: int = 0,
     full: bool = False,
     db: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(
-        require_integration_permission(Permissions.PROJECT_UPDATE)
-    ),
+    current_user: User | None = Depends(require_integration_permission(Permissions.PROJECT_UPDATE)),
 ):
     """Sync Confluence pages to local database.
 
@@ -388,9 +386,7 @@ async def sync_confluence_sse(
     start: int = 0,
     full: bool = True,
     db: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(
-        require_integration_permission(Permissions.PROJECT_UPDATE)
-    ),
+    current_user: User | None = Depends(require_integration_permission(Permissions.PROJECT_UPDATE)),
 ):
     """Sync Confluence pages with real-time progress updates via Server-Sent Events."""
     del current_user
@@ -529,9 +525,7 @@ async def start_celery_sync(
     space: Optional[str] = None,
     q: Optional[str] = None,
     full: bool = True,
-    current_user: User | None = Depends(
-        require_integration_permission(Permissions.PROJECT_UPDATE)
-    ),
+    current_user: User | None = Depends(require_integration_permission(Permissions.PROJECT_UPDATE)),
 ):
     """Start Confluence sync using Celery for robust background processing."""
     del current_user
@@ -616,9 +610,7 @@ async def sync_subtree(
     page_id: str,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(
-        require_integration_permission(Permissions.PROJECT_UPDATE)
-    ),
+    current_user: User | None = Depends(require_integration_permission(Permissions.PROJECT_UPDATE)),
 ):
     del current_user
     try:

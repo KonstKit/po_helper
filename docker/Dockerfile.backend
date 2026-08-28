@@ -2,8 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install system dependencies; upgrade distro packages so base-image CVEs
+# (e.g. libssl3t64) are patched from the Debian repo at build time
+RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     gcc \
     g++ \
     && rm -rf /var/lib/apt/lists/*
@@ -16,7 +17,7 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Re-assert patched build tooling in case a dependency pulled older setuptools/wheel
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+RUN pip install --no-cache-dir --upgrade "pip" "setuptools>=78.1.1" "wheel"
 
 # Copy application code
 COPY backend/app ./app

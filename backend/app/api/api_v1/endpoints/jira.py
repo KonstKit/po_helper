@@ -274,9 +274,7 @@ async def sync_project_data(
     project_key: str,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(
-        require_integration_permission(Permissions.PROJECT_UPDATE)
-    ),
+    current_user: User | None = Depends(require_integration_permission(Permissions.PROJECT_UPDATE)),
 ):
     """Sync project data from Jira to database.
     Be tolerant: if fetching project meta fails (e.g., restricted), still try to sync issues.
