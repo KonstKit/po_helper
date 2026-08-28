@@ -7,6 +7,7 @@ Covers:
 - MFA setup and verification
 - Backup codes
 """
+
 from unittest.mock import patch, AsyncMock, MagicMock
 
 import pytest
@@ -40,10 +41,7 @@ class TestGoogleOAuth2:
 
     def test_is_configured_with_credentials(self):
         """Test configuration check with credentials."""
-        client = GoogleOAuth2Client(
-            client_id="test-client-id",
-            client_secret="test-secret"
-        )
+        client = GoogleOAuth2Client(client_id="test-client-id", client_secret="test-secret")
         assert client.is_configured is True
 
     def test_get_authorization_url(self):
@@ -51,7 +49,7 @@ class TestGoogleOAuth2:
         client = GoogleOAuth2Client(
             client_id="test-client-id",
             client_secret="test-secret",
-            redirect_uri="http://localhost/callback"
+            redirect_uri="http://localhost/callback",
         )
         url, state = client.get_authorization_url()
 
@@ -75,7 +73,7 @@ class TestGoogleOAuth2:
         client = GoogleOAuth2Client(
             client_id="test-client-id",
             client_secret="test-secret",
-            redirect_uri="http://localhost/callback"
+            redirect_uri="http://localhost/callback",
         )
 
         mock_response = MagicMock()
@@ -102,10 +100,7 @@ class TestGoogleOAuth2:
     @pytest.mark.asyncio
     async def test_get_user_info_success(self):
         """Test successful user info fetch."""
-        client = GoogleOAuth2Client(
-            client_id="test-client-id",
-            client_secret="test-secret"
-        )
+        client = GoogleOAuth2Client(client_id="test-client-id", client_secret="test-secret")
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -142,10 +137,7 @@ class TestMicrosoftOAuth2:
 
     def test_is_configured_with_credentials(self):
         """Test configuration check with credentials."""
-        client = MicrosoftOAuth2Client(
-            client_id="test-client-id",
-            client_secret="test-secret"
-        )
+        client = MicrosoftOAuth2Client(client_id="test-client-id", client_secret="test-secret")
         assert client.is_configured is True
 
     def test_get_authorization_url(self):
@@ -154,7 +146,7 @@ class TestMicrosoftOAuth2:
             client_id="test-client-id",
             client_secret="test-secret",
             redirect_uri="http://localhost/callback",
-            tenant_id="common"
+            tenant_id="common",
         )
         url, state = client.get_authorization_url()
 
@@ -166,10 +158,7 @@ class TestMicrosoftOAuth2:
     @pytest.mark.asyncio
     async def test_get_user_info_success(self):
         """Test successful user info fetch from Microsoft Graph."""
-        client = MicrosoftOAuth2Client(
-            client_id="test-client-id",
-            client_secret="test-secret"
-        )
+        client = MicrosoftOAuth2Client(client_id="test-client-id", client_secret="test-secret")
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -177,7 +166,7 @@ class TestMicrosoftOAuth2:
             "id": "microsoft-user-456",
             "mail": "user@company.com",
             "displayName": "Corporate User",
-            "userPrincipalName": "user@company.onmicrosoft.com"
+            "userPrincipalName": "user@company.onmicrosoft.com",
         }
 
         with patch("httpx.AsyncClient") as mock_client:
@@ -205,8 +194,7 @@ class TestOAuthHelpers:
     def test_is_email_allowed_with_restrictions(self, monkeypatch):
         """Test email filtering with domain restrictions."""
         monkeypatch.setattr(
-            "app.core.oauth.settings.OAUTH_ALLOWED_DOMAINS",
-            ["company.com", "corp.net"]
+            "app.core.oauth.settings.OAUTH_ALLOWED_DOMAINS", ["company.com", "corp.net"]
         )
 
         assert is_email_allowed("user@company.com") is True
@@ -331,10 +319,7 @@ class TestOAuth2Endpoints:
 
     async def test_get_oauth_providers(self, client, auth_headers):
         """Test OAuth providers status endpoint."""
-        response = await client.get(
-            "/api/v1/auth/oauth2/providers",
-            headers=auth_headers
-        )
+        response = await client.get("/api/v1/auth/oauth2/providers", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -357,7 +342,9 @@ class TestOAuth2Endpoints:
         """Test Microsoft OAuth initiation."""
         monkeypatch.setattr("app.core.oauth.microsoft_oauth.client_id", "test-id")
         monkeypatch.setattr("app.core.oauth.microsoft_oauth.client_secret", "test-secret")
-        monkeypatch.setattr("app.core.oauth.microsoft_oauth.redirect_uri", "http://localhost/callback")
+        monkeypatch.setattr(
+            "app.core.oauth.microsoft_oauth.redirect_uri", "http://localhost/callback"
+        )
         monkeypatch.setattr("app.core.oauth.microsoft_oauth.tenant_id", "common")
 
         response = await client.get("/api/v1/auth/oauth2/microsoft")
@@ -370,22 +357,23 @@ class TestMFAEndpoints:
 
     async def test_get_mfa_status(self, client, auth_headers):
         """Test MFA status endpoint."""
-        response = await client.get(
-            "/api/v1/auth/mfa/status",
-            headers=auth_headers
-        )
+        response = await client.get("/api/v1/auth/mfa/status", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
         assert "mfa_enabled" in data
         assert "remaining_backup_codes" in data or data["mfa_enabled"] is False
 
-    async def test_mfa_setup(self, client, auth_headers):
-        """Test MFA setup endpoint."""
-        response = await client.post(
-            "/api/v1/auth/mfa/setup",
-            headers=auth_headers
+    async def test_mfa_setup(self, client, auth_headers, monkeypatch):
+        """Test MFA setup endpoint (requires a dedicated ENCRYPTION_SECRET)."""
+        from app.core.config import settings as app_settings
+
+        monkeypatch.setattr(
+            app_settings,
+            "ENCRYPTION_SECRET",
+            "dedicated-test-encryption-secret-0123456789abcdef",
         )
+        response = await client.post("/api/v1/auth/mfa/setup", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -395,11 +383,15 @@ class TestMFAEndpoints:
 
     async def test_mfa_verify(self, client, auth_headers, monkeypatch):
         """Test MFA verification endpoint."""
-        # First setup MFA
-        setup_response = await client.post(
-            "/api/v1/auth/mfa/setup",
-            headers=auth_headers
+        from app.core.config import settings as app_settings
+
+        monkeypatch.setattr(
+            app_settings,
+            "ENCRYPTION_SECRET",
+            "dedicated-test-encryption-secret-0123456789abcdef",
         )
+        # First setup MFA
+        setup_response = await client.post("/api/v1/auth/mfa/setup", headers=auth_headers)
         setup_data = setup_response.json()
         secret = setup_data.get("secret")
 
@@ -408,9 +400,7 @@ class TestMFAEndpoints:
             current_code = get_current_totp(secret)
 
             response = await client.post(
-                "/api/v1/auth/mfa/verify",
-                headers=auth_headers,
-                json={"code": current_code}
+                "/api/v1/auth/mfa/verify", headers=auth_headers, json={"code": current_code}
             )
 
             # Should verify successfully
@@ -419,9 +409,7 @@ class TestMFAEndpoints:
     async def test_mfa_disable(self, client, auth_headers):
         """Test MFA disable endpoint."""
         response = await client.post(
-            "/api/v1/auth/mfa/disable",
-            headers=auth_headers,
-            json={"code": "123456"}
+            "/api/v1/auth/mfa/disable", headers=auth_headers, json={"code": "123456"}
         )
 
         # Should succeed or require verification
@@ -432,7 +420,7 @@ class TestMFAEndpoints:
         response = await client.post(
             "/api/v1/auth/mfa/backup-codes/regenerate",
             headers=auth_headers,
-            json={"code": "123456"}
+            json={"code": "123456"},
         )
 
         # May require MFA to be enabled first
