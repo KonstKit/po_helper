@@ -685,5 +685,5 @@ class ProjectSyncOrchestrator:
             from app.core.notifications import connections
 
             await connections.broadcast_json({"type": event_type, **payload})
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("WS notification %s failed (non-fatal): %s", event_type, exc)
