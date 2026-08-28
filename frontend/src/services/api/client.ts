@@ -25,6 +25,35 @@ declare global {
 /** Base URL for API v1 endpoints */
 export const API_BASE_URL = "/api/v1";
 
+/**
+ * Open the live-updates WebSocket.
+ *
+ * Browsers cannot set headers on a WebSocket handshake, so the JWT is
+ * first exchanged for a short-lived single-use ticket over an
+ * authenticated HTTP call; only the ticket goes into the URL (never the
+ * token itself). Returns null when there is no session or the ticket
+ * could not be obtained - callers must not open a socket in that case.
+ */
+export const openWebSocket = async (): Promise<WebSocket | null> => {
+  const token = localStorage.getItem('token');
+  if (!token) return null;
+  try {
+    const response = await api.post<{ ticket: string }>(
+      '/v1/auth/ws-ticket',
+      {},
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    const ticket = response.data?.ticket;
+    if (!ticket) return null;
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    return new WebSocket(
+      `${protocol}://${window.location.host}/api/v1/ws?ticket=${encodeURIComponent(ticket)}`,
+    );
+  } catch {
+    return null;
+  }
+};
+
 /** Default cache TTL in milliseconds (1 minute) */
 export const CACHE_TTL = 60000;
 

@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import ClassVar, Optional, List
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -21,7 +21,10 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
 
-    SECRET_KEY: str = Field(default="your-secret-key-here-change-in-production", min_length=32)
+    # Known placeholder accepted in development/test only; the startup guard
+    # in main.py refuses it for staging/production deployments.
+    SECRET_KEY_PLACEHOLDER: ClassVar[str] = "your-secret-key-here-change-in-production"
+    SECRET_KEY: str = Field(default=SECRET_KEY_PLACEHOLDER, min_length=32)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     ENVIRONMENT: str = Field(default="development", alias="ENVIRONMENT")
@@ -169,6 +172,14 @@ class Settings(BaseSettings):
     # OAuth behavior
     OAUTH_AUTO_CREATE_USERS: bool = True  # Auto-create users on first OAuth login
     OAUTH_ALLOWED_DOMAINS: List[str] = []  # Empty = all domains allowed
+    # Exact-match allow list for client-supplied redirect_uri overrides;
+    # empty list forbids overrides entirely (configured default is used).
+    OAUTH_ALLOWED_REDIRECT_URIS: List[str] = []
+    # Linking an OAuth identity to an existing password-account by email
+    # requires explicit opt-in (account-takeover vector otherwise).
+    OAUTH_ALLOW_EMAIL_LINKING: bool = False
+    # Signed-state TTL for the OAuth2 authorization-code flow (seconds).
+    OAUTH_STATE_MAX_AGE_SECONDS: int = 600
 
     @property
     def google_oauth_configured(self) -> bool:

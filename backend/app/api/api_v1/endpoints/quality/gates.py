@@ -1,5 +1,7 @@
 """Quality Gate endpoints for PR coverage checks and GitHub status updates."""
 
+import asyncio
+
 from .common import (
     APIRouter,
     Depends,
@@ -166,15 +168,18 @@ async def update_github_status(
     }
     url = f"https://api.github.com/repos/{slug}/statuses/{sha}"
     try:
-        resp = requests.post(
-            url,
-            json=status,
-            headers={
-                "Authorization": f"Bearer {settings.GITHUB_API_TOKEN}",
-                "Accept": "application/vnd.github+json",
-                "User-Agent": "po-helper",
-            },
-            timeout=15,
+        # requests is blocking: keep it off the event loop
+        resp = await asyncio.to_thread(
+            lambda: requests.post(
+                url,
+                json=status,
+                headers={
+                    "Authorization": f"Bearer {settings.GITHUB_API_TOKEN}",
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "po-helper",
+                },
+                timeout=15,
+            )
         )
         ok = 200 <= resp.status_code < 300
         return {
@@ -253,15 +258,17 @@ async def update_github_check_run(
     }
     url = f"https://api.github.com/repos/{slug}/check-runs"
     try:
-        resp = requests.post(
-            url,
-            json=check_payload,
-            headers={
-                "Authorization": f"Bearer {settings.GITHUB_API_TOKEN}",
-                "Accept": "application/vnd.github+json",
-                "User-Agent": "po-helper",
-            },
-            timeout=15,
+        resp = await asyncio.to_thread(
+            lambda: requests.post(
+                url,
+                json=check_payload,
+                headers={
+                    "Authorization": f"Bearer {settings.GITHUB_API_TOKEN}",
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "po-helper",
+                },
+                timeout=15,
+            )
         )
         ok = 200 <= resp.status_code < 300
         data = None

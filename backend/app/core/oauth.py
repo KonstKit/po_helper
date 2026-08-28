@@ -273,14 +273,19 @@ class MicrosoftOAuth2Client:
             # Microsoft Graph returns 'mail' or 'userPrincipalName' for email
             email = data.get("mail") or data.get("userPrincipalName", "")
 
-            return OAuth2UserInfo(
-                provider="microsoft",
-                provider_id=data.get("id", ""),
-                email=email,
-                name=data.get("displayName"),
-                picture=None,  # Requires separate Graph API call for photo
-                email_verified=True,  # Microsoft accounts are verified
-            )
+        # Microsoft Graph /me does not return an email-verification claim.
+        # Tenant policy: organizational tenants administer their accounts'
+        # emails, so treat them as verified; the "common" tenant also admits
+        # consumer accounts whose emails may be unverified - gate those.
+        email_verified = settings.MICROSOFT_TENANT_ID != "common"
+        return OAuth2UserInfo(
+            provider="microsoft",
+            provider_id=data.get("id", ""),
+            email=email,
+            name=data.get("displayName"),
+            picture=None,  # Requires separate Graph API call for photo
+            email_verified=email_verified,
+        )
 
 
 # Singleton instances

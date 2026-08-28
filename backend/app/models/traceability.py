@@ -54,7 +54,9 @@ class Artifact(Base):
 
     # Versioning
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    parent_version_id: Mapped[int | None] = mapped_column(ForeignKey("artifacts.id"), nullable=True)
+    parent_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("artifacts.id"), index=True, nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(
@@ -170,7 +172,7 @@ class LegacyMapping(Base):
     old_table: Mapped[str] = mapped_column(String, nullable=False)
     old_id: Mapped[int] = mapped_column(Integer, nullable=False)
     new_artifact_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("artifacts.id"), nullable=False
+        Integer, ForeignKey("artifacts.id"), index=True, nullable=False
     )
     migrated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -213,9 +215,11 @@ class SuggestedLink(Base):
     )
 
     from_artifact_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("artifacts.id"), nullable=False
+        Integer, ForeignKey("artifacts.id"), index=True, nullable=False
     )
-    to_artifact_id: Mapped[int] = mapped_column(Integer, ForeignKey("artifacts.id"), nullable=False)
+    to_artifact_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("artifacts.id"), index=True, nullable=False
+    )
     suggested_link_type: Mapped[str] = mapped_column(String, nullable=False)
 
     # Similarity scoring

@@ -20,14 +20,16 @@ def use_real_integration_access():
         app.dependency_overrides.pop(require_integration_access, None)
 
 
-async def _create_auth_headers(db_session, suffix: str) -> dict[str, str]:
+async def _create_auth_headers(db_session, suffix: str, *, privileged: bool = False) -> dict[str, str]:
     user = User(
         email=f"integration-{suffix}@example.com",
         username=f"integration-{suffix}",
         full_name="Integration Test User",
         hashed_password=None,
         is_active=True,
-        is_superuser=False,
+        # connect endpoints require integration:manage since the security
+        # review; superuser passes the gate for contract-focused tests.
+        is_superuser=privileged,
     )
     db_session.add(user)
     await db_session.commit()
@@ -71,7 +73,7 @@ async def test_jira_connect_accepts_authenticated_json_body_and_rejects_query_co
         return None
 
     monkeypatch.setattr("app.api.api_v1.endpoints.jira._call_jira", _fake_call_jira)
-    headers = await _create_auth_headers(db_session, "jira-auth")
+    headers = await _create_auth_headers(db_session, "jira-auth", privileged=True)
 
     response = await client.post(
         "/api/v1/jira/connect",
@@ -162,7 +164,7 @@ async def test_confluence_connect_accepts_authenticated_json_body_and_rejects_qu
         "app.api.api_v1.endpoints.confluence.confluence_service.status",
         lambda: {"configured": True},
     )
-    headers = await _create_auth_headers(db_session, "confluence-auth")
+    headers = await _create_auth_headers(db_session, "confluence-auth", privileged=True)
 
     response = await client.post(
         "/api/v1/confluence/connect",
