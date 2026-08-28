@@ -61,6 +61,7 @@ services:
       - ./backend/alembic.ini:/app/alembic.ini
     restart: unless-stopped
     networks:
+      - default
       - po_net
 
   frontend:
