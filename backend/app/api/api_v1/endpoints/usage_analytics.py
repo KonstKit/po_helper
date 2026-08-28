@@ -8,7 +8,7 @@ import hashlib
 import logging
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -118,6 +118,7 @@ def _enforce_batch_size(events_in: AnalyticsEventBatchIn) -> None:
 @limiter.limit("100/minute", key_func=_user_or_ip_key)
 async def track_event(
     request: Request,
+    response: Response,
     event: AnalyticsEventIn,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user_strict),
@@ -142,6 +143,7 @@ async def track_event(
 @limiter.limit("60/minute", key_func=_user_or_ip_key)
 async def track_events_batch(
     request: Request,
+    response: Response,
     payload: AnalyticsEventBatchIn,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user_strict),

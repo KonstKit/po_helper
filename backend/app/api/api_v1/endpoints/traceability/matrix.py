@@ -12,7 +12,7 @@ import os
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -520,6 +520,7 @@ async def apply_matrix_config(
 @limiter.limit("10/minute")
 async def create_export_task(
     request: Request,
+    response: Response,
     payload: ExportTaskCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
@@ -767,6 +768,7 @@ async def download_export(
 @limiter.limit("10/minute")
 async def delete_export(
     request: Request,
+    response: Response,
     task_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission(Permissions.TRACEABILITY_MANAGE)),
