@@ -417,31 +417,32 @@ async def get_impact_analysis(
     max_depth = 5
 
     while frontier and depth < max_depth:
-        next_frontier = []
-        for cur_id in frontier:
-            ind_query = (
-                select(ArtifactLink, Artifact)
-                .join(Artifact, Artifact.id == ArtifactLink.to_artifact_id)
-                .where(ArtifactLink.from_artifact_id == cur_id)
-            )
-            if start.project_id:
-                ind_query = ind_query.where(ArtifactLink.project_id == start.project_id)
+        # one query per BFS level (IN over the frontier) instead of one
+        # query per frontier node
+        ind_query = (
+            select(ArtifactLink, Artifact)
+            .join(Artifact, Artifact.id == ArtifactLink.to_artifact_id)
+            .where(ArtifactLink.from_artifact_id.in_(frontier))
+        )
+        if start.project_id:
+            ind_query = ind_query.where(ArtifactLink.project_id == start.project_id)
 
-            ind_res = await db.execute(ind_query)
-            for link, artifact in ind_res.all():
-                if artifact.id not in seen:
-                    seen.add(artifact.id)
-                    next_frontier.append(artifact.id)
-                    indirectly_affected.append(
-                        {
-                            "id": artifact.id,
-                            "type": artifact.type,
-                            "display_key": artifact.display_key or artifact.external_id,
-                            "title": artifact.title,
-                            "distance": depth + 1,
-                            "impact_level": "low" if depth > 2 else "medium",
-                        }
-                    )
+        ind_res = await db.execute(ind_query)
+        next_frontier = []
+        for link, artifact in ind_res.all():
+            if artifact.id not in seen:
+                seen.add(artifact.id)
+                next_frontier.append(artifact.id)
+                indirectly_affected.append(
+                    {
+                        "id": artifact.id,
+                        "type": artifact.type,
+                        "display_key": artifact.display_key or artifact.external_id,
+                        "title": artifact.title,
+                        "distance": depth + 1,
+                        "impact_level": "low" if depth > 2 else "medium",
+                    }
+                )
         frontier = next_frontier
         depth += 1
 

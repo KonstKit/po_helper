@@ -319,6 +319,41 @@ class LinkService:
         created = []
         errors = []
 
+        # Pre-pass: drop specs whose link already exists with ONE query,
+        # instead of each create_link doing its own existence round-trip.
+        # Duplicates within the batch itself are still caught by
+        # create_link's post-flush check (see the note above).
+        if skip_duplicates:
+            from sqlalchemy import tuple_
+
+            spec_keys = [
+                (spec["from_artifact_id"], spec["to_artifact_id"], spec["link_type"])
+                for spec in links_data
+            ]
+            existing = await self.db.execute(
+                select(
+                    ArtifactLink.id,
+                    ArtifactLink.from_artifact_id,
+                    ArtifactLink.to_artifact_id,
+                    ArtifactLink.link_type,
+                ).where(
+                    tuple_(
+                        ArtifactLink.from_artifact_id,
+                        ArtifactLink.to_artifact_id,
+                        ArtifactLink.link_type,
+                    ).in_(spec_keys)
+                )
+            )
+            existing_keys = {
+                (from_id, to_id, link_type) for _, from_id, to_id, link_type in existing.all()
+            }
+            links_data = [
+                spec
+                for spec in links_data
+                if (spec["from_artifact_id"], spec["to_artifact_id"], spec["link_type"])
+                not in existing_keys
+            ]
+
         for link_spec in links_data:
             try:
                 link = await self.create_link(
