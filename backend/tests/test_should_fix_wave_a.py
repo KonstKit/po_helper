@@ -60,6 +60,24 @@ async def test_mfa_verify_login_temp_token_in_body_not_query(client):
     assert any("temp_token" in str(item.get("loc", [])) for item in detail), detail
 
 
+@pytest.mark.asyncio
+async def test_mfa_verify_login_body_token_reaches_decode(client):
+    """Positive body path: the temp_token from the JSON body is the one the
+    endpoint decodes - a syntactically valid JWT with the wrong type fails
+    with the decode-stage error, proving the body field was consumed."""
+    from app.core.security import create_access_token
+
+    wrong_type_token = create_access_token({"sub": "x@example.com"})
+    response = await client.post(
+        "/api/v1/auth/mfa/verify-login",
+        json={"code": "123456", "temp_token": wrong_type_token},
+    )
+    # token decodes but lacks type=mfa_pending; the broad except wraps the
+    # 400 into the generic 401 decode-stage response
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or expired temporary token"
+
+
 # ---------------------------------------------------------------------------
 # A5: FK indexes migration
 # ---------------------------------------------------------------------------

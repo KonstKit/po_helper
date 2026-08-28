@@ -1,7 +1,7 @@
 # Roadmap: устранение Should Fix (Major) — po_helper
 
 Источник: staff code review (Level 4 audit, 2026-08-28) + актуализировано после
-работы по Blocker'ам (ветка `fix/security-blockers-b1-b5`) и двух раундов
+работы по Blocker'ам (ветка `fix/security-blockers-b1-b5`) и трёх раундов
 ревью Codex. Все ссылки на строки — состояние на момент аудита; в `auth.py`
 после правок B1 искать по символам.
 
