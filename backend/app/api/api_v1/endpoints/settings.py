@@ -1,5 +1,6 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
+import asyncio
 import logging
 import json
 import requests
@@ -132,8 +133,8 @@ async def put_jira_settings(
                     )
                 except asyncio.TimeoutError:
                     logger.warning("Jira connection timed out, but settings were saved")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Jira connection check failed, settings were saved anyway: %s", exc)
     # Do not expose token even encrypted
     return {
         "kind": "jira",
@@ -484,8 +485,8 @@ async def put_github_settings(
                 if (token_bundle is not None and token_bundle != "")
                 else row.api_token
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to encrypt/save Confluence token bundle: %s", exc)
     await db.refresh(row)
     return {
         "kind": "github",
@@ -568,7 +569,8 @@ async def test_github_connection(
         except ValueError:
             return False
 
-    resp = _github_request(api_base)
+    # requests is blocking: keep it off the event loop
+    resp = await asyncio.to_thread(_github_request, api_base)
 
     def _maybe_switch_to_rest_api(response: requests.Response) -> requests.Response:
         nonlocal used_base
@@ -597,7 +599,7 @@ async def test_github_connection(
             ),
         )
 
-    resp = _maybe_switch_to_rest_api(resp)
+    resp = await asyncio.to_thread(_maybe_switch_to_rest_api, resp)
 
     if resp.status_code == 404:
         snippet = resp.text[:200] if resp.text else ""
@@ -708,8 +710,8 @@ async def put_gitlab_settings(
                 if (token_bundle is not None and token_bundle != "")
                 else row.api_token
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to encrypt/save GitHub token bundle: %s", exc)
     await db.refresh(row)
     return {
         "kind": "gitlab",
@@ -761,8 +763,12 @@ async def test_gitlab_connection(
         "User-Agent": "po-helper",
     }
 
+    def _gitlab_request() -> requests.Response:
+        return requests.get(f"{api_base}/user", headers=headers, timeout=10)
+
     try:
-        resp = requests.get(f"{api_base}/user", headers=headers, timeout=10)
+        # requests is blocking: keep it off the event loop
+        resp = await asyncio.to_thread(_gitlab_request)
     except requests.Timeout:
         raise HTTPException(status_code=504, detail="GitLab request timed out")
     except requests.RequestException as exc:
@@ -888,8 +894,12 @@ async def test_testrail_connection(
     base_url = base_url.strip().rstrip("/")
     endpoint = f"{base_url}/index.php?/api/v2/get_statuses"
 
+    def _testrail_request() -> requests.Response:
+        return requests.get(endpoint, auth=(email, token), timeout=10)
+
     try:
-        resp = requests.get(endpoint, auth=(email, token), timeout=10)
+        # requests is blocking: keep it off the event loop
+        resp = await asyncio.to_thread(_testrail_request)
     except requests.Timeout:
         raise HTTPException(status_code=504, detail="TestRail request timed out")
     except requests.RequestException as exc:
@@ -988,8 +998,8 @@ async def put_bitbucket_settings(
                 )
             if token_bundle:
                 row.api_token = encrypt_str(token_bundle)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to encrypt/save TestRail token bundle: %s", exc)
 
     await db.refresh(row)
     return {
