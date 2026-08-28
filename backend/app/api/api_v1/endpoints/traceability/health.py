@@ -1185,6 +1185,12 @@ async def fix_consistency_issues(
                 ArtifactLink.created_at.desc(),
             )
         )
+        # the batch fetch must respect the same project scope as dup_query:
+        # without it a cleanup for project A could pick up (and delete) a
+        # duplicate-looking link of project B
+        if project_id is not None:
+            dup_links_query = dup_links_query.where(ArtifactLink.project_id == project_id)
+
         dup_links_result = await db.execute(dup_links_query)
         grouped: dict = {}
         for link in dup_links_result.scalars().all():
