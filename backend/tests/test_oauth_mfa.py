@@ -219,11 +219,11 @@ class TestMFACore:
 
         assert len(codes) == 10
         for code in codes:
-            # Format: XXXX-XXXX
-            assert len(code) == 9
-            assert code[4] == "-"
-            assert code[:4].isalnum()
-            assert code[5:].isalnum()
+            # Format: XXXX-XXXX-XXXX-XXXX (64 bits of entropy)
+            assert len(code) == 19
+            parts = code.split("-")
+            assert len(parts) == 4 and all(len(p) == 4 for p in parts)
+            assert all(p.isalnum() for p in parts)
 
         # All codes should be unique
         assert len(set(codes)) == 10
