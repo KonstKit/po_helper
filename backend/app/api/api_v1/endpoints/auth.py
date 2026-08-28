@@ -1,7 +1,7 @@
 from datetime import timedelta
 import logging
 from typing import Any, Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query, Response
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
@@ -274,6 +274,7 @@ async def issue_scoped_token(
 @limiter.limit("3/minute")
 async def register(
     request: Request,
+    response: Response,
     user_in: UserCreate,
     db: AsyncSession = Depends(get_db),
 ) -> User:
@@ -641,6 +642,7 @@ async def get_mfa_status(
 @limiter.limit("3/minute")
 async def initiate_mfa_setup(
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> MFASetupResponse:
@@ -680,6 +682,7 @@ async def initiate_mfa_setup(
 @limiter.limit("5/minute")
 async def verify_mfa_setup(
     request: Request,
+    response: Response,
     body: MFAVerifyRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -808,6 +811,7 @@ async def regenerate_backup_codes(
 @limiter.limit("5/minute")
 async def verify_mfa_login(
     request: Request,
+    response: Response,
     body: MFAVerifyRequest,
     temp_token: str = Query(..., description="Temporary token from login"),
     db: AsyncSession = Depends(get_db),
