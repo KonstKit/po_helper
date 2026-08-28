@@ -31,11 +31,14 @@ depends_on = None
 
 
 def _wave_b_data_exists(bind) -> bool:
+    """True only for data this migration cannot undo: encrypted secrets
+    (longer than String(64)) and bcrypt backup-code digests. Legacy
+    plaintext codes fit the old schema and do not block the downgrade."""
     result = bind.execute(
         sa.text(
             "SELECT EXISTS (SELECT 1 FROM users "
             "WHERE mfa_secret LIKE 'encgcm:%' "
-            "   OR mfa_backup_codes IS NOT NULL)"
+            "   OR mfa_backup_codes LIKE '%$2%')"
         )
     )
     return bool(result.scalar())
