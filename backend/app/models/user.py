@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, JSON, String
+from sqlalchemy import Boolean, DateTime, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -35,10 +35,13 @@ class User(Base):
     oauth_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    # MFA fields
+    # MFA fields. mfa_secret stores an AES-GCM ciphertext (encgcm:...),
+    # hence the 512 length; mfa_last_used_counter is the TOTP interval of
+    # the most recently accepted code (anti-replay).
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    mfa_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    mfa_secret: Mapped[str | None] = mapped_column(String(512), nullable=True)
     mfa_backup_codes: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    mfa_last_used_counter: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # RBAC: Many-to-many relationship with roles
     roles: Mapped[list[Role]] = relationship("Role", secondary="user_roles", back_populates="users")
