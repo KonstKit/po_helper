@@ -1382,6 +1382,15 @@ const ProjectDetail = () => {
         if (!ok) return; // don't open WS if Jira not configured
         const ws = await openWebSocket();
         if (!ws) return; // no session or ticket issue - do not open a socket
+        if (closed) {
+          // effect cleanup ran while the ticket was being fetched - do not leak the socket
+          try {
+            ws.close();
+          } catch {
+            /* already closed */
+          }
+          return;
+        }
         wsRef.current = ws;
         ws.onmessage = async (ev) => {
           try {
