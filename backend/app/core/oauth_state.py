@@ -26,9 +26,7 @@ class OAuthStateError(Exception):
 
 
 def _sign(payload: bytes) -> str:
-    digest = hmac.new(
-        settings.SECRET_KEY.encode("utf-8"), payload, hashlib.sha256
-    ).hexdigest()
+    digest = hmac.new(settings.SECRET_KEY.encode("utf-8"), payload, hashlib.sha256).hexdigest()
     return digest
 
 
@@ -85,7 +83,10 @@ def verify_oauth_state(
         raise OAuthStateError("undecodable state payload") from exc
 
     ttl = max_age or settings.OAUTH_STATE_MAX_AGE_SECONDS
-    if int(payload.get("exp", 0)) < time.time() or int(payload.get("exp", 0)) > time.time() + ttl + 60:
+    if (
+        int(payload.get("exp", 0)) < time.time()
+        or int(payload.get("exp", 0)) > time.time() + ttl + 60
+    ):
         raise OAuthStateError("state token expired or issued too far in the future")
 
     if payload.get("provider") != provider:

@@ -557,9 +557,7 @@ def _set_oauth_state_cookie(response: Response, state: str, request: Request) ->
     # forwarded protocol header so the cookie stays Secure in production.
     forwarded_proto = request.headers.get("x-forwarded-proto", "")
     scheme = (
-        forwarded_proto.split(",")[0].strip().lower()
-        if forwarded_proto
-        else request.url.scheme
+        forwarded_proto.split(",")[0].strip().lower() if forwarded_proto else request.url.scheme
     )
     response.set_cookie(
         OAUTH_STATE_COOKIE,

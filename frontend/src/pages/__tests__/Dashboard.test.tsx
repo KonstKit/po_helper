@@ -41,6 +41,7 @@ import {
 } from './fixtures/dashboard-scenarios';
 
 vi.mock('../../services/api', () => ({
+  openWebSocket: vi.fn(async () => new WebSocket('ws://test/api/v1/ws?ticket=test-ticket')),
   listProjects: vi.fn(),
   listTasksPaginated: vi.fn(),
   listSprints: vi.fn(),

@@ -22,9 +22,9 @@ beautifulsoup4==4.12.3
 
 # Authentication & Security
 PyJWT==2.13.0
-cryptography==46.0.7
+cryptography==50.0.0
 passlib[bcrypt]==1.7.4
-python-multipart==0.0.30
+python-multipart==0.0.31
 slowapi==0.1.9
 limits==5.6.0
 pyotp==2.9.0
