@@ -75,8 +75,10 @@ def _encrypt_value(value: Any, key: str | None = None) -> Any:
     if isinstance(value, list):
         return [_encrypt_value(item, key=key) for item in value]
     if isinstance(value, str) and key and _looks_like_secret_key(key) and value:
-        encrypted = encrypt_str(value)
-        return encrypted if encrypted is not None else value
+        # encrypt_str raises RuntimeError when no secret is configured (B5);
+        # callers translate it into an explicit API error instead of
+        # silently persisting plaintext.
+        return encrypt_str(value)
     return value
 
 
