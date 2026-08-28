@@ -20,6 +20,11 @@
 
 ---
 
+> Статус: **волна A выполнена** (PR #7, merged), **волна B выполнена**
+> (ветка feat/should-fix-wave-b: B1 шифрование MFA + хэш кодов с
+> upgrade-on-read, B2 TOTP anti-replay, B3 Redis rate limiter + RATE_LIMIT_*
+> + proxy-headers, B4 ALLOW_DEBUG_DEMO_USER, B5 запрет plaintext-fallback).
+
 ## Волна A — быстрые победы (дни 1–3, низкий риск)
 
 Критерий включения: точечные правки, нет миграций данных, нет RFC.
