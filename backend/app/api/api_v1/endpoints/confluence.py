@@ -3,7 +3,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from typing import Optional, AsyncGenerator, Any, cast
 from pydantic import BaseModel
-from app.api.deps import require_integration_access
+from app.api.deps import require_integration_access, require_integration_permission
+from app.models.rbac import Permissions
 from app.services.confluence_service import confluence_service
 from bs4 import BeautifulSoup
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,7 +63,9 @@ async def _call_confluence(func, *args, **kwargs):
 async def connect_confluence(
     payload: ConfluenceConnectRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(require_integration_access),
+    current_user: User | None = Depends(
+        require_integration_permission(Permissions.INTEGRATION_MANAGE)
+    ),
 ):
     """Connect to Confluence instance.
 
@@ -291,7 +294,9 @@ async def sync_confluence(
     start: int = 0,
     full: bool = False,
     db: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(require_integration_access),
+    current_user: User | None = Depends(
+        require_integration_permission(Permissions.PROJECT_UPDATE)
+    ),
 ):
     """Sync Confluence pages to local database.
 
@@ -383,7 +388,9 @@ async def sync_confluence_sse(
     start: int = 0,
     full: bool = True,
     db: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(require_integration_access),
+    current_user: User | None = Depends(
+        require_integration_permission(Permissions.PROJECT_UPDATE)
+    ),
 ):
     """Sync Confluence pages with real-time progress updates via Server-Sent Events."""
     del current_user
@@ -522,7 +529,9 @@ async def start_celery_sync(
     space: Optional[str] = None,
     q: Optional[str] = None,
     full: bool = True,
-    current_user: User | None = Depends(require_integration_access),
+    current_user: User | None = Depends(
+        require_integration_permission(Permissions.PROJECT_UPDATE)
+    ),
 ):
     """Start Confluence sync using Celery for robust background processing."""
     del current_user
@@ -607,7 +616,9 @@ async def sync_subtree(
     page_id: str,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(require_integration_access),
+    current_user: User | None = Depends(
+        require_integration_permission(Permissions.PROJECT_UPDATE)
+    ),
 ):
     del current_user
     try:
