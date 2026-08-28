@@ -152,8 +152,16 @@ class Settings(BaseSettings):
 
     # Debug/Diagnostics
     DEBUG: bool = False
+    # B4 security: DEBUG alone must never grant an admin session; this
+    # explicit opt-in flag is required on top of DEBUG=true.
+    ALLOW_DEBUG_DEMO_USER: bool = False
     SENTRY_TRACES_SAMPLE_RATE: float = 0.0
     SENTRY_PROFILES_SAMPLE_RATE: float = 0.0
+
+    # Rate limiting (B3): wired into the limiter decorators.
+    RATE_LIMIT_DEFAULT: str = "100/minute"
+    RATE_LIMIT_AUTH: str = "5/minute"
+    RATE_LIMIT_SYNC: str = "10/hour"
 
     # OAuth2 SSO Configuration
     OAUTH_ENABLED: bool = False  # Master switch for OAuth2 SSO
