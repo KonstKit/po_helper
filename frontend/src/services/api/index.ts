@@ -24,7 +24,7 @@
 // Client & Utilities
 // =============================================================================
 export { default as api } from './client';
-export { API_BASE_URL, CACHE_TTL, withRetry } from './client';
+export { API_BASE_URL, CACHE_TTL, withRetry, buildWebSocketUrl } from './client';
 
 // =============================================================================
 // All Types
