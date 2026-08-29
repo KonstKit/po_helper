@@ -65,7 +65,7 @@ PO Helper is a **production-ready project management and analytics platform** th
   - 5 node types: 3 Source (Git Commit, Jira Issue, Confluence Page), 1 Processor (Jira Key Extractor), 1 Action (Create Link)
   - Properties panel for viewing node configuration
   - JSON import/export with schema validation
-  - Reference: [TRACEABILITY_FLOW_BUILDER_PHASE1.md](TRACEABILITY_FLOW_BUILDER_PHASE1.md)
+  - Reference: [TRACEABILITY_FLOW_BUILDER_PHASE1.md](../reports/TRACEABILITY_FLOW_BUILDER_PHASE1.md)
 
 - ✅ **Traceability Flow Builder - Phase 2** (COMPLETE)
   - Editable node properties with 30+ configuration fields
@@ -73,7 +73,7 @@ PO Helper is a **production-ready project management and analytics platform** th
   - Template system with 4 pre-built rule templates
   - 2 additional node types: Filter Node, Decision Node (8 total node types)
   - Enhanced UI with top toolbar and validation panel
-  - Reference: [TRACEABILITY_FLOW_BUILDER_PHASE2.md](TRACEABILITY_FLOW_BUILDER_PHASE2.md)
+  - Reference: [TRACEABILITY_FLOW_BUILDER_PHASE2.md](../reports/TRACEABILITY_FLOW_BUILDER_PHASE2.md)
 
 - ⏳ **Traceability Flow Builder - Phase 3** (PLANNED - 4 weeks)
   - Backend integration for rule execution
@@ -90,9 +90,9 @@ PO Helper is a **production-ready project management and analytics platform** th
 - 📋 **Auto-linking** foundations (will be powered by Phase 3 backend integration)
 
 - **Design Documents:**
-  - [TRACEABILITY_RULES_DESIGN_V2.md](TRACEABILITY_RULES_DESIGN_V2.md) - Enhanced design with bidirectional links, confidence tiers (5 levels: 0-49% Low, 50-84% Medium, 85-100% High), transitive linking, conflict resolution
-  - [TRACEABILITY_RULES_DESIGN.md](TRACEABILITY_RULES_DESIGN.md) - Original rule engine design with 5 match strategies (regex, jira_key, title_match, custom_field, api_link)
-  - [VISUAL_FLOW_BUILDER_DESIGN.md](VISUAL_FLOW_BUILDER_DESIGN.md) - Comprehensive specification for advanced node types (API Lookup, Title Similarity, Confidence Calculator, Review Queue, If/Else/Switch decisions)
+  - [TRACEABILITY_RULES_DESIGN_V2.md](../reports/TRACEABILITY_RULES_DESIGN_V2.md) - Enhanced design with bidirectional links, confidence tiers (5 levels: 0-49% Low, 50-84% Medium, 85-100% High), transitive linking, conflict resolution
+  - [TRACEABILITY_RULES_DESIGN.md](../reports/TRACEABILITY_RULES_DESIGN.md) - Original rule engine design with 5 match strategies (regex, jira_key, title_match, custom_field, api_link)
+  - [VISUAL_FLOW_BUILDER_DESIGN.md](../reports/VISUAL_FLOW_BUILDER_DESIGN.md) - Comprehensive specification for advanced node types (API Lookup, Title Similarity, Confidence Calculator, Review Queue, If/Else/Switch decisions)
 
 ### User Experience
 - ✅ **Onboarding Wizard** for new users ([OnboardingWizard.tsx](frontend/src/components/OnboardingWizard.tsx))
@@ -306,10 +306,10 @@ npm test
 
 ## Documentation Files
 
-- **[README.md](README.md)** - Quick start and overview
+- **[README.md](../../README.md)** - Quick start and overview
 - **[PROJECT_STATUS.md](PROJECT_STATUS.md)** - This file
-- **[TECHNICAL_DESCRIPTION.md](TECHNICAL_DESCRIPTION.md)** - Detailed technical architecture
-- **[ONBOARDING_GUIDE.md](ONBOARDING_GUIDE.md)** - User onboarding documentation
+- **TECHNICAL_DESCRIPTION.md** - Detailed technical architecture (not in repo)
+- **[ONBOARDING_GUIDE.md](../reports/ONBOARDING_GUIDE.md)** - User onboarding documentation
 - **Archived Docs:** [archive/](archive/) - Historical planning documents
 
 ---
