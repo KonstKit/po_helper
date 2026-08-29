@@ -17,11 +17,15 @@ backend_url = settings.CELERY_RESULT_BACKEND or settings.REDIS_URL
 
 # Transient failures worth retrying in background tasks. Business errors
 # (ValueError and friends) must NOT be retried - they fail deterministically.
+# NB: narrow transport-level classes only - requests.RequestException and
+# httpx.HTTPError include permanent 4xx status errors which must not retry.
 TRANSIENT_TASK_ERRORS = (
     ConnectionError,
     TimeoutError,
-    requests.exceptions.RequestException,
-    httpx.HTTPError,
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+    httpx.TransportError,
+    httpx.TimeoutException,
     redis.exceptions.RedisError,
     OperationalError,
 )

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import HTTPException
 
 from app.core.config import settings
 from app.schemas.traceability_rule import (
@@ -338,16 +337,6 @@ def _build_flow_validation_detail(
         "errors": [error.model_dump() for error in validation_result.errors],
         "warnings": [warning.model_dump() for warning in validation_result.warnings],
     }
-
-
-def _ensure_flow_valid_or_400(flow_json: FlowJSON) -> ValidationResult:
-    validation_result = validate_flow(flow_json)
-    if not validation_result.valid:
-        raise HTTPException(
-            status_code=400,
-            detail=_build_flow_validation_detail(validation_result),
-        )
-    return validation_result
 
 
 def _normalize_unsupported_transform_types(flow_json: FlowJSON) -> bool:

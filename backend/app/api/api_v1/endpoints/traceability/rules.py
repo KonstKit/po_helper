@@ -116,7 +116,6 @@ from app.services.traceability.flow_validator import (  # noqa: F401 (re-exporte
     SOURCE_NODE_TYPES,
     _build_flow_validation_detail,
     _detect_cycles,
-    _ensure_flow_valid_or_400,
     _normalize_unsupported_transform_types,
     _validate_node_configuration,
     validate_flow,
@@ -128,6 +127,18 @@ from app.utils import (
     paginate_query,
     get_or_404,
 )
+
+
+def _ensure_flow_valid_or_400(flow_json: FlowJSON) -> ValidationResult:
+    # HTTP boundary for flow validation; the service stays FastAPI-free (D1).
+    validation_result = validate_flow(flow_json)
+    if not validation_result.valid:
+        raise HTTPException(
+            status_code=400,
+            detail=_build_flow_validation_detail(validation_result),
+        )
+    return validation_result
+
 
 router = APIRouter()
 

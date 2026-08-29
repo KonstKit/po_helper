@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
 
 from app.core.celery_async_runner import run_async
-from app.core.celery_app import TASK_RETRY_KWARGS, celery_app
+from app.core.celery_app import TASK_RETRY_KWARGS, TRANSIENT_TASK_ERRORS, celery_app
 from app.core.database import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
@@ -236,6 +236,11 @@ def execute_rule_task(rule_id: int) -> Dict[str, Any]:
             result.get("links_created", 0),
         )
         return result
+    except TRANSIENT_TASK_ERRORS:
+        # transport/DB hiccups must reach Celery so autoretry can engage;
+        # swallowing them here made the task look successful (review D3)
+        logger.warning("Transient failure executing rule %d; re-raising for retry", rule_id)
+        raise
     except Exception as e:
         logger.error("Error executing rule %d: %s", rule_id, e)
         return {"rule_id": rule_id, "status": "error", "error": str(e)}
