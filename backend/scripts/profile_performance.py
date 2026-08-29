@@ -22,7 +22,8 @@ from typing import List, Dict, Any
 
 # Database setup
 import sys
-sys.path.insert(0, '.')
+
+sys.path.insert(0, ".")
 
 from sqlalchemy import text, event
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -37,12 +38,13 @@ DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/po_helper"
 # Adjust if your DB is different
 
 SAMPLE_PROJECT_ID = 1  # Change to an existing project ID
-NUM_ITERATIONS = 5     # Number of times to run each test
+NUM_ITERATIONS = 5  # Number of times to run each test
 
 
 # =============================================================================
 # Query Logger - Captures all SQL queries and their timing
 # =============================================================================
+
 
 class QueryLogger:
     """Logs all SQL queries with execution time."""
@@ -58,27 +60,29 @@ class QueryLogger:
         start = self._start_times.pop(id(clauseelement), None)
         if start:
             duration_ms = (time.perf_counter() - start) * 1000
-            self.queries.append({
-                'sql': str(clauseelement)[:200],  # Truncate long queries
-                'duration_ms': duration_ms,
-                'timestamp': datetime.now().isoformat(),
-            })
+            self.queries.append(
+                {
+                    "sql": str(clauseelement)[:200],  # Truncate long queries
+                    "duration_ms": duration_ms,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
 
     def clear(self):
         self.queries = []
 
     def summary(self) -> Dict[str, Any]:
         if not self.queries:
-            return {'total_queries': 0}
+            return {"total_queries": 0}
 
-        durations = [q['duration_ms'] for q in self.queries]
+        durations = [q["duration_ms"] for q in self.queries]
         return {
-            'total_queries': len(self.queries),
-            'total_time_ms': sum(durations),
-            'avg_time_ms': statistics.mean(durations),
-            'max_time_ms': max(durations),
-            'min_time_ms': min(durations),
-            'slowest_query': max(self.queries, key=lambda x: x['duration_ms']),
+            "total_queries": len(self.queries),
+            "total_time_ms": sum(durations),
+            "avg_time_ms": statistics.mean(durations),
+            "max_time_ms": max(durations),
+            "min_time_ms": min(durations),
+            "slowest_query": max(self.queries, key=lambda x: x["duration_ms"]),
         }
 
 
@@ -86,12 +90,13 @@ class QueryLogger:
 # Profiling Functions
 # =============================================================================
 
+
 async def profile_endpoint(
     session: AsyncSession,
     name: str,
     query_func,
     logger: QueryLogger,
-    iterations: int = NUM_ITERATIONS
+    iterations: int = NUM_ITERATIONS,
 ) -> Dict[str, Any]:
     """Profile a single endpoint/query."""
 
@@ -117,15 +122,15 @@ async def profile_endpoint(
         query_counts.append(len(logger.queries))
 
     return {
-        'name': name,
-        'success': success,
-        'iterations': iterations,
-        'avg_time_ms': statistics.mean(times) if times else 0,
-        'min_time_ms': min(times) if times else 0,
-        'max_time_ms': max(times) if times else 0,
-        'std_dev_ms': statistics.stdev(times) if len(times) > 1 else 0,
-        'avg_queries': statistics.mean(query_counts) if query_counts else 0,
-        'query_details': logger.summary(),
+        "name": name,
+        "success": success,
+        "iterations": iterations,
+        "avg_time_ms": statistics.mean(times) if times else 0,
+        "min_time_ms": min(times) if times else 0,
+        "max_time_ms": max(times) if times else 0,
+        "std_dev_ms": statistics.stdev(times) if len(times) > 1 else 0,
+        "avg_queries": statistics.mean(query_counts) if query_counts else 0,
+        "query_details": logger.summary(),
     }
 
 
@@ -139,7 +144,7 @@ async def test_tasks_list(session: AsyncSession):
             WHERE t.project_id = :project_id
             LIMIT 500
         """),
-        {'project_id': SAMPLE_PROJECT_ID}
+        {"project_id": SAMPLE_PROJECT_ID},
     )
     return result.fetchall()
 
@@ -155,7 +160,7 @@ async def test_tasks_with_filters(session: AsyncSession):
             ORDER BY t.created_at DESC
             LIMIT 100
         """),
-        {'project_id': SAMPLE_PROJECT_ID}
+        {"project_id": SAMPLE_PROJECT_ID},
     )
     return result.fetchall()
 
@@ -179,7 +184,7 @@ async def test_sprint_velocity(session: AsyncSession):
             ORDER BY s.start_date DESC
             LIMIT 10
         """),
-        {'project_id': SAMPLE_PROJECT_ID}
+        {"project_id": SAMPLE_PROJECT_ID},
     )
     return result.fetchall()
 
@@ -226,8 +231,7 @@ async def test_n1_simulation(session: AsyncSession):
     all_tasks = []
     for pid in project_ids:
         tasks = await session.execute(
-            text("SELECT * FROM tasks WHERE project_id = :pid LIMIT 50"),
-            {'pid': pid}
+            text("SELECT * FROM tasks WHERE project_id = :pid LIMIT 50"), {"pid": pid}
         )
         all_tasks.extend(tasks.fetchall())
 
@@ -250,7 +254,7 @@ async def test_batch_alternative(session: AsyncSession):
             WHERE project_id = ANY(:pids)
             LIMIT 500
         """),
-        {'pids': project_ids}
+        {"pids": project_ids},
     )
     return tasks.fetchall()
 
@@ -258,6 +262,7 @@ async def test_batch_alternative(session: AsyncSession):
 # =============================================================================
 # Index Analysis
 # =============================================================================
+
 
 async def analyze_indexes(session: AsyncSession) -> Dict[str, Any]:
     """Analyze existing indexes and suggest improvements."""
@@ -313,16 +318,19 @@ async def analyze_indexes(session: AsyncSession) -> Dict[str, Any]:
         pass  # pg_stat_statements not enabled
 
     return {
-        'existing_indexes': len(existing),
-        'indexes': [dict(zip(['schema', 'table', 'name', 'definition'], r)) for r in existing],
-        'table_sizes': [dict(zip(['table', 'total_size', 'index_size', 'rows'], r)) for r in table_sizes],
-        'slow_queries': slow_queries,
+        "existing_indexes": len(existing),
+        "indexes": [dict(zip(["schema", "table", "name", "definition"], r)) for r in existing],
+        "table_sizes": [
+            dict(zip(["table", "total_size", "index_size", "rows"], r)) for r in table_sizes
+        ],
+        "slow_queries": slow_queries,
     }
 
 
 # =============================================================================
 # Main Profiling Runner
 # =============================================================================
+
 
 async def run_profiling():
     """Run all profiling tests."""
@@ -373,8 +381,16 @@ async def run_profiling():
             result = await profile_endpoint(session, name, func, logger)
             results.append(result)
 
-            status = "✅" if result['avg_time_ms'] < 100 else "⚠️" if result['avg_time_ms'] < 500 else "🔴"
-            print(f"  {status} Avg: {result['avg_time_ms']:.2f}ms | Queries: {result['avg_queries']:.0f}")
+            status = (
+                "✅"
+                if result["avg_time_ms"] < 100
+                else "⚠️"
+                if result["avg_time_ms"] < 500
+                else "🔴"
+            )
+            print(
+                f"  {status} Avg: {result['avg_time_ms']:.2f}ms | Queries: {result['avg_queries']:.0f}"
+            )
 
         print()
         print("-" * 60)
@@ -385,20 +401,26 @@ async def run_profiling():
         print("-" * 60)
 
         for r in results:
-            status = "✅ OK" if r['avg_time_ms'] < 100 else "⚠️ SLOW" if r['avg_time_ms'] < 500 else "🔴 CRITICAL"
+            status = (
+                "✅ OK"
+                if r["avg_time_ms"] < 100
+                else "⚠️ SLOW"
+                if r["avg_time_ms"] < 500
+                else "🔴 CRITICAL"
+            )
             print(f"{r['name']:<30} {r['avg_time_ms']:<12.2f} {r['avg_queries']:<10.0f} {status}")
 
         # N+1 comparison
-        n1_result = next((r for r in results if 'N+1' in r['name']), None)
-        batch_result = next((r for r in results if 'Batch' in r['name']), None)
+        n1_result = next((r for r in results if "N+1" in r["name"]), None)
+        batch_result = next((r for r in results if "Batch" in r["name"]), None)
 
-        if n1_result and batch_result and n1_result['avg_queries'] > 0:
+        if n1_result and batch_result and n1_result["avg_queries"] > 0:
             print()
             print("-" * 60)
             print("🔄 N+1 vs BATCH COMPARISON")
             print("-" * 60)
-            speedup = n1_result['avg_time_ms'] / max(batch_result['avg_time_ms'], 0.1)
-            query_reduction = n1_result['avg_queries'] / max(batch_result['avg_queries'], 1)
+            speedup = n1_result["avg_time_ms"] / max(batch_result["avg_time_ms"], 0.1)
+            query_reduction = n1_result["avg_queries"] / max(batch_result["avg_queries"], 1)
             print(f"  Time improvement: {speedup:.1f}x faster")
             print(f"  Query reduction:  {query_reduction:.1f}x fewer queries")
 
@@ -411,7 +433,7 @@ async def run_profiling():
         index_info = await analyze_indexes(session)
         print(f"\n  Total indexes: {index_info['existing_indexes']}")
         print("\n  Table sizes:")
-        for ts in index_info['table_sizes'][:10]:
+        for ts in index_info["table_sizes"][:10]:
             print(f"    {ts['table']:<30} {ts['total_size']:<12} ({ts['rows']} rows)")
 
         # Recommendations
@@ -420,7 +442,7 @@ async def run_profiling():
         print("💡 RECOMMENDATIONS")
         print("-" * 60)
 
-        needs_optimization = [r for r in results if r['avg_time_ms'] > 100]
+        needs_optimization = [r for r in results if r["avg_time_ms"] > 100]
 
         if not needs_optimization:
             print("\n  ✅ All endpoints are performing well (<100ms)")
@@ -429,13 +451,13 @@ async def run_profiling():
             print(f"\n  ⚠️  {len(needs_optimization)} endpoints need attention:")
             for r in needs_optimization:
                 print(f"    - {r['name']}: {r['avg_time_ms']:.0f}ms")
-                if r['avg_queries'] > 5:
+                if r["avg_queries"] > 5:
                     print(f"      → Consider batching ({r['avg_queries']:.0f} queries)")
-                if r['avg_time_ms'] > 500:
+                if r["avg_time_ms"] > 500:
                     print("      → Consider caching (response time > 500ms)")
 
         # Cache recommendation
-        slow_endpoints = [r for r in results if r['avg_time_ms'] > 300]
+        slow_endpoints = [r for r in results if r["avg_time_ms"] > 300]
         if slow_endpoints:
             print("\n  📦 Redis cache recommended for:")
             for r in slow_endpoints:

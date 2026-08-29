@@ -27,7 +27,13 @@ def test_silent_except_count_does_not_grow():
             baseline[name] = int(count)
     baseline_total = sum(baseline.values())
 
-    assert current_total <= baseline_total, (
-        f"silent except handlers grew: {current_total} > {baseline_total}; "
-        "log the exception or justify a baseline bump"
+    regressions = {
+        name: current.get(name, 0) - baseline.get(name, 0)
+        for name in set(current) | set(baseline)
+        if current.get(name, 0) > baseline.get(name, 0)
+    }
+    assert current_total <= baseline_total and not regressions, (
+        f"silent except handlers grew: total {current_total} vs {baseline_total}, "
+        f"per-file regressions {regressions}; log the exception or justify "
+        "a baseline bump"
     )

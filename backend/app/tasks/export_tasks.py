@@ -19,7 +19,7 @@ from sqlalchemy import update
 
 from app.core.cache import redis_client as _redis_client
 from app.core.celery_async_runner import run_async
-from app.core.celery_app import celery_app
+from app.core.celery_app import TRANSIENT_TASK_ERRORS, celery_app
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.traceability import Artifact, ArtifactLink, ExportTask
@@ -80,6 +80,10 @@ class ExportBaseTask(Task):
     bind=True,
     base=ExportBaseTask,
     name="traceability.export_matrix",
+    autoretry_for=TRANSIENT_TASK_ERRORS,
+    retry_backoff=True,
+    retry_backoff_max=600,
+    retry_jitter=True,
     max_retries=2,
     soft_time_limit=600,  # 10 minutes soft limit
     time_limit=900,  # 15 minutes hard limit

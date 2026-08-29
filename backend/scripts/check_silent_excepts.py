@@ -19,35 +19,54 @@ APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 BASELINE_FILE = Path(__file__).resolve().parent / "silent_except_baseline.txt"
 
 
+_LOG_METHODS = {"debug", "info", "warning", "error", "exception", "critical"}
+
+
+def _iter_scope(body: list[ast.stmt]):
+    """Walk the handler body WITHOUT descending into nested function/
+    class/lambda scopes: a handler that merely DEFINES a function which
+    logs is still silent at its own level (review D4). Call expressions
+    at handler level ARE visited."""
+    stack: list[ast.AST] = list(body)
+    skipped = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, skipped):
+            # a nested scope's contents do not run at handler level
+            continue
+        yield node
+        for child in ast.iter_child_nodes(node):
+            stack.append(child)
+
+
+def _looks_like_logger_call(call: ast.Call) -> bool:
+    func = call.func
+    if not isinstance(func, ast.Attribute) or func.attr not in _LOG_METHODS:
+        return False
+    receiver = func.value
+    # logger.<method> / self.logger.<method> / logging.<module-func>
+    if isinstance(receiver, ast.Name) and receiver.id in {"logger", "logging"}:
+        return True
+    if isinstance(receiver, ast.Attribute) and isinstance(receiver.value, ast.Name):
+        return receiver.attr in {"logger", "log"} or receiver.value.id == "logging"
+    return False
+
+
 def _is_silent(handler: ast.ExceptHandler) -> bool:
     body = handler.body
     if not body:
         return True
-    # single `pass`
     if len(body) == 1 and isinstance(body[0], ast.Pass):
         return True
-    # single bare `return None` with no logging calls anywhere
     if len(body) == 1 and isinstance(body[0], ast.Return) and body[0].value is None:
         return True
-    # any logging call (logger.*, logging.*) anywhere -> not silent
-    for node in ast.walk(ast.Module(body=body, type_ignores=[])):
-        if isinstance(node, ast.Call):
-            func = node.func
-            if isinstance(func, ast.Attribute) and func.attr in {
-                "debug",
-                "info",
-                "warning",
-                "error",
-                "exception",
-                "critical",
-            }:
-                return False
-            if isinstance(func, ast.Name) and func.id in {"print"}:
-                return False
-    # body without logging and without raising: treat multi-statement no-ops
-    # like assignments as silent only if nothing re-raises
-    for node in ast.walk(ast.Module(body=body, type_ignores=[])):
+    for node in _iter_scope(body):
         if isinstance(node, ast.Raise):
+            return False
+        if isinstance(node, ast.Call) and (
+            _looks_like_logger_call(node)
+            or (isinstance(node.func, ast.Name) and node.func.id == "print")
+        ):
             return False
     return True
 
@@ -70,9 +89,7 @@ def main() -> int:
     current_total = sum(current.values())
 
     if "--update-baseline" in sys.argv:
-        BASELINE_FILE.write_text(
-            "\n".join(f"{k}:{v}" for k, v in sorted(current.items())) + "\n"
-        )
+        BASELINE_FILE.write_text("\n".join(f"{k}:{v}" for k, v in sorted(current.items())) + "\n")
         print(f"Baseline updated: {current_total} silent excepts")
         return 0
 
@@ -87,14 +104,16 @@ def main() -> int:
             baseline[name] = int(count)
     baseline_total = sum(baseline.values())
 
-    if current_total > baseline_total:
+    regressions = {
+        name: current.get(name, 0) - baseline.get(name, 0)
+        for name in set(current) | set(baseline)
+        if current.get(name, 0) > baseline.get(name, 0)
+    }
+    if current_total > baseline_total or regressions:
         print(
-            f"SILENT-EXCEPT REGRESSION: {current_total} > baseline {baseline_total}"
+            f"SILENT-EXCEPT REGRESSION: total {current_total} vs baseline "
+            f"{baseline_total}; per-file regressions: {regressions}"
         )
-        for name, count in sorted(current.items()):
-            delta = count - baseline.get(name, 0)
-            if delta > 0:
-                print(f"  +{delta} {name}")
         return 1
 
     print(f"Silent-except gate: OK ({current_total} <= baseline {baseline_total})")

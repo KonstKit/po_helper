@@ -13,7 +13,7 @@ backend/app/api/api_v1/endpoints/tasks.py:1
 backend/app/api/api_v1/endpoints/traceability/health.py:4
 backend/app/api/api_v1/endpoints/traceability/links.py:1
 backend/app/api/api_v1/endpoints/traceability/matrix.py:1
-backend/app/api/api_v1/endpoints/traceability/rules.py:3
+backend/app/api/api_v1/endpoints/traceability/rules.py:2
 backend/app/api/api_v1/endpoints/traceability/suggestions.py:1
 backend/app/api/api_v1/endpoints/usage_analytics.py:1
 backend/app/api/deps.py:4
@@ -57,6 +57,7 @@ backend/app/services/traceability/engine/nodes/jira_issue_source.py:1
 backend/app/services/traceability/engine/nodes/jira_key_extractor.py:2
 backend/app/services/traceability/engine/nodes/manual_source.py:2
 backend/app/services/traceability/engine/nodes/testrail_source.py:1
+backend/app/services/traceability/flow_validator.py:1
 backend/app/services/traceability/impact_service.py:1
 backend/app/services/traceability/link_service.py:2
 backend/app/tasks/testrail_tasks.py:1

@@ -1,6 +1,7 @@
 """
 Assign role to demo user.
 """
+
 import asyncio
 import sys
 from pathlib import Path
@@ -20,9 +21,7 @@ async def main():
     async with AsyncSessionLocal() as db:
         # Get demo user with roles
         result = await db.execute(
-            select(User)
-            .options(selectinload(User.roles))
-            .where(User.email == "demo@example.com")
+            select(User).options(selectinload(User.roles)).where(User.email == "demo@example.com")
         )
         user = result.scalar_one_or_none()
 
