@@ -624,17 +624,21 @@ class EnhancedCacheService:
         if cached is not None:
             return cached
 
-        # Get or create lock for this key. Contract: the dict holds only
-        # IDLE locks up to the cap; past the cap, only currently-locked
-        # entries may survive pruning, so growth is bounded by live
-        # concurrency, never by key cardinality (idle entries are always
-        # evictable - review C-CACHE-002).
+        # Get or create lock for this key. Contract: the dict NEVER exceeds
+        # the cap. When the cap is hit, idle entries are pruned; if every
+        # entry is currently held, the new key gets an UNREGISTERED lock -
+        # its single-flight degrades to the Redis lease only (always safe,
+        # occasionally less efficient) rather than growing the dict past
+        # the cap (review C-CACHE-002).
         lock = self._locks.get(key)
         if lock is None:
             if len(self._locks) >= self._MAX_PER_KEY_LOCKS:
                 self._locks = {k: v for k, v in self._locks.items() if v.locked()}
-            lock = self._locks.get(key) or asyncio.Lock()
-            self._locks[key] = lock
+            if len(self._locks) < self._MAX_PER_KEY_LOCKS:
+                lock = asyncio.Lock()
+                self._locks[key] = lock
+            else:
+                lock = asyncio.Lock()
 
         # Cross-process single-flight: with several workers the local lock
         # alone still lets one rebuild per process. Try to hold a short
