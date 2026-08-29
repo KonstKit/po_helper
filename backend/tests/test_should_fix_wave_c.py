@@ -23,10 +23,16 @@ from tests.test_blocker_fixes import _real_integration_access, _register_and_log
 
 
 class QueryCounter:
-    """Counts SQL statements executed on the app engine."""
+    """Counts SQL statements executed on the app engine.
 
-    def __init__(self):
+    ``table`` narrows counting to statements touching that table, which
+    pins a specific N+1 (e.g. one SELECT per suggestion) without being
+    diluted by unrelated business queries in the same request.
+    """
+
+    def __init__(self, table: str | None = None):
         self.count = 0
+        self.table = table
 
     def __enter__(self):
         event.listen(engine.sync_engine, "before_cursor_execute", self._bump)
@@ -35,8 +41,11 @@ class QueryCounter:
     def __exit__(self, *exc):
         event.remove(engine.sync_engine, "before_cursor_execute", self._bump)
 
-    def _bump(self, *args, **kwargs):
-        self.count += 1
+    def _bump(self, conn, cursor, statement, parameters, *args, **kwargs):
+        if self.table is not None and self.table not in statement:
+            return
+        if statement.lstrip().upper().startswith("SELECT"):
+            self.count += 1
 
 
 async def _seed_roles_and_admin(client) -> str:
@@ -483,23 +492,31 @@ async def test_flight_release_is_atomic_compare_and_delete():
 
 
 @pytest.mark.asyncio
-async def test_cache_cap_bounds_idle_locks_only():
-    """Review C-CACHE-002: held locks may exceed the cap (bounded by live
-    concurrency), idle ones never accumulate."""
+async def test_cache_lock_dict_never_exceeds_cap():
+    """Review C-CACHE-002: with every registered lock held, a new key gets
+    an unregistered lock (Redis-flight only) instead of growing the dict;
+    idle entries are always prunable. The dict never exceeds the cap."""
     service = EnhancedCacheService(None)
-    held = asyncio.Lock()
-    await held.acquire()
+    service._MAX_PER_KEY_LOCKS = 5  # type: ignore[misc]
 
-    class _Holder:
-        pass
+    held = [asyncio.Lock() for _ in range(5)]
+    for lock in held:
+        await lock.acquire()
+    service._locks = {f"held-{i}": lock for i, lock in enumerate(held)}
 
-    # simulate cap-1 situation with one held lock
-    service._locks = {"held": held}
-    for i in range(50):
+    # every registered lock is held -> new keys must not register
+    for i in range(20):
+        await service.get_or_set(f"burst-{i}", lambda: i, tier=CacheTier.REALTIME)
+    assert len(service._locks) == 5, service._locks.keys()
+
+    # releasing one slot lets exactly one new key register again
+    held[0].release()
+    await service.get_or_set("after-release", lambda: 1, tier=CacheTier.REALTIME)
+    assert len(service._locks) <= 5
+    # idle entries are prunable on the next overflow
+    for i in range(30):
         await service.get_or_set(f"idle-{i}", lambda: i, tier=CacheTier.REALTIME)
-    # held lock survives, idle entries stay bounded
-    assert "held" in service._locks
-    assert len(service._locks) <= 10_000
+    assert len(service._locks) <= 5
 
 
 # ---------------------------------------------------------------------------
@@ -651,33 +668,41 @@ async def test_suggestions_bulk_approve_is_batched(client):
         ids = [row[0] for row in (await session.execute(sa_select(SL.id).limit(6))).all()]
 
     with _real_integration_access():
-        with QueryCounter() as counter:
+        with QueryCounter(table="suggested_links") as counter:
             response = await client.post(
                 "/api/v1/traceability/suggested-links/bulk-approve",
                 headers={"Authorization": f"Bearer {token}"},
-                params=[("suggestion_ids", i) for i in ids],
+                json=ids,  # List[int] without Query() binds to the BODY
             )
-    assert response.status_code in (200, 400, 403, 422), response.text
-    # one pre-load SELECT for the payload regardless of its size
-    assert counter.count <= 10, counter.count
+    assert response.status_code == 200, response.text
+    # the pre-load reads the whole payload in ONE SELECT (UPDATEs are
+    # excluded by the counter's SELECT-only filter)
+    assert counter.count == 1, counter.count
 
 
 @pytest.mark.asyncio
-async def test_jira_fields_import_is_batched(client):
-
+async def test_jira_fields_import_is_batched(client, monkeypatch):
     token = await _seed_roles_and_admin(client)
+
+    from unittest.mock import MagicMock
+
+    from app.services.jira_service import jira_service
 
     config = {
         "base_url": "https://jira.example.com",
         "mappings": {f"field_{i}": f"customfield_{i:05d}" for i in range(8)},
     }
+    # the mapper dependency 400s without a Jira transport; inject one so
+    # the import handler (and its batch query) actually runs
+    monkeypatch.setattr(jira_service, "http_client", MagicMock())
+    monkeypatch.setattr(jira_service, "base_url", "https://jira.example.com")
     with _real_integration_access():
-        with QueryCounter() as counter:
+        with QueryCounter(table="jira_field_mappings") as counter:
             response = await client.post(
                 "/api/v1/jira-fields/import-config",
                 headers={"Authorization": f"Bearer {token}"},
                 json=config,
             )
-    assert response.status_code in (200, 400, 422), response.text
-    # one SELECT for all mappings regardless of config size
-    assert counter.count <= 10, counter.count
+    assert response.status_code == 200, response.text
+    # exactly one SELECT pre-loads the whole config (INSERTs are writes)
+    assert counter.count == 1, counter.count
