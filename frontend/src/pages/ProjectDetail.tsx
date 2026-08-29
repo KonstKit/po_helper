@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Box,
@@ -1460,7 +1460,7 @@ const ProjectDetail = () => {
       wsRef.current = null;
     };
   }, [clearSyncStatusPoll, id, loadProjectDetails, loadTasksPage, logNonFatal]);
-  const taskColumns: GridColDef<TaskItem>[] = [
+  const taskColumns: GridColDef<TaskItem>[] = useMemo(() => ([
     { field: "key", headerName: "Key", width: 120 },
     { field: "summary", headerName: "Summary", width: 300, flex: 1 },
     {
@@ -1472,7 +1472,7 @@ const ProjectDetail = () => {
     { field: "assignee_name", headerName: "Assignee", width: 150 },
     { field: "estimate_hours", headerName: "Estimate", width: 100 },
     { field: "spent_hours", headerName: "Spent", width: 100 },
-  ];
+  ]), []);
 
   if (loading) {
     return (

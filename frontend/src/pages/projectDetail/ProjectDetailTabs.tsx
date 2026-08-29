@@ -1,4 +1,5 @@
 import React from "react";
+import TabPanel from "../../components/TabPanel";
 import {
   Alert,
   Box,
@@ -115,28 +116,6 @@ interface TeamMemberDisplay {
   days_since_activity: number | null;
 }
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
-
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`project-tabpanel-${index}`}
-      aria-labelledby={`project-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
-    </div>
-  );
-}
-
 const ProjectDetailTabs = ({
   value,
   onChange,
@@ -184,7 +163,7 @@ const ProjectDetailTabs = ({
       <Tab label="Repositories" />
     </Tabs>
 
-    <TabPanel value={value} index={0}>
+    <TabPanel value={value} index={0} idPrefix="project">
       <Box height={500}>
         {sectionLoading.tasks && rows.length === 0 ? (
           <Box>
@@ -210,7 +189,7 @@ const ProjectDetailTabs = ({
       </Box>
     </TabPanel>
 
-    <TabPanel value={value} index={1}>
+    <TabPanel value={value} index={1} idPrefix="project">
       <Box height={400}>
         <Typography variant="h6" gutterBottom>
           Project Burndown
@@ -255,7 +234,7 @@ const ProjectDetailTabs = ({
       </Box>
     </TabPanel>
 
-    <TabPanel value={value} index={2}>
+    <TabPanel value={value} index={2} idPrefix="project">
       <Typography variant="h6" gutterBottom>
         Team Members
       </Typography>
@@ -335,7 +314,7 @@ const ProjectDetailTabs = ({
       )}
     </TabPanel>
 
-    <TabPanel value={value} index={3}>
+    <TabPanel value={value} index={3} idPrefix="project">
       <Typography variant="h6" gutterBottom>
         Risk Assessment
       </Typography>
@@ -377,7 +356,7 @@ const ProjectDetailTabs = ({
       )}
     </TabPanel>
 
-    <TabPanel value={value} index={4}>
+    <TabPanel value={value} index={4} idPrefix="project">
       <Box mb={2} display="flex" alignItems="center" gap={2}>
         <FormControl size="small" sx={{ minWidth: 220 }}>
           <InputLabel>Board</InputLabel>
@@ -702,7 +681,7 @@ const ProjectDetailTabs = ({
       )}
     </TabPanel>
 
-    <TabPanel value={value} index={5}>
+    <TabPanel value={value} index={5} idPrefix="project">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6" gutterBottom>
           Quality Thresholds
@@ -848,7 +827,7 @@ const ProjectDetailTabs = ({
       </Paper>
     </TabPanel>
 
-    <TabPanel value={value} index={6}>
+    <TabPanel value={value} index={6} idPrefix="project">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Box
           display="flex"

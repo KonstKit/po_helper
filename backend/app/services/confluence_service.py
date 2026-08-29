@@ -1,5 +1,4 @@
 import logging
-import time
 from typing import Optional, Dict, Any, List
 import re
 import html
@@ -8,6 +7,7 @@ from urllib.parse import quote
 import requests
 from requests.auth import HTTPBasicAuth
 from app.core.config import settings
+from app.utils.http_retry import request_with_retry
 from app.core.redaction import redact_headers
 
 logger = logging.getLogger(__name__)
@@ -40,56 +40,20 @@ class ConfluenceService:
         allow_redirects: bool = True,
         max_retries: Optional[int] = None,
     ) -> requests.Response:
-        retry_count = (
-            settings.INTEGRATION_HTTP_MAX_RETRIES if max_retries is None else max(0, max_retries)
-        )
-        backoff_base = settings.INTEGRATION_HTTP_BACKOFF_SECONDS
-        backoff_max = settings.INTEGRATION_HTTP_BACKOFF_MAX_SECONDS
         timeout_val = settings.INTEGRATION_HTTP_TIMEOUT if timeout is None else int(timeout)
-        attempts = retry_count + 1
-
-        last_exc: Optional[Exception] = None
-        for attempt in range(attempts):
-            try:
-                resp = requests.get(
-                    url,
-                    params=params,
-                    headers=headers,
-                    auth=auth,
-                    timeout=timeout_val,
-                    allow_redirects=allow_redirects,
-                )
-                if resp.status_code >= 500 and attempt < attempts - 1:
-                    delay = min(backoff_base * (2**attempt), backoff_max)
-                    logger.warning(
-                        "Confluence request failed (%s) retry %d/%d in %.1fs: %s",
-                        resp.status_code,
-                        attempt + 1,
-                        attempts - 1,
-                        delay,
-                        url,
-                    )
-                    time.sleep(delay)
-                    continue
-                return resp
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
-                last_exc = exc
-                if attempt >= attempts - 1:
-                    raise
-                delay = min(backoff_base * (2**attempt), backoff_max)
-                logger.warning(
-                    "Confluence request error (%s) retry %d/%d in %.1fs: %s",
-                    exc.__class__.__name__,
-                    attempt + 1,
-                    attempts - 1,
-                    delay,
-                    url,
-                )
-                time.sleep(delay)
-
-        if last_exc:
-            raise last_exc
-        raise RuntimeError("Unexpected Confluence request retry loop exit")
+        return request_with_retry(
+            lambda: requests.get(
+                url,
+                params=params,
+                headers=headers,
+                auth=auth,
+                timeout=timeout_val,
+                allow_redirects=allow_redirects,
+            ),
+            url=url,
+            label="Confluence",
+            max_retries=max_retries,
+        )
 
     def connect(
         self, base_url: str, email: Optional[str], api_token: str, is_cloud: Optional[bool] = None

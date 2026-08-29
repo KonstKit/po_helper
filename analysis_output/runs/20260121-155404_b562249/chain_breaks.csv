@@ -1,3 +1,0 @@
-method_id,file,start_line,kind,symptom,note
-07073d6dddab0ad5c3c96dafdb6cc3f947eeb904,backend/app/main.py,37,entrypoint,entrypoint_with_zero_outgoing_internal,entry_file:backend/app/main.py
-f339ac8742c800e97419752b613bac6e53d092fe,frontend/src/index.tsx,1,entrypoint,entrypoint_with_zero_outgoing_internal,entry_file:frontend/src/index.tsx
