@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from app.core.cache import redis_client as _redis_client
 from app.core.celery_async_runner import run_async
-from app.core.celery_app import celery_app
+from app.core.celery_app import TASK_RETRY_KWARGS, celery_app
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.db_utils import supports_for_update
@@ -668,7 +668,7 @@ async def _process_page(db, page_data: Dict[str, Any]) -> Tuple[bool, Confluence
 
 
 # Scheduled sync task for Celery Beat
-@celery_app.task(name="confluence.scheduled_sync")
+@celery_app.task(name="confluence.scheduled_sync", **TASK_RETRY_KWARGS)
 def scheduled_confluence_sync():
     """Scheduled task to sync all configured Confluence spaces."""
     logger.info("Running scheduled Confluence sync")
