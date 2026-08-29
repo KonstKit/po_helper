@@ -27,6 +27,12 @@ from app.schemas.testing import (
 from app.utils.pagination import paginate_query, count_with_filters
 from app.schemas.pagination import paginated_response, PaginationMeta
 
+from app.services.testing_analytics import (
+    aggregate_file_coverage_by_component,
+    group_test_results,
+    is_flaky_stats,
+)
+
 router = APIRouter()
 
 
@@ -536,47 +542,15 @@ async def detect_flaky_tests(
     if allowed_shas is not None:
         results = [r for r in results if r.commit_sha in allowed_shas]
 
-    # Group by test identifier
-    test_stats: Dict[tuple, Dict[str, Any]] = {}
-    for r in results:
-        key = (r.suite or "", r.classname or "", r.name or "")
-        if key not in test_stats:
-            test_stats[key] = {
-                "suite": r.suite,
-                "classname": r.classname,
-                "test_name": r.name,
-                "total_runs": 0,
-                "failures": 0,
-                "passes": 0,
-                "commits_with_both": set(),
-                "failure_messages": [],
-                "affected_commits": set(),
-            }
-        stats = test_stats[key]
-        stats["total_runs"] += 1
-
-        status = (r.status or "").lower()
-        if status in ("failed", "error"):
-            stats["failures"] += 1
-            stats["affected_commits"].add(r.commit_sha)
-            if r.message:
-                stats["failure_messages"].append(r.message[:200])
-        elif status == "passed":
-            stats["passes"] += 1
-
-    # Identify flaky tests
+    # Grouping and flakiness classification live in the analytics service (D1.3)
+    test_stats = group_test_results(results)
     detected = []
     for key, stats in test_stats.items():
         if stats["total_runs"] < min_runs:
             continue
 
         failure_rate = stats["failures"] / stats["total_runs"]
-        # Flaky = has both passes and failures, rate between threshold and 99%
-        is_flaky = (
-            stats["failures"] > 0
-            and stats["passes"] > 0
-            and flakiness_threshold <= failure_rate < 0.99
-        )
+        is_flaky = is_flaky_stats(stats, flakiness_threshold)
 
         if is_flaky:
             # Create or update flaky test record
@@ -847,30 +821,8 @@ async def calculate_component_coverage(
     )
     files = files_res.scalars().all()
 
-    # Group by component path
-    components: Dict[str, Dict[str, Any]] = defaultdict(
-        lambda: {
-            "total_lines": 0,
-            "covered_lines": 0,
-            "total_files": 0,
-            "covered_files": 0,
-            "file_coverages": [],
-        }
-    )
-
-    for f in files:
-        # Extract component path at specified depth
-        parts = f.file_path.split("/")
-        component_path = "/".join(parts[:depth]) if len(parts) > depth else parts[0]
-
-        comp = components[component_path]
-        comp["total_files"] += 1
-        comp["total_lines"] += f.lines_total or 0
-        comp["covered_lines"] += f.lines_covered or 0
-        comp["file_coverages"].append(f.line_coverage or 0)
-
-        if (f.line_coverage or 0) > 0:
-            comp["covered_files"] += 1
+    # Pure aggregation lives in the testing analytics service (D1.3)
+    components = aggregate_file_coverage_by_component(files, depth)
 
     # Create component coverage records
     created = []
