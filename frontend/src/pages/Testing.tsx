@@ -136,6 +136,7 @@ const Testing: React.FC = () => {
     setRuns(runsResp.data);
     setProgress({ active: true, percent: 35, step: 'Loading coverage history...' });
     const covResp = await listCoverageReports({ projectId: Number(projectId) });
+    if (cancelled) return;
     setCoverageList(covResp.data);
     // default baseline/compare
     if (covResp.data.length >= 2) {
@@ -145,6 +146,7 @@ const Testing: React.FC = () => {
     setProgress({ active: true, percent: 55, step: 'Loading test trend...' });
     try {
       const tt = await getTestTrend({ projectId: Number(projectId), days });
+      if (cancelled) return;
       setTestTrend(tt.trend || []);
     } catch (err) {
       console.debug('Failed to load test trend', err);
@@ -152,6 +154,7 @@ const Testing: React.FC = () => {
     setProgress({ active: true, percent: 75, step: 'Loading coverage trend...' });
     try {
       const ct = await getCoverageTrend({ projectId: Number(projectId), days });
+      if (cancelled) return;
       setCoverageTrend(ct.trend || []);
     } catch (err) {
       console.debug('Failed to load coverage trend', err);
@@ -159,6 +162,7 @@ const Testing: React.FC = () => {
     // Pull recent test results for advanced analytics
     try {
       const resResp = await listTestResults({ projectId: Number(projectId), sinceDays: days, limit: 500 });
+      if (cancelled) return;
       const arr = resResp.data;
       setResults(arr);
       // Duration trend by day (avg)
@@ -200,7 +204,7 @@ const Testing: React.FC = () => {
       if (!cancelled) console.warn('Failed to load test analytics', err);
     }
     if (!cancelled) setProgress({ active: false, percent: 100, step: 'Ready' });
-  })(); 
+  })();
     return () => { cancelled = true; };
   }, [projectId, provider, days]);
 

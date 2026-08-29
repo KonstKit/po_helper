@@ -16,3 +16,6 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+/** Single source of truth for the projects list query identity. */
+export const PROJECTS_QUERY_KEY = ['projects'] as const;
