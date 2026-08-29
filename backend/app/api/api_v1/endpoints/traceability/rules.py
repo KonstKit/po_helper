@@ -577,12 +577,18 @@ async def get_all_rule_executions(
     executions = await paginate_query(db, query, skip, limit)
 
     items = []
-    for execution in executions:
-        rule_result = await db.execute(
-            select(TraceabilityRule).where(TraceabilityRule.id == execution.rule_id)
+    # Batch-load the referenced rules: one query instead of one per
+    # execution (the endpoint allows limit=1000, i.e. up to 1001 queries).
+    rule_ids = {execution.rule_id for execution in executions if execution.rule_id}
+    rules_map: dict = {}
+    if rule_ids:
+        rules_result = await db.execute(
+            select(TraceabilityRule).where(TraceabilityRule.id.in_(rule_ids))
         )
-        rule = rule_result.scalar_one_or_none()
+        rules_map = {rule.id: rule for rule in rules_result.scalars().all()}
 
+    for execution in executions:
+        rule = rules_map.get(execution.rule_id)
         error_details = execution.error_details or {}
         exec_data = {
             "id": execution.id,

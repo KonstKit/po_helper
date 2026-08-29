@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func as sql_func, exists, or_
+from sqlalchemy import delete, select, tuple_, func as sql_func, exists, or_
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
@@ -1164,25 +1164,43 @@ async def fix_consistency_issues(
         dup_result = await db.execute(dup_query)
         duplicate_groups = dup_result.all()
 
-        for group in duplicate_groups:
-            from_id, to_id, link_type = group
-
-            # Get all links in this duplicate group
-            links_query = (
-                select(ArtifactLink)
-                .where(
-                    ArtifactLink.from_artifact_id == from_id,
-                    ArtifactLink.to_artifact_id == to_id,
-                    ArtifactLink.link_type == link_type,
-                )
-                .order_by(
-                    # Keep the one with highest confidence, or most recent
-                    ArtifactLink.confidence.desc().nullslast(),
-                    ArtifactLink.created_at.desc(),
-                )
+        # Fetch every duplicate group's links with a single query
+        # (ordered so the best row of each group comes first) instead of
+        # one SELECT per group.
+        dup_links_query = (
+            select(ArtifactLink)
+            .where(
+                tuple_(
+                    ArtifactLink.from_artifact_id,
+                    ArtifactLink.to_artifact_id,
+                    ArtifactLink.link_type,
+                ).in_(duplicate_groups)
             )
-            links_result = await db.execute(links_query)
-            duplicate_links = links_result.scalars().all()
+            .order_by(
+                ArtifactLink.from_artifact_id,
+                ArtifactLink.to_artifact_id,
+                ArtifactLink.link_type,
+                # Keep the one with highest confidence, or most recent
+                ArtifactLink.confidence.desc().nullslast(),
+                ArtifactLink.created_at.desc(),
+            )
+        )
+        # the batch fetch must respect the same project scope as dup_query:
+        # without it a cleanup for project A could pick up (and delete) a
+        # duplicate-looking link of project B
+        if project_id is not None:
+            dup_links_query = dup_links_query.where(ArtifactLink.project_id == project_id)
+
+        dup_links_result = await db.execute(dup_links_query)
+        grouped: dict = {}
+        for link in dup_links_result.scalars().all():
+            grouped.setdefault(
+                (link.from_artifact_id, link.to_artifact_id, link.link_type), []
+            ).append(link)
+        duplicate_ids_to_remove: list = []
+
+        for group in duplicate_groups:
+            duplicate_links = grouped.get(tuple(group), [])
 
             # Keep the first (best) one, remove the rest
             for link in duplicate_links[1:]:
@@ -1199,8 +1217,13 @@ async def fix_consistency_issues(
                         }
                     )
                 else:
-                    await db.delete(link)
-                    fixes["duplicates_removed"] += 1
+                    duplicate_ids_to_remove.append(link.id)
+
+        if not dry_run and duplicate_ids_to_remove:
+            await db.execute(
+                delete(ArtifactLink).where(ArtifactLink.id.in_(duplicate_ids_to_remove))
+            )
+            fixes["duplicates_removed"] += len(duplicate_ids_to_remove)
 
     if not dry_run:
         await db.commit()
