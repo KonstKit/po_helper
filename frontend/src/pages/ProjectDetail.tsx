@@ -9,27 +9,12 @@ import {
   Chip,
   LinearProgress,
   Button,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Divider,
-  Checkbox,
-  FormControlLabel,
-  Stack,
   Skeleton,
 } from "@mui/material";
-import type { SelectChangeEvent } from "@mui/material/Select";
 import { GridColDef, GridPaginationModel } from "@mui/x-data-grid";
 import {
   api,
@@ -51,19 +36,11 @@ import {
   getProjectBudgetHours,
   getProjectValueMetrics,
   getSprintCapacity,
-  getProjectRepositories,
-  bindRepositoryToProject,
-  unbindRepositoryFromProject,
-  setPrimaryRepository,
-  listGitlabProjects,
   purgeProject,
   getTeamMembersActivity,
   openWebSocket,
 } from "../services/api";
 import type {
-  ProjectRepositoryLink,
-  RepositoryProvider,
-  GitlabProjectSummary,
   Project,
   Sprint,
   TaskItem,
@@ -79,6 +56,8 @@ import type {
 } from "../services/api";
 import { Snackbar, Alert, Tooltip } from "@mui/material";
 import CircularProgressWithLabel from "../components/CircularProgressWithLabel";
+import RepositoryDialog from "./projectDetail/RepositoryDialog";
+import { useProjectRepositories } from "./projectDetail/useProjectRepositories";
 import { isDevelopment } from "../utils/env";
 import { getErrorMessage, getErrorCode } from "../utils/errorUtils";
 import { normalizeQualityGateProvider } from "../utils/qualityGate";
@@ -120,6 +99,20 @@ const ProjectDetail = () => {
   const [project, setProject] = useState<Project | null>(null);
   const [rows, setRows] = useState<TaskItem[]>([]);
   const lastRowsRef = useRef<TaskItem[]>([]);
+
+  const handleRetry = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      await loadProjectDetails(true);
+      await loadTasksPage();
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to reload project data'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Tracks the previously-loaded project id so the load effect can tell an actual
   // project switch (clear stale data) from the initial mount (keep cached tasks).
   const prevProjectIdRef = useRef<string | undefined>(undefined);
@@ -156,6 +149,10 @@ const ProjectDetail = () => {
     risks: true,
     sprints: true,
     sprintInsights: true,
+  });
+  const repo = useProjectRepositories({
+    projectId: id,
+    showToast: (t) => setToast(t),
   });
   const [toast, setToast] = useState<{
     open: boolean;
@@ -251,120 +248,12 @@ const ProjectDetail = () => {
     }
   }, [id]);
 
-  const [hist, setHist] = useState<QualityHistoryItem[]>([]);
-  const [qualityLoading, setQualityLoading] = useState(false);
-  const [bulkProgress, setBulkProgress] = useState<{
-    active: boolean;
-    percent: number;
-    step: string;
-  }>({ active: false, percent: 0, step: "" });
-
-  const [repoBindings, setRepoBindings] = useState<ProjectRepositoryLink[]>([]);
-  const [repoLoading, setRepoLoading] = useState(false);
-  const [repoDialogOpen, setRepoDialogOpen] = useState(false);
-  const [repoForm, setRepoForm] = useState<{
-    repositoryUrl: string;
-    provider: RepositoryProvider;
-    repoSlug: string;
-    isPrimary: boolean;
-  }>({
-    repositoryUrl: "",
-    provider: 'github',
-    repoSlug: "",
-    isPrimary: true,
-  });
-  const [gitlabProjects, setGitlabProjects] = useState<GitlabProjectSummary[]>([]);
-  const [gitlabLoading, setGitlabLoading] = useState(false);
-  const [gitlabError, setGitlabError] = useState<string | null>(null);
-  const [gitlabSearch, setGitlabSearch] = useState('');
-  const [gitlabGroupPath, setGitlabGroupPath] = useState('');
-  const [gitlabPage, setGitlabPage] = useState(1);
-  const gitlabHasNextPageRef = useRef(false);
-  const [repoProviders, setRepoProviders] = useState<{ github: boolean; gitlab: boolean }>({ github: false, gitlab: false });
-  const [repoError, setRepoError] = useState<string | null>(null);
-  const [repoSaving, setRepoSaving] = useState(false);
-  const [repoAction, setRepoAction] = useState<{ type: "primary" | "remove"; id: number } | null>(null);
-
-  const reloadRepositories = useCallback(
-    async (showError = true) => {
-      if (!id) return;
-      setRepoLoading(true);
-      try {
-        const updated = await getProjectRepositories(Number(id));
-        setRepoBindings(updated);
-      } catch (error) {
-        if (showError) {
-          const message = getErrorMessage(error, "Failed to refresh repositories");
-          setToast({ open: true, type: "error", msg: message });
-        }
-      } finally {
-        setRepoLoading(false);
-      }
-    },
-    [id],
-  );
-
-  const performGitlabSearch = useCallback(
-    async (page: number, options: { append?: boolean } = {}) => {
-      if (!repoProviders.gitlab) {
-        return;
-      }
-
-      const append = options.append ?? false;
-      if (!append) {
-        setGitlabProjects([]);
-      }
-      setGitlabLoading(true);
-      setGitlabError(null);
-
-      try {
-        const response = await listGitlabProjects({
-          groupPath: gitlabGroupPath || undefined,
-          search: gitlabSearch || undefined,
-          page,
-          includeSubgroups: true,
-        });
-
-        const projects = response.projects ?? [];
-        setGitlabProjects(prev => (append ? [...prev, ...projects] : projects));
-
-        const nextRaw = response.pagination?.next_page ?? null;
-        const hasNext = Boolean(nextRaw && String(nextRaw).trim() && String(nextRaw) !== '0');
-        gitlabHasNextPageRef.current = hasNext;
-        setGitlabPage(page);
-      } catch (error) {
-        setGitlabError(getErrorMessage(error, 'Failed to fetch GitLab projects'));
-      } finally {
-        setGitlabLoading(false);
-      }
-    },
-    [gitlabGroupPath, gitlabSearch, repoProviders.gitlab],
-  );
-
-  useEffect(() => {
-    if (!repoDialogOpen) {
-      setGitlabProjects([]);
-      setGitlabError(null);
-      setGitlabLoading(false);
-      gitlabHasNextPageRef.current = false;
-      return;
-    }
-    setGitlabPage(1);
-    void performGitlabSearch(1);
-  }, [performGitlabSearch, repoDialogOpen]);
-
-  useEffect(() => {
-    if (!repoDialogOpen || repoForm.provider !== 'gitlab' || !repoProviders.gitlab) {
-      return;
-    }
-    setGitlabPage(1);
-    void performGitlabSearch(1);
-  }, [performGitlabSearch, repoDialogOpen, repoForm.provider, repoProviders.gitlab]);
-
   const wsRef = useRef<WebSocket | null>(null);
   const autoSyncTriedRef = useRef<boolean>(false);
   const autoSyncDisabledRef = useRef<boolean>(false);
   const autoSyncTimeoutRef = useRef<number | null>(null);
+
+
   const timedOut = (e: unknown) => {
     const msg = getErrorMessage(e, "").toLowerCase();
     return getErrorCode(e) === "ECONNABORTED" || msg.includes("timeout");
@@ -549,116 +438,14 @@ const ProjectDetail = () => {
     }
   };
 
-  const handleOpenRepoDialog = () => {
-    setRepoDialogOpen(true);
-  };
+  const [hist, setHist] = useState<QualityHistoryItem[]>([]);
+  const [qualityLoading, setQualityLoading] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{
+    active: boolean;
+    percent: number;
+    step: string;
+  }>({ active: false, percent: 0, step: "" });
 
-  const handleRepoDialogClose = () => {
-    if (repoSaving) return;
-    setRepoDialogOpen(false);
-    setRepoError(null);
-  };
-
-  const handleRetry = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      await loadProjectDetails(true);
-      await loadTasksPage();
-    } catch (err) {
-      setError(getErrorMessage(err, 'Failed to reload project data'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRepoSubmit = async () => {
-    if (!id) return;
-    const url = repoForm.repositoryUrl.trim();
-    const slug = repoForm.repoSlug.trim();
-
-    setRepoError(null);
-
-    if (!url && !slug) {
-      setRepoError('Provide a repository URL or slug.');
-      return;
-    }
-
-    const providerConfigured =
-      repoForm.provider === 'github' ? repoProviders.github : repoProviders.gitlab;
-
-    if (!url && !providerConfigured) {
-      setRepoError(
-        `${repoForm.provider === 'gitlab' ? 'GitLab' : 'GitHub'} integration is not configured.`,
-      );
-      return;
-    }
-
-    setRepoSaving(true);
-    try {
-      await bindRepositoryToProject(Number(id), {
-        repositoryUrl: url || undefined,
-        repoSlug: url ? undefined : slug || undefined,
-        provider: url ? undefined : repoForm.provider,
-        isPrimary: repoForm.isPrimary,
-      });
-      setRepoDialogOpen(false);
-      setToast({
-        open: true,
-        type: 'success',
-        msg: 'Repository linked to project.',
-      });
-      await reloadRepositories();
-    } catch (error) {
-      setRepoError(getErrorMessage(error, 'Failed to link repository'));
-    } finally {
-      setRepoSaving(false);
-    }
-  };
-
-  const handleSetPrimaryRepository = async (binding: ProjectRepositoryLink) => {
-    if (!id) return;
-    setRepoAction({ type: 'primary', id: binding.repository_id });
-    try {
-      await setPrimaryRepository(Number(id), binding.repository_id);
-      setToast({
-        open: true,
-        type: 'success',
-        msg: 'Primary repository updated.',
-      });
-      await reloadRepositories();
-    } catch (error) {
-      setToast({
-        open: true,
-        type: 'error',
-        msg: getErrorMessage(error, 'Failed to update primary repository'),
-      });
-    } finally {
-      setRepoAction(null);
-    }
-  };
-
-  const handleRemoveRepository = async (binding: ProjectRepositoryLink) => {
-    if (!id) return;
-    setRepoAction({ type: 'remove', id: binding.repository_id });
-    try {
-      await unbindRepositoryFromProject(Number(id), binding.repository_id);
-      setToast({
-        open: true,
-        type: 'success',
-        msg: 'Repository unlinked from project.',
-      });
-      await reloadRepositories();
-    } catch (error) {
-      setToast({
-        open: true,
-        type: 'error',
-        msg: getErrorMessage(error, 'Failed to remove repository'),
-      });
-    } finally {
-      setRepoAction(null);
-    }
-  };
 
   const updateTaskRows = useCallback(
     (list: TaskItem[]) => {
@@ -824,99 +611,6 @@ const ProjectDetail = () => {
       });
     }
   }, [id, logNonFatal]);
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const integ = await getIntegrationsStatus();
-        if (cancelled) return;
-        setRepoProviders({
-          github: Boolean(integ?.github?.configured && integ?.github?.has_token),
-          gitlab: Boolean(integ?.gitlab?.configured && integ?.gitlab?.has_token),
-        });
-      } catch (error) {
-        if (!cancelled) {
-          console.error('[ProjectDetail] Failed to load integration status', error);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!id) return;
-    let cancelled = false;
-
-    const loadRepositories = async () => {
-      setRepoLoading(true);
-      try {
-        const data = await getProjectRepositories(Number(id));
-        if (!cancelled) {
-          setRepoBindings(data);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setToast({
-            open: true,
-            type: 'error',
-            msg: getErrorMessage(error, 'Failed to load repositories'),
-          });
-        }
-      } finally {
-        if (!cancelled) {
-          setRepoLoading(false);
-        }
-      }
-    };
-
-    loadRepositories();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [id, updateTaskRows]);
-
-  useEffect(() => {
-    if (!repoDialogOpen) return;
-    let cancelled = false;
-
-    const refresh = async () => {
-      try {
-        clearIntegrationStatusCache();
-        const integ = await getIntegrationsStatus();
-        if (cancelled) return;
-        const nextProviders = {
-          github: Boolean(integ?.github?.configured && integ?.github?.has_token),
-          gitlab: Boolean(integ?.gitlab?.configured && integ?.gitlab?.has_token),
-        };
-        setRepoProviders(nextProviders);
-        const defaultProvider: RepositoryProvider =
-          nextProviders.github ? 'github' : nextProviders.gitlab ? 'gitlab' : 'github';
-        setRepoForm({
-          repositoryUrl: '',
-          provider: defaultProvider,
-          repoSlug: '',
-          isPrimary: repoBindings.length === 0,
-        });
-        setRepoError(null);
-      } catch (error) {
-        if (!cancelled) {
-          console.error('[ProjectDetail] Failed to refresh integration status', error);
-        }
-      }
-    };
-
-    refresh();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [repoDialogOpen, repoBindings.length]);
-
   useEffect(() => {
     logDebug("ProjectDetail: Checking cache for id:", id);
     if (id && !Number.isNaN(Number(id))) {
@@ -1727,13 +1421,13 @@ const ProjectDetail = () => {
         bulkProgress={bulkProgress}
         onSaveThresholds={handleSaveThresholds}
         onBulkCheck={handleBulkQualityCheck}
-        repoProviders={repoProviders}
-        repoLoading={repoLoading}
-        repoBindings={repoBindings}
-        repoAction={repoAction}
-        onOpenRepoDialog={handleOpenRepoDialog}
-        onSetPrimaryRepository={handleSetPrimaryRepository}
-        onRemoveRepository={handleRemoveRepository}
+        repoProviders={repo.repoProviders}
+        repoLoading={repo.repoLoading}
+        repoBindings={repo.repoBindings}
+        repoAction={repo.repoAction}
+        onOpenRepoDialog={repo.handleOpenRepoDialog}
+        onSetPrimaryRepository={repo.handleSetPrimaryRepository}
+        onRemoveRepository={repo.handleRemoveRepository}
       />
 
         {/* Toasts */}
@@ -1748,348 +1442,8 @@ const ProjectDetail = () => {
           </Alert>
         </Snackbar>
 
-        {/* Link Repository Dialog */}
-        <Dialog open={repoDialogOpen} onClose={handleRepoDialogClose}>
-          <DialogTitle>Link Repository</DialogTitle>
-          <DialogContent sx={{ width: 420, maxWidth: '100%' }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Add a GitHub or GitLab repository to associate pull requests and commits with this project.
-            </Typography>
-            {!repoProviders.github && !repoProviders.gitlab && (
-              <Alert severity="warning" sx={{ mb: 2 }}>
-                Configure a GitHub or GitLab integration first to enable API lookups for repositories.
-              </Alert>
-            )}
-            <TextField
-              fullWidth
-              label="Repository URL"
-              placeholder="https://github.com/org/repo"
-              value={repoForm.repositoryUrl}
-              onChange={(e) =>
-                setRepoForm((form) => ({
-                  ...form,
-                  repositoryUrl: e.target.value,
-                }))
-              }
-              margin="dense"
-              disabled={repoSaving}
-            />
-            <Divider sx={{ my: 2 }}>or</Divider>
-            <FormControl fullWidth margin="dense" disabled={repoSaving}>
-              <InputLabel id="repo-provider-label">Provider</InputLabel>
-              <Select
-                labelId="repo-provider-label"
-                label="Provider"
-                value={repoForm.provider}
-                onChange={(e: SelectChangeEvent<RepositoryProvider>) => {
-                  const nextProvider = e.target.value;
-                  if (nextProvider !== 'github' && nextProvider !== 'gitlab') {
-                    return;
-                  }
-                  setRepoForm((form) => ({
-                    ...form,
-                    provider: nextProvider,
-                  }));
-                }}
-              >
-                <MenuItem value="github" disabled={!repoProviders.github}>GitHub</MenuItem>
-                <MenuItem value="gitlab" disabled={!repoProviders.gitlab}>GitLab</MenuItem>
-              </Select>
-            </FormControl>
-            <TextField
-              fullWidth
-              label="Repository Slug"
-              placeholder="org/repo"
-              value={repoForm.repoSlug}
-              onChange={(e) =>
-                setRepoForm((form) => ({
-                  ...form,
-                  repoSlug: e.target.value,
-                }))
-              }
-              helperText="Used when repository URL is not provided."
-              margin="dense"
-              disabled={repoSaving}
-            />
 
-
-
-
-{repoForm.provider === 'gitlab' && repoProviders.gitlab && (
-
-  <Box sx={{ mt: 2 }}>
-
-    <Divider sx={{ mb: 2 }}>GitLab project browser</Divider>
-
-    <Stack spacing={1}>
-
-      <TextField
-
-        label="Group path"
-
-        placeholder="company/platform"
-
-        value={gitlabGroupPath}
-
-        onChange={(event) => {
-
-          setGitlabGroupPath(event.target.value);
-
-        }}
-
-        size="small"
-
-        disabled={gitlabLoading}
-
-      />
-
-      <TextField
-
-        label="Search"
-
-        placeholder="project name"
-
-        value={gitlabSearch}
-
-        onChange={(event) => {
-
-          setGitlabSearch(event.target.value);
-
-        }}
-
-        size="small"
-
-        disabled={gitlabLoading}
-
-      />
-
-      <Stack direction="row" spacing={1}>
-
-        <Button
-
-          size="small"
-
-          variant="contained"
-
-          onClick={() => void performGitlabSearch(1)}
-
-          disabled={gitlabLoading}
-
-        >
-
-          Search
-
-        </Button>
-
-        <Button
-
-          size="small"
-
-          onClick={() => {
-
-            setGitlabGroupPath('');
-
-            setGitlabSearch('');
-
-            setGitlabProjects([]);
-
-            gitlabHasNextPageRef.current = false;
-
-          }}
-
-          disabled={gitlabLoading}
-
-        >
-
-          Clear
-
-        </Button>
-
-      </Stack>
-
-    </Stack>
-
-
-
-    {gitlabError && (
-
-      <Alert severity="error" sx={{ mt: 1 }}>
-
-        {gitlabError}
-
-      </Alert>
-
-    )}
-
-
-
-    <Box sx={{ mt: 2, maxHeight: 220, overflowY: 'auto', position: 'relative' }}>
-
-      {gitlabLoading && <LinearProgress sx={{ position: 'sticky', top: 0 }} />}
-
-      <Table size="small">
-
-        <TableHead>
-
-          <TableRow>
-
-            <TableCell>Name</TableCell>
-
-            <TableCell>Slug</TableCell>
-
-            <TableCell align="right">Select</TableCell>
-
-          </TableRow>
-
-        </TableHead>
-
-        <TableBody>
-
-          {gitlabProjects.map((project) => (
-
-            <TableRow key={project.id} hover>
-
-              <TableCell>
-
-                <Typography variant="body2" fontWeight={600}>
-
-                  {project.name}
-
-                </Typography>
-
-                <Typography variant="caption" color="text.secondary">
-
-                  {project.path_with_namespace}
-
-                </Typography>
-
-              </TableCell>
-
-              <TableCell>{project.path_with_namespace}</TableCell>
-
-              <TableCell align="right">
-
-                <Button
-
-                  size="small"
-
-                  onClick={() => {
-
-                    setRepoForm((form) => ({
-
-                      ...form,
-
-                      provider: 'gitlab',
-
-                      repoSlug: project.path_with_namespace || form.repoSlug,
-
-                      repositoryUrl: project.http_url_to_repo || form.repositoryUrl,
-
-                    }));
-
-                  }}
-
-                >
-
-                  Use
-
-                </Button>
-
-              </TableCell>
-
-            </TableRow>
-
-          ))}
-
-          {!gitlabLoading && gitlabProjects.length === 0 && (
-
-            <TableRow>
-
-              <TableCell colSpan={3}>
-
-                <Typography variant="body2" color="text.secondary">
-
-                  No projects found. Adjust filters to try again.
-
-                </Typography>
-
-              </TableCell>
-
-            </TableRow>
-
-          )}
-
-        </TableBody>
-
-      </Table>
-
-      {gitlabHasNextPageRef.current && (
-
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
-
-          <Button
-
-            size="small"
-
-            onClick={() => performGitlabSearch(gitlabPage + 1, { append: true })}
-
-            disabled={gitlabLoading}
-
-          >
-
-            Load more
-
-          </Button>
-
-        </Box>
-
-      )}
-
-    </Box>
-
-  </Box>
-
-)}
-
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={repoForm.isPrimary}
-                  onChange={(e) =>
-                    setRepoForm((form) => ({
-                      ...form,
-                      isPrimary: e.target.checked,
-                    }))
-                  }
-                  disabled={repoSaving}
-                />
-              }
-              label="Set as primary repository"
-              sx={{ mt: 1 }}
-            />
-            {repoError && (
-              <Alert severity="error" sx={{ mt: 2 }}>
-                {repoError}
-              </Alert>
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleRepoDialogClose} disabled={repoSaving}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleRepoSubmit}
-              variant="contained"
-              disabled={
-                repoSaving ||
-                (!repoForm.repositoryUrl.trim() && !repoForm.repoSlug.trim())
-              }
-            >
-              {repoSaving ? "Linking..." : "Link Repository"}
-            </Button>
-          </DialogActions>
-        </Dialog>
-
+        <RepositoryDialog repo={repo} />
         {/* Confirm Purge Dialog */}
         <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
           <DialogTitle>Delete local project data?</DialogTitle>
