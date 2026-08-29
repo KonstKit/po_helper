@@ -31,6 +31,10 @@ logger = logging.getLogger(__name__)
 
 
 def _visible_projects_query(current_user: User):
+    # NB: ProjectSchema serializes owner_id (a plain column), never the
+    # Project.owner relationship, and can_access_project also reads
+    # owner_id - so no eager load is needed here; a selectinload would
+    # only add a pointless second query (review C-PROJECTS-001).
     query = select(Project).order_by(Project.id.asc())
     token_tenant_id = get_token_tenant_id()
 

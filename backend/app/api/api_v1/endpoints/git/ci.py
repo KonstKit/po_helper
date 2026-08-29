@@ -303,14 +303,19 @@ async def _attach_ci_traceability_items(
         artifact_added = 0
         link_added = 0
         target_col = getattr(item_model, target_key)
-        for artifact_id in artifact_ids:
-            exists = await db.execute(
-                select(item_model).where(
+        # single existence query for the whole batch instead of one per id
+        if artifact_ids:
+            existing = await db.execute(
+                select(item_model.artifact_id).where(
                     target_col == target_id,
-                    item_model.artifact_id == artifact_id,
+                    item_model.artifact_id.in_(artifact_ids),
                 )
             )
-            if exists.scalar_one_or_none() is None:
+            existing_ids = set(existing.scalars().all())
+        else:
+            existing_ids = set()
+        for artifact_id in artifact_ids:
+            if artifact_id not in existing_ids:
                 db.add(item_model(**{target_key: target_id, "artifact_id": artifact_id}))
                 artifact_added += 1
         if link_id is not None:

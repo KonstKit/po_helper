@@ -83,18 +83,21 @@ async def calibrate_fields(
         jira_url = jira_service.base_url
 
         async with transactional_session(db):
-            for field_id, result in calibration_results.items():
-                # Check if mapping exists
-                existing = await db.execute(
-                    select(JiraFieldMapping).where(
-                        and_(
-                            JiraFieldMapping.jira_instance_url == jira_url,
-                            JiraFieldMapping.field_type == result["type"],
-                            JiraFieldMapping.project_key == project_key,
-                        )
+            # one SELECT for all calibrated field types instead of one per field
+            field_types = [result["type"] for result in calibration_results.values()]
+            existing_rows = await db.execute(
+                select(JiraFieldMapping).where(
+                    and_(
+                        JiraFieldMapping.jira_instance_url == jira_url,
+                        JiraFieldMapping.project_key == project_key,
+                        JiraFieldMapping.field_type.in_(field_types),
                     )
                 )
-                mapping = existing.scalar_one_or_none()
+            )
+            mappings_by_type = {m.field_type: m for m in existing_rows.scalars().all()}
+
+            for field_id, result in calibration_results.items():
+                mapping = mappings_by_type.get(result["type"])
 
                 if not mapping:
                     mapping = JiraFieldMapping(
@@ -314,17 +317,19 @@ async def import_configuration(
         mappings = config.get("mappings", {})
 
         async with transactional_session(db):
-            for field_type, field_id in mappings.items():
-                # Check if exists
-                result = await db.execute(
-                    select(JiraFieldMapping).where(
-                        and_(
-                            JiraFieldMapping.jira_instance_url == jira_url,
-                            JiraFieldMapping.field_type == field_type,
-                        )
+            # one SELECT for the whole imported config instead of one per field
+            existing_rows = await db.execute(
+                select(JiraFieldMapping).where(
+                    and_(
+                        JiraFieldMapping.jira_instance_url == jira_url,
+                        JiraFieldMapping.field_type.in_(list(mappings.keys())),
                     )
                 )
-                mapping = result.scalar_one_or_none()
+            )
+            mappings_by_type = {m.field_type: m for m in existing_rows.scalars().all()}
+
+            for field_type, field_id in mappings.items():
+                mapping = mappings_by_type.get(field_type)
 
                 if not mapping:
                     mapping = JiraFieldMapping(
