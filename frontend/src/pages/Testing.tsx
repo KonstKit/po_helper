@@ -4,7 +4,6 @@ import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import { Science as ScienceIcon, Assessment as AssessmentIcon } from '@mui/icons-material';
 import type { SelectChangeEvent } from '@mui/material/Select';
 import {
-  listProjects,
   getTestTrend,
   getCoverageTrend,
   getCoverageFiles,
@@ -12,6 +11,7 @@ import {
   listCoverageReports,
   listTestResults,
 } from '../services/api';
+import { useProjects } from '../services/api/hooks';
 import type {
   Project,
   TestRun,
@@ -70,8 +70,9 @@ const isTestProvider = (value: string): value is TestProvider =>
 
 const Testing: React.FC = () => {
   const [activeTab, setActiveTab] = useState(0);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectId, setProjectId] = useState<number | ''>('');
+  // projects come from the shared React Query cache (E1), not local state
+  // only the user's explicit choice lives in state; the default is derived
+  const [manualProjectId, setManualProjectId] = useState<number | ''>('');
   const [progress, setProgress] = useState<{ active: boolean; percent: number; step: string }>({ active: false, percent: 0, step: '' });
   const [runs, setRuns] = useState<TestRun[]>([]);
   const [results, setResults] = useState<TestResult[]>([]);
@@ -111,24 +112,31 @@ const Testing: React.FC = () => {
     }
   };
 
+  const projectsQuery = useProjects(); // shared ['projects'] cache (E1)
+  const projects: Project[] = useMemo(
+    () => projectsQuery.data ?? [],
+    [projectsQuery.data]
+  );
+  const projectId: number | '' =
+    manualProjectId !== ''
+      ? manualProjectId
+      : projects.length
+        ? projects[0].id
+        : '';
   useEffect(() => {
+    let cancelled = false; // stale-response guard (roadmap E2)
     (async () => {
-      const psResp = await listProjects();
-      const ps = psResp.data;
-      setProjects(ps);
-      if (ps.length) setProjectId(ps[0].id);
-    })();
-  }, []);
-  useEffect(() => { (async () => {
     if (!projectId) return;
     setProgress({ active: true, percent: 5, step: 'Loading test runs...' });
     const runsResp = await listTestRuns({
       projectId: Number(projectId),
       provider: provider === 'all' ? undefined : provider,
     });
+    if (cancelled) return;
     setRuns(runsResp.data);
     setProgress({ active: true, percent: 35, step: 'Loading coverage history...' });
     const covResp = await listCoverageReports({ projectId: Number(projectId) });
+    if (cancelled) return;
     setCoverageList(covResp.data);
     // default baseline/compare
     if (covResp.data.length >= 2) {
@@ -138,20 +146,25 @@ const Testing: React.FC = () => {
     setProgress({ active: true, percent: 55, step: 'Loading test trend...' });
     try {
       const tt = await getTestTrend({ projectId: Number(projectId), days });
+      if (cancelled) return;
       setTestTrend(tt.trend || []);
     } catch (err) {
-      console.debug('Failed to load test trend', err);
+      if (!cancelled) console.debug('Failed to load test trend', err);
     }
+    if (cancelled) return;
     setProgress({ active: true, percent: 75, step: 'Loading coverage trend...' });
     try {
       const ct = await getCoverageTrend({ projectId: Number(projectId), days });
+      if (cancelled) return;
       setCoverageTrend(ct.trend || []);
     } catch (err) {
-      console.debug('Failed to load coverage trend', err);
+      if (!cancelled) console.debug('Failed to load coverage trend', err);
     }
+    if (cancelled) return;
     // Pull recent test results for advanced analytics
     try {
       const resResp = await listTestResults({ projectId: Number(projectId), sinceDays: days, limit: 500 });
+      if (cancelled) return;
       const arr = resResp.data;
       setResults(arr);
       // Duration trend by day (avg)
@@ -190,10 +203,13 @@ const Testing: React.FC = () => {
         .slice(0, 20);
       setFlaky(fl);
     } catch (err) {
-      console.warn('Failed to load test analytics', err);
+      if (!cancelled) console.warn('Failed to load test analytics', err);
     }
+    if (cancelled) return;
     setProgress({ active: false, percent: 100, step: 'Ready' });
-  })(); }, [projectId, provider, days]);
+  })();
+    return () => { cancelled = true; };
+  }, [projectId, provider, days]);
 
   const runColumns: GridColDef[] = [
     { field: 'provider', headerName: 'Provider', width: 110, valueGetter: (p)=> (p.row.provider || '').toUpperCase() },
@@ -259,7 +275,7 @@ const Testing: React.FC = () => {
   const showEmptyState = !progress.active && runs.length === 0 && projectId;
 
   const handleProjectChange = (event: SelectChangeEvent<string>) => {
-    setProjectId(parseProjectId(event.target.value));
+    setManualProjectId(parseProjectId(event.target.value));
   };
 
   const handleDaysChange = (event: SelectChangeEvent<string>) => {

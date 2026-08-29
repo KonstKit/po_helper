@@ -1,5 +1,6 @@
 import { describe, beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom';
 
@@ -131,12 +132,18 @@ describe('Traceability page', () => {
   });
 
   it('renders matrix snapshot and loads flow by artifact id', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
     render(
+      <QueryClientProvider client={queryClient}>
+
       <MemoryRouter
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
         <Traceability />
       </MemoryRouter>
+      </QueryClientProvider>
     );
 
     await waitFor(() => expect(listProjects).toHaveBeenCalled());
