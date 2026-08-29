@@ -51,11 +51,11 @@ Key settings to review:
 | Integration secrets | Jira/Confluence/TestRail/GitHub/GitLab tokens |
 
 ### Generate Secure Keys
-Use the helper script to create strong keys:
+Generate strong keys with a one-liner:
 `ash
 $ python -c "import secrets; print(secrets.token_urlsafe(48))"
 `
-Re-run with --force when rotating secrets.
+Re-run the same command when rotating secrets (update SECRET_KEY / ENCRYPTION_SECRET).
 
 ## 4. Database Setup
 1. Create the PostgreSQL database and user referenced by DATABASE_URL.
