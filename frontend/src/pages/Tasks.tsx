@@ -34,7 +34,8 @@ import {
   GridToolbarExport,
   GridToolbarQuickFilter,
 } from '@mui/x-data-grid';
-import { listTasksPaginated, listProjects, setTaskBusinessValue, withRetry, type Project, type TaskItem } from '../services/api';
+import { listTasksPaginated, setTaskBusinessValue, withRetry, type Project, type TaskItem } from '../services/api';
+import { useProjects } from '../services/api/hooks';
 import { getErrorMessage, logError } from '../utils/errorUtils';
 
 /** Extended task row with computed display fields */
@@ -147,20 +148,13 @@ const Tasks = () => {
     }
   }, [debouncedFilters.assignee, debouncedFilters.project, debouncedFilters.status, projects, paginationModel]);
 
+  const projectsQuery = useProjects(); // shared ['projects'] cache (E1)
   useEffect(() => {
-    (async () => {
-      try {
-        const psResp = await withRetry(
-          () => listProjects(),
-          { retries: 2, baseDelayMs: 300, maxDelayMs: 2000 }
-        );
-        setProjects(psResp.data);
-      } catch (err) {
-        logError('Failed to load projects', err);
-        setToast({ open: true, severity: 'error', message: 'Failed to load projects list' });
-      }
-    })();
-  }, []);
+    setProjects(projectsQuery.data ?? []);
+    if (projectsQuery.error) {
+      logError('Failed to load projects', projectsQuery.error);
+    }
+  }, [projectsQuery.data, projectsQuery.error]);
 
   useEffect(() => {
     reload();
