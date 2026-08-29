@@ -4,7 +4,6 @@ import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import { VerifiedUser as VerifiedUserIcon, BugReport as BugReportIcon, Shield as ShieldIcon, Assessment as AssessmentIcon } from '@mui/icons-material';
 import type { SelectChangeEvent } from '@mui/material/Select';
 import {
-  listProjects,
   getProjectById,
   updateProject,
   listPullRequests,
@@ -17,6 +16,7 @@ import {
   type QualityGateResult,
   type QualityGateProvider,
 } from '../services/api';
+import { useProjects } from '../services/api/hooks';
 import CircularProgressWithLabel from '../components/CircularProgressWithLabel';
 import EmptyState from '../components/EmptyState';
 import { QualityDashboard, QualityReportPanel } from '../components/quality';
@@ -48,8 +48,9 @@ const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => (
 
 const Quality: React.FC = () => {
   const [activeTab, setActiveTab] = useState(0);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectId, setProjectId] = useState<number | ''>('');
+  // projects come from the shared React Query cache (E1), not local state
+  // only the user's explicit choice lives in state; the default is derived
+  const [manualProjectId, setManualProjectId] = useState<number | ''>('');
   const [prs, setPRs] = useState<QualityPullRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<{ active: boolean; percent: number; step: string }>({ active: false, percent: 0, step: '' });
@@ -75,7 +76,7 @@ const Quality: React.FC = () => {
   };
 
   const handleProjectChange = (event: SelectChangeEvent<string>) => {
-    setProjectId(parseProjectId(event.target.value));
+    setManualProjectId(parseProjectId(event.target.value));
   };
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
@@ -89,14 +90,17 @@ const Quality: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    (async () => {
-      const psResp = await listProjects();
-      const ps = psResp.data;
-      setProjects(ps);
-      if (ps.length) setProjectId(ps[0].id);
-    })();
-  }, []);
+  const projectsQuery = useProjects(); // shared ['projects'] cache (E1)
+  const projects: Project[] = useMemo(
+    () => projectsQuery.data ?? [],
+    [projectsQuery.data]
+  );
+  const projectId: number | '' =
+    manualProjectId !== ''
+      ? manualProjectId
+      : projects.length
+        ? projects[0].id
+        : '';
 
   useEffect(() => {
     (async () => {

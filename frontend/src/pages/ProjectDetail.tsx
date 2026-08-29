@@ -162,6 +162,11 @@ const ProjectDetail = () => {
     type: "success" | "error" | "info" | "warning";
     msg: string;
   }>({ open: false, type: "info", msg: "" });
+
+  // Surface non-fatal failures instead of `void err` (roadmap E3)
+  const logNonFatal = useCallback((label: string, err: unknown) => {
+    console.warn(`[ProjectDetail] ${label} failed:`, err);
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const [boards, setBoards] = useState<Board[]>([]);
   const [boardId, setBoardId] = useState<number | "">("");
@@ -471,13 +476,13 @@ const ProjectDetail = () => {
             }
           }
         } catch (err) {
-          void err;
+          logNonFatal('background load', err);
         } finally {
           pollInFlight = false;
         }
       }, 5000);
     },
-    [clearSyncStatusPoll, loadProjectDetails, loadTasksPage, stopSyncProgressTicker],
+    [clearSyncStatusPoll, loadProjectDetails, loadTasksPage, logNonFatal, stopSyncProgressTicker],
   );
 
   const handleManualSync = async () => {
@@ -500,7 +505,7 @@ const ProjectDetail = () => {
           });
           return;
         }
-      } catch (err) { void err; }
+      } catch (err) { logNonFatal('background load', err); }
       setSyncing(true);
       setSyncProgress({
         active: true,
@@ -689,23 +694,22 @@ const ProjectDetail = () => {
       try {
         setSprintBurndown(await getSprintBurndown(sprintId));
       } catch (err) {
-        void err;
+        logNonFatal('background load', err);
       }
       try {
         setSprintQuality(await getSprintQuality(sprintId));
       } catch (err) {
-        void err;
+        logNonFatal('background load', err);
       }
       try {
         setSprintCapacity(await getSprintCapacity(sprintId));
       } catch (err) {
-        void err;
+        logNonFatal('background load', err);
       }
     } finally {
       setSectionLoading((s) => ({ ...s, sprintInsights: false }));
     }
-  }, []);
-
+  }, [logNonFatal]);
   const handleBoardChange = useCallback(
     async (nextBoardId: number) => {
       if (!id) return;
@@ -731,11 +735,10 @@ const ProjectDetail = () => {
           setSprintCapacity(null);
         }
       } catch (err) {
-        void err;
+        logNonFatal('background load', err);
       }
     },
-    [id, loadSprintInsights, selectedSprint],
-  );
+    [id, loadSprintInsights, selectedSprint, logNonFatal],  );
 
   const handleSprintChange = useCallback(
     async (nextSprintId: number) => {
@@ -799,7 +802,7 @@ const ProjectDetail = () => {
             provider: normalizeQualityGateProvider(list[i].provider),
           });
         } catch (err) {
-          void err;
+          logNonFatal('background load', err);
         }
       }
       setBulkProgress({
@@ -820,8 +823,7 @@ const ProjectDetail = () => {
         msg: getErrorMessage(e, "Bulk check failed"),
       });
     }
-  }, [id]);
-
+  }, [id, logNonFatal]);
   useEffect(() => {
     let cancelled = false;
 
@@ -1026,7 +1028,7 @@ const ProjectDetail = () => {
                 limit: 20,
               });
               setHist(h.history || []);
-            } catch (err) { void err; }
+            } catch (err) { logNonFatal('background load', err); }
           })();
 
           // --- Independent section loads (run in parallel) -------------------
@@ -1063,7 +1065,7 @@ const ProjectDetail = () => {
           const loadRisksSection = (async () => {
             try {
               setRisks(await getRisks(Number(id)));
-            } catch (err) { void err; }
+            } catch (err) { logNonFatal('background load', err); }
             finally {
               setSectionLoading((s) => ({ ...s, risks: false }));
             }
@@ -1072,7 +1074,7 @@ const ProjectDetail = () => {
           const loadBurndownSection = (async () => {
             try {
               setBurndown(await getBurndown(Number(id)));
-            } catch (err) { void err; }
+            } catch (err) { logNonFatal('background load', err); }
             finally {
               setSectionLoading((s) => ({ ...s, burndown: false }));
             }
@@ -1083,11 +1085,11 @@ const ProjectDetail = () => {
             try {
               const b = await getProjectBudgetHours(Number(id));
               setBudgetHours(b);
-            } catch (err) { void err; }
+            } catch (err) { logNonFatal('background load', err); }
             try {
               const vm = await getProjectValueMetrics(Number(id));
               setValueMetrics(vm);
-            } catch (err) { void err; }
+            } catch (err) { logNonFatal('background load', err); }
             setSectionLoading((s) => ({ ...s, metrics: false }));
           })();
 
@@ -1095,7 +1097,7 @@ const ProjectDetail = () => {
             try {
               const tm = await getTeamMembersActivity(Number(id));
               setTeamMembers(tm || []);
-            } catch (err) { void err; }
+            } catch (err) { logNonFatal('background load', err); }
             finally {
               setSectionLoading((s) => ({ ...s, team: false }));
             }
@@ -1117,7 +1119,7 @@ const ProjectDetail = () => {
                   boardIdRef.current = primaryBoardId;
                 }
               }
-            } catch (err) { void err; }
+            } catch (err) { logNonFatal('background load', err); }
             try {
               const sp = await getProjectSprints(
                 Number(id),
@@ -1258,7 +1260,7 @@ const ProjectDetail = () => {
                               setTaskRowCount(taskTotal);
                               lastRowsRef.current = response.data;
                             }
-                          } catch (err) { void err; }
+                          } catch (err) { logNonFatal('background load', err); }
                           finally {
                             pollInFlight = false;
                           }
@@ -1311,7 +1313,7 @@ const ProjectDetail = () => {
                   });
                   try {
                     wsRef.current?.close();
-                  } catch (err) { void err; }
+                  } catch (err) { logNonFatal('background load', err); }
                   clearIntegrationStatusCache();
                   autoSyncDisabledRef.current = true;
                 } finally {
@@ -1337,7 +1339,7 @@ const ProjectDetail = () => {
             setSyncProgress({ active: false, percent: 0, step: "" });
             try {
               wsRef.current?.close();
-            } catch (err) { void err; }
+            } catch (err) { logNonFatal('background load', err); }
             clearIntegrationStatusCache();
             autoSyncDisabledRef.current = true;
           }
@@ -1369,8 +1371,7 @@ const ProjectDetail = () => {
       if (purgeReqCtrlRef.current) purgeReqCtrlRef.current.abort();
       purgeReqCtrlRef.current = null;
     };
-  }, [clearSyncStatusPoll, id, loadProjectDetails, loadSprintInsights, loadTasksPage]);
-
+  }, [clearSyncStatusPoll, id, loadProjectDetails, loadSprintInsights, loadTasksPage, logNonFatal]);
   // WebSocket: listen for backend sync completion and refresh tasks (only if Jira configured and auto-sync not disabled)
   useEffect(() => {
     let closed = false;
@@ -1443,23 +1444,22 @@ const ProjectDetail = () => {
                 msg: detail ? `${message}: ${detail}` : message,
               });
             }
-          } catch (err) { void err; }
+          } catch (err) { logNonFatal('background load', err); }
         };
         ws.onclose = () => {
           if (!closed) wsRef.current = null;
         };
-      } catch (err) { void err; }
+      } catch (err) { logNonFatal('background load', err); }
     })();
     return () => {
       closed = true;
       clearSyncStatusPoll();
       try {
         wsRef.current?.close();
-      } catch (err) { void err; }
+      } catch (err) { logNonFatal('background load', err); }
       wsRef.current = null;
     };
-  }, [clearSyncStatusPoll, id, loadProjectDetails, loadTasksPage]);
-
+  }, [clearSyncStatusPoll, id, loadProjectDetails, loadTasksPage, logNonFatal]);
   const taskColumns: GridColDef<TaskItem>[] = [
     { field: "key", headerName: "Key", width: 120 },
     { field: "summary", headerName: "Summary", width: 300, flex: 1 },
@@ -2127,7 +2127,7 @@ const ProjectDetail = () => {
                       });
                       return;
                     }
-                  } catch (err) { void err; }
+                  } catch (err) { logNonFatal('background load', err); }
                   setSyncing(true);
                   await syncJiraProject(project.jira_key);
                   // Poll tasks until available or timeout - use paginated API
@@ -2160,7 +2160,7 @@ const ProjectDetail = () => {
                         setTaskRowCount(taskTotal);
                         lastRowsRef.current = response.data;
                       }
-                    } catch (err) { void err; }
+                    } catch (err) { logNonFatal('background load', err); }
                     finally {
                       purgePollInFlight = false;
                     }

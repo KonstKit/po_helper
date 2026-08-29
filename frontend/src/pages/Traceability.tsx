@@ -60,9 +60,9 @@ import {
   getTraceabilityMatrix,
   getTraceabilityRequirementFlow,
   getTraceabilityTaskArtifacts,
-  listProjects,
   runTraceabilityBackfill,
 } from '../services/api';
+import { useProjects } from '../services/api/hooks';
 import { getErrorMessage, logError } from '../utils/errorUtils';
 
 interface BackfillState {
@@ -188,41 +188,23 @@ const Traceability: React.FC = () => {
     setRtmCoverage(coverage);
   }, []);
 
+  const projectsQuery = useProjects(); // shared ['projects'] cache (E1)
   useEffect(() => {
-    let cancelled = false;
-    const loadProjects = async () => {
-      setProjectsLoading(true);
-      setProjectsError(null);
-      try {
-        const res = await listProjects();
-        const data = res.data;
-        if (cancelled) return;
-        setProjects(data);
-        setProjectId(prev => {
-          if (!data.length) {
-            return 'all';
-          }
-          if (typeof prev === 'number' && data.some(p => p.id === prev)) {
-            return prev;
-          }
-          return data[0].id;
-        });
-      } catch (err: unknown) {
-        if (cancelled) return;
-        logError('Failed to load projects', err);
-        setProjectsError(getErrorMessage(err, 'Failed to load projects'));
-      } finally {
-        if (!cancelled) {
-          setProjectsLoading(false);
-        }
+    setProjectsLoading(projectsQuery.isLoading);
+    setProjectsError(projectsQuery.error ? getErrorMessage(projectsQuery.error, 'Failed to load projects') : null);
+    const data = projectsQuery.data;
+    if (!data) return;
+    setProjects(data);
+    setProjectId(prev => {
+      if (!data.length) {
+        return 'all';
       }
-    };
-
-    loadProjects();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      if (typeof prev === 'number' && data.some(p => p.id === prev)) {
+        return prev;
+      }
+      return data[0].id;
+    });
+  }, [projectsQuery.data, projectsQuery.error, projectsQuery.isLoading]);
 
   const fetchMatrix = useCallback(async (opts?: { force?: boolean }) => {
     setMatrixLoading(true);
