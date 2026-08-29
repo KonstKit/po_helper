@@ -149,16 +149,18 @@ const Testing: React.FC = () => {
       if (cancelled) return;
       setTestTrend(tt.trend || []);
     } catch (err) {
-      console.debug('Failed to load test trend', err);
+      if (!cancelled) console.debug('Failed to load test trend', err);
     }
+    if (cancelled) return;
     setProgress({ active: true, percent: 75, step: 'Loading coverage trend...' });
     try {
       const ct = await getCoverageTrend({ projectId: Number(projectId), days });
       if (cancelled) return;
       setCoverageTrend(ct.trend || []);
     } catch (err) {
-      console.debug('Failed to load coverage trend', err);
+      if (!cancelled) console.debug('Failed to load coverage trend', err);
     }
+    if (cancelled) return;
     // Pull recent test results for advanced analytics
     try {
       const resResp = await listTestResults({ projectId: Number(projectId), sinceDays: days, limit: 500 });
@@ -203,7 +205,8 @@ const Testing: React.FC = () => {
     } catch (err) {
       if (!cancelled) console.warn('Failed to load test analytics', err);
     }
-    if (!cancelled) setProgress({ active: false, percent: 100, step: 'Ready' });
+    if (cancelled) return;
+    setProgress({ active: false, percent: 100, step: 'Ready' });
   })();
     return () => { cancelled = true; };
   }, [projectId, provider, days]);

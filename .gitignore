@@ -1,113 +1,98 @@
-# Environment variables and secrets
-.env
-.env.local
-.env.mcp
-.env.production
-.env.development
-*.env
+
 !.env.example
-
-# Secret keys and credentials
-*.key
-*.pem
-*.p12
-*.pfx
-secrets.json
-credentials.json
-*_secret*
-*_token*
-
-# Source/test modules whose filenames contain "secret"/"token" but are code,
-# not secret material. The broad patterns above would otherwise leave them
-# untracked, breaking imports/tests on a fresh checkout (e.g. CI).
 !backend/app/services/connector_secrets.py
 !backend/app/services/integration_secrets.py
 !backend/tests/test_auth_scoped_token.py
 !backend/tests/test_integration_secret_migration.py
 !backend/tests/test_scoped_token_endpoint.py
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-.venv/
-venv/
-env/
-pip-log.txt
-pip-delete-this-directory.txt
-.mypy_cache/
-.ruff_cache/
-
-# Node
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.npm/
-.yarn/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-nul
-
 # Build
-dist/
-build/
-*.egg-info/
-
-# Testing
-.coverage
-.pytest_cache/
-htmlcov/
-
 # Database
+# Database dumps (may contain production data)
+# Environment variables and secrets
+# Generated exports
+# IDE
+# Local agent/editor settings
+# Node
+# OS
+# Playwright artifacts
+# Python
+# Secret keys and credentials
+# Source/test modules whose filenames contain "secret"/"token" but are code,
+# Temporary files
+# Testing
+# UI capture reference (large binary screenshots + index doc) — not app code
+# jscpd reports (generated)
+# not secret material. The broad patterns above would otherwise leave them
+# untracked, breaking imports/tests on a fresh checkout (e.g. CI).
+*$py.class
 *.db
+*.db-shm
+*.db-wal
+*.dump
+*.egg-info/
+*.env
+*.key
+*.p12
+*.pem
+*.pfx
+*.py[cod]
+*.so
+*.sql.gz
 *.sqlite
 *.sqlite3
-*.db-wal
-*.db-shm
-
-# Playwright artifacts
-e2e/playwright/test-results/
-e2e/playwright/playwright-report/
-e2e/playwright/.playwright-token
-.playwright-mcp/
-
-# Local agent/editor settings
+*.swo
+*.swp
+*_secret*
+*_token*
+*~
+.DS_Store
+.Python
 .claude/
-
-# jscpd reports (generated)
-jscpd-report/
-
-# Temporary files
-tmp_*.py
-tmp_*.txt
-tmp_*.tsx
-tmp_*.diff
-tree.txt
-nul
-
-codex/
-
-# Generated exports
-backend/exports/
-exports/rtm_matrix_*.pdf
-
-# Database dumps (may contain production data)
-*.dump
-*.sql.gz
+.coverage
+.env
+.env.development
+.env.local
+.env.mcp
+.env.production
+.idea/
 .last_db_backup_name
-
-# UI capture reference (large binary screenshots + index doc) — not app code
-ui-screenshots/
+.mypy_cache/
+.npm/
+.playwright-mcp/
+.pytest_cache/
+.ruff_cache/
+.venv/
+.vscode/
+.yarn/
+Thumbs.db
 UI_SCREENSHOT_INDEX.md
+__pycache__/
+backend/exports/
+build/
+codex/
+credentials.json
+dist/
+e2e/playwright/.playwright-token
+e2e/playwright/playwright-report/
+e2e/playwright/test-results/
+env/
+exports/
+exports/rtm_matrix_*.pdf
+frontend/exports/
+htmlcov/
+jscpd-report/
+node_modules/
+npm-debug.log*
+nul
+pip-delete-this-directory.txt
+pip-log.txt
+secrets.json
+tmp_*.diff
+tmp_*.py
+tmp_*.tsx
+tmp_*.txt
+tree.txt
+ui-screenshots/
+venv/
+yarn-debug.log*
+yarn-error.log*
