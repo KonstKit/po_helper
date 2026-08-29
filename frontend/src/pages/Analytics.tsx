@@ -26,7 +26,8 @@ import { Line, Bar, Doughnut } from 'react-chartjs-2';
 import type { ChartOptions, TooltipItem } from 'chart.js';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import GitHubIcon from '@mui/icons-material/GitHub';
-import { listProjects, getVelocity, getBurndown, getRisks, getForecast, listTasks, getTestTrend, getCoverageTrend, getPRMetrics, getProjectValueMetrics, getProjectTeamHealth, getGitHubProjectPulls, withRetry } from '../services/api';
+import { getVelocity, getBurndown, getRisks, getForecast, listTasks, getTestTrend, getCoverageTrend, getPRMetrics, getProjectValueMetrics, getProjectTeamHealth, getGitHubProjectPulls, withRetry } from '../services/api';
+import { useProjects } from '../services/api/hooks';
 import type {
   PRMetricsSummary,
   TeamHealthMetrics,
@@ -73,24 +74,13 @@ const Analytics = () => {
   const [timeRange, setTimeRange] = useState<'1month'|'3months'|'6months'|'1year'>('6months');
   const [progress, setProgress] = useState<LoadingProgress>({ loading: false, percent: 0, step: '' });
 
-  useEffect(() => { (async () => {
-    try {
-      const psResp = await withRetry(
-        () => listProjects(), // Uses default page size (50)
-        { retries: 2, baseDelayMs: 300, maxDelayMs: 2000 }
-      );
-      const ps = psResp.data;
-      setProjects(ps);
-      // Codex P2 / C4: do NOT default projectId to ps[0] here. The global
-      // selector (useSelectedProject) is the single source of truth and the
-      // mirror effect below drives projectId. Forcing the first project once
-      // this async fetch resolved clobbered an already-chosen global project,
-      // leaving Analytics' data inconsistent with the header selector.
-    } catch (error) {
-      console.error('Failed to load projects:', error);
-      setProjects([]); // Set empty to prevent UI issues
-    }
-  })(); }, []);
+  // React Query owns the projects list now (E1): shared ['projects'] cache
+  // instead of a per-mount fetch. The global selector remains the single
+  // source of truth for the selected project (Codex P2 / C4).
+  const projectsQuery = useProjects();
+  useEffect(() => {
+    setProjects(projectsQuery.data ?? []);
+  }, [projectsQuery.data]);
   // Mirror the global selection into Analytics' local state so the header
   // selector drives this page too (one source of truth — UX review C4).
   useEffect(() => {
@@ -105,7 +95,9 @@ const Analytics = () => {
     setProjectId(id);
     if (typeof id === 'number') selectProject(id);
   }, [selectProject]);
-  useEffect(() => { (async () => {
+  useEffect(() => {
+    let cancelled = false; // stale-response guard (roadmap E2)
+    (async () => {
     if (typeof projectId === 'number') {
       setPRMetrics(null);
       setTeamHealth(null);
@@ -143,6 +135,8 @@ const Analytics = () => {
           githubPulls: () => getGitHubProjectPulls(projectId, { limit: 10 }).then(res => res.pulls || []).catch(() => []),
         });
 
+        if (cancelled) return; // project switched while loading
+
         // Update state with parallel-loaded results
         setVelocity(data.velocity);
         setBurndown(data.burndown);
@@ -161,13 +155,17 @@ const Analytics = () => {
           console.warn('Some analytics failed to load:', errors);
         }
       } catch (err) {
-        console.error('Failed to load analytics:', err);
+        if (!cancelled) console.error('Failed to load analytics:', err);
       } finally {
-        setGithubPullLoading(false);
-        setProgress({ loading: false, percent: 100, step: 'Ready' });
+        if (!cancelled) {
+          setGithubPullLoading(false);
+          setProgress({ loading: false, percent: 100, step: 'Ready' });
+        }
       }
     }
-  })(); }, [projectId]);
+  })();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   const prRangeDays = useMemo(() => {
     if (prMetricsRange === 'all') return undefined;
