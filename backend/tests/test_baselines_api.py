@@ -71,7 +71,10 @@ async def test_export_baseline_csv_returns_attachment_stream(client, db_session)
     assert response.headers["content-type"].startswith("text/csv")
     assert "attachment; filename=" in response.headers["content-disposition"]
     body = response.text
-    assert "baseline_id,baseline_name,project_id,item_id,item_type,artifact_id,link_id,included_at" in body
+    assert (
+        "baseline_id,baseline_name,project_id,item_id,item_type,artifact_id,link_id,included_at"
+        in body
+    )
     assert "BL-CSV" in body
 
 
@@ -79,18 +82,16 @@ async def test_export_baseline_csv_returns_attachment_stream(client, db_session)
 async def test_export_baseline_openapi_contains_csv_variant(client):
     del client
     payload = app.openapi()
-    content = payload["paths"]["/api/v1/traceability/baselines/{baseline_id}/export"]["get"]["responses"][
-        "200"
-    ]["content"]
+    content = payload["paths"]["/api/v1/traceability/baselines/{baseline_id}/export"]["get"][
+        "responses"
+    ]["200"]["content"]
 
     assert "application/json" in content
     assert "text/csv" in content
 
 
 @pytest.mark.asyncio
-async def test_export_baseline_csv_does_not_use_bulk_item_loader(
-    client, db_session, monkeypatch
-):
+async def test_export_baseline_csv_does_not_use_bulk_item_loader(client, db_session, monkeypatch):
     project = Project(jira_key="BLS", name="Baseline Stream", owner_id=1, meta=None)
     db_session.add(project)
     await db_session.flush()

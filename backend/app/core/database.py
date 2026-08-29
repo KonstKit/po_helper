@@ -76,10 +76,20 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:
+    """Request-scoped session (transaction contract, wave D2).
+
+    The session does NOT commit: writers own their transaction boundary -
+    prefer ``transactional_session`` (app/utils/db_operations.py); a bare
+    ``await db.commit()`` is acceptable only in endpoints that cannot use
+    it yet. The rollback below guarantees a failed request never leaves a
+    half-open transaction bound to the pooled connection.
+    """
     async with AsyncSessionLocal() as session:
         try:
             yield session
         finally:
+            if session.in_transaction():
+                await session.rollback()
             await session.close()
 
 

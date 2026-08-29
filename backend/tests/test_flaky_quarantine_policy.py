@@ -63,9 +63,7 @@ def test_validate_flaky_quarantine_metadata_requires_iso_expiry():
         ),
     ],
 )
-def test_validate_flaky_quarantine_metadata_rejects_non_string_identity_fields(
-    payload, message
-):
+def test_validate_flaky_quarantine_metadata_rejects_non_string_identity_fields(payload, message):
     with pytest.raises(ValueError, match=message):
         validate_flaky_quarantine_metadata(payload, today=date(2026, 4, 17))
 

@@ -8,6 +8,7 @@ delete-cascade contract:
 - rule execution rows are removed via cascade;
 - artifact/suggested links are not touched.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -47,7 +48,13 @@ def _flow():
 async def _create_rule(client, name="lc-rule") -> int:
     resp = await client.post(
         "/api/v1/traceability/rules",
-        json={"name": name, "flow_json": _flow(), "enabled": True, "category": "custom", "tags": []},
+        json={
+            "name": name,
+            "flow_json": _flow(),
+            "enabled": True,
+            "category": "custom",
+            "tags": [],
+        },
     )
     assert resp.status_code == 201, resp.text
     return resp.json()["id"]
@@ -64,15 +71,11 @@ async def test_rule_list_get_update_enable_disable(client):
     got = await client.get(f"/api/v1/traceability/rules/{rule_id}")
     assert got.status_code == 200
 
-    disabled = await client.put(
-        f"/api/v1/traceability/rules/{rule_id}", json={"enabled": False}
-    )
+    disabled = await client.put(f"/api/v1/traceability/rules/{rule_id}", json={"enabled": False})
     assert disabled.status_code == 200
     assert disabled.json()["enabled"] is False
 
-    enabled = await client.put(
-        f"/api/v1/traceability/rules/{rule_id}", json={"enabled": True}
-    )
+    enabled = await client.put(f"/api/v1/traceability/rules/{rule_id}", json={"enabled": True})
     assert enabled.json()["enabled"] is True
 
 
@@ -136,9 +139,7 @@ async def test_delete_preserves_terminal_review_item_and_cascades_executions(cli
             priority="normal",
         )
     )
-    db_session.add(
-        TraceabilityRuleExecution(rule_id=rule_id, status="success", links_created=0)
-    )
+    db_session.add(TraceabilityRuleExecution(rule_id=rule_id, status="success", links_created=0))
     await db_session.commit()
 
     resp = await client.delete(f"/api/v1/traceability/rules/{rule_id}")
@@ -148,9 +149,7 @@ async def test_delete_preserves_terminal_review_item_and_cascades_executions(cli
         # Terminal review item preserved with rule reference cleared + snapshot.
         item = (
             await s.execute(
-                select(TraceabilityReviewItem).where(
-                    TraceabilityReviewItem.artifact_id == 2
-                )
+                select(TraceabilityReviewItem).where(TraceabilityReviewItem.artifact_id == 2)
             )
         ).scalar_one()
         assert item.rule_id is None

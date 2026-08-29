@@ -11,7 +11,10 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.models import Artifact, ArtifactLink, Project
-from app.api.api_v1.endpoints.git.webhooks import process_commits as create_commit_artifacts, process_pull_request
+from app.api.api_v1.endpoints.git.webhooks import (
+    process_commits as create_commit_artifacts,
+    process_pull_request,
+)
 
 DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -100,9 +103,9 @@ async def test_upsert_pull_request_artifact_creates_links(async_session: AsyncSe
             "html_url": "https://example.com/pr/42",
             "body": "",
             "user": {"login": "testuser"},
-            "head": {"ref": "feature/xyz-99"}
+            "head": {"ref": "feature/xyz-99"},
         },
-        action="opened"
+        action="opened",
     )
 
     assert result["links_created"] == 1

@@ -13,7 +13,10 @@ from app.services.sync.project_sync_orchestrator import ProjectSyncOrchestrator
 def _has_velocity_data_or_fallback(payload: dict) -> bool:
     if payload.get("sprint_velocities"):
         return True
-    return payload.get("sprints_analyzed") == 0 and payload.get("velocity_trend") == "insufficient_data"
+    return (
+        payload.get("sprints_analyzed") == 0
+        and payload.get("velocity_trend") == "insufficient_data"
+    )
 
 
 def _has_burndown_data_or_fallback(payload: dict) -> bool:
@@ -29,7 +32,9 @@ def _has_wip_data_or_fallback(payload: dict) -> bool:
 
 
 @pytest.mark.asyncio
-async def test_dashboard_data_is_consistent_after_sync(client, db_session, monkeypatch: pytest.MonkeyPatch):
+async def test_dashboard_data_is_consistent_after_sync(
+    client, db_session, monkeypatch: pytest.MonkeyPatch
+):
     project = Project(jira_key="SYNC", name="Sync Dashboard Project", status="active")
     db_session.add(project)
     await db_session.commit()
@@ -109,8 +114,14 @@ async def test_dashboard_data_is_consistent_after_sync(client, db_session, monke
     assert sync_result.total_issues == 2
 
     synced_tasks = (
-        await db_session.execute(select(Task).where(Task.project_id == project.id).order_by(Task.key))
-    ).scalars().all()
+        (
+            await db_session.execute(
+                select(Task).where(Task.project_id == project.id).order_by(Task.key)
+            )
+        )
+        .scalars()
+        .all()
+    )
     assert [task.key for task in synced_tasks] == ["SYNC-1", "SYNC-2"]
     assert all(task.sprint_id is not None for task in synced_tasks)
     assert len({task.sprint_id for task in synced_tasks}) == 1

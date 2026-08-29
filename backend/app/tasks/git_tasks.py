@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import select
 
 from app.core.celery_async_runner import run_async
-from app.core.celery_app import celery_app
+from app.core.celery_app import TASK_RETRY_KWARGS, celery_app
 from app.core.database import AsyncSessionLocal
 from app.models import ProjectRepository
 from app.services.git_import_service import git_import_service
@@ -18,7 +18,7 @@ from app.services.git_import_service import git_import_service
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name="git.scheduled_sync")
+@celery_app.task(name="git.scheduled_sync", **TASK_RETRY_KWARGS)
 def scheduled_git_sync() -> dict[str, Any]:
     """Scheduled task to sync Git commits/PRs for all linked projects."""
     logger.info("Running scheduled Git sync")

@@ -52,7 +52,7 @@ async def test_dora_endpoint_returns_metrics():
             status="Done",
             project_id=project.id,
             created_date=now - timedelta(days=3),
-            resolved_date=now - timedelta(days=1)
+            resolved_date=now - timedelta(days=1),
         )
         task_incident = Task(
             jira_id="OPS-INC",
@@ -62,7 +62,7 @@ async def test_dora_endpoint_returns_metrics():
             task_type="Incident",
             project_id=project.id,
             created_date=now - timedelta(hours=10),
-            resolved_date=now - timedelta(hours=2)
+            resolved_date=now - timedelta(hours=2),
         )
         session.add_all([task_deploy, task_incident])
         await session.commit()
@@ -79,13 +79,15 @@ async def test_dora_endpoint_returns_metrics():
             jira_keys=["OPS-1"],
             lead_time_hours=7.0,
             cycle_time_hours=8.0,
-            rework_count=0
+            rework_count=0,
         )
         session.add(pr)
         await session.commit()
 
     async with AsyncClient(app=app, base_url="http://test") as client:
-        response = await client.get(f"/api/v1/analytics/projects/{project.id}/dora", params={"window_days": 30})
+        response = await client.get(
+            f"/api/v1/analytics/projects/{project.id}/dora", params={"window_days": 30}
+        )
     assert response.status_code == 200
     data = response.json()
 
@@ -113,7 +115,7 @@ async def test_velocity_endpoint_aggregates_closed_sprints():
             state="closed",
             project_id=project.id,
             start_date=now - timedelta(days=28),
-            end_date=now - timedelta(days=21)
+            end_date=now - timedelta(days=21),
         )
         sprint2 = Sprint(
             jira_id="SPR-2",
@@ -121,7 +123,7 @@ async def test_velocity_endpoint_aggregates_closed_sprints():
             state="closed",
             project_id=project.id,
             start_date=now - timedelta(days=21),
-            end_date=now - timedelta(days=14)
+            end_date=now - timedelta(days=14),
         )
         session.add_all([sprint1, sprint2])
         await session.commit()
@@ -137,7 +139,7 @@ async def test_velocity_endpoint_aggregates_closed_sprints():
                 project_id=project.id,
                 sprint_id=sprint1.id,
                 estimate_hours=10,
-                resolved_date=now - timedelta(days=20)
+                resolved_date=now - timedelta(days=20),
             ),
             Task(
                 jira_id="VELOC-2",
@@ -147,14 +149,16 @@ async def test_velocity_endpoint_aggregates_closed_sprints():
                 project_id=project.id,
                 sprint_id=sprint2.id,
                 estimate_hours=6,
-                resolved_date=now - timedelta(days=15)
-            )
+                resolved_date=now - timedelta(days=15),
+            ),
         ]
         session.add_all(tasks)
         await session.commit()
 
     async with AsyncClient(app=app, base_url="http://test") as client:
-        response = await client.get(f"/api/v1/analytics/projects/{project.id}/velocity", params={"sprints_count": 5})
+        response = await client.get(
+            f"/api/v1/analytics/projects/{project.id}/velocity", params={"sprints_count": 5}
+        )
     assert response.status_code == 200
     data = response.json()
 
@@ -282,39 +286,40 @@ async def test_project_burndown_returns_curves():
             state="active",
             project_id=project.id,
             start_date=now - timedelta(days=6),
-            end_date=now + timedelta(days=1)
+            end_date=now + timedelta(days=1),
         )
         session.add(sprint)
         await session.commit()
         await session.refresh(sprint)
 
-        session.add_all([
-            Task(
-                jira_id="BRND-1",
-                key="BRND-1",
-                summary="Story A",
-                status="Done",
-                project_id=project.id,
-                sprint_id=sprint.id,
-                estimate_hours=8,
-                resolved_date=now - timedelta(days=1)
-            ),
-            Task(
-                jira_id="BRND-2",
-                key="BRND-2",
-                summary="Story B",
-                status="In Progress",
-                project_id=project.id,
-                sprint_id=sprint.id,
-                estimate_hours=5
-            )
-        ])
+        session.add_all(
+            [
+                Task(
+                    jira_id="BRND-1",
+                    key="BRND-1",
+                    summary="Story A",
+                    status="Done",
+                    project_id=project.id,
+                    sprint_id=sprint.id,
+                    estimate_hours=8,
+                    resolved_date=now - timedelta(days=1),
+                ),
+                Task(
+                    jira_id="BRND-2",
+                    key="BRND-2",
+                    summary="Story B",
+                    status="In Progress",
+                    project_id=project.id,
+                    sprint_id=sprint.id,
+                    estimate_hours=5,
+                ),
+            ]
+        )
         await session.commit()
 
     async with AsyncClient(app=app, base_url="http://test") as client:
         response = await client.get(
-            f"/api/v1/analytics/projects/{project.id}/burndown",
-            params={"sprint_id": sprint.id}
+            f"/api/v1/analytics/projects/{project.id}/burndown", params={"sprint_id": sprint.id}
         )
     assert response.status_code == 200
     data = response.json()
@@ -323,6 +328,7 @@ async def test_project_burndown_returns_curves():
     assert data["ideal_burndown"]
     assert data["actual_burndown"]
     assert data["actual_burndown"][-1]["remaining"] <= data["ideal_burndown"][0]["ideal_remaining"]
+
 
 @pytest.mark.asyncio
 async def test_test_trend_endpoint_groups_failures():
@@ -334,7 +340,9 @@ async def test_test_trend_endpoint_groups_failures():
             [
                 TestResult(status="passed", created_at=now - timedelta(days=1)),
                 TestResult(status="failed", created_at=now - timedelta(days=1), suite="unit"),
-                TestResult(status="failed", created_at=now - timedelta(days=2), suite="integration"),
+                TestResult(
+                    status="failed", created_at=now - timedelta(days=2), suite="integration"
+                ),
             ]
         )
         await session.commit()
@@ -456,6 +464,7 @@ async def test_project_pr_forecast_returns_average_metrics():
     assert payload["avg_lead_time_hours"] == pytest.approx(24.0, rel=1e-3)
     assert payload["avg_time_to_first_review_hours"] == pytest.approx(4.5, rel=1e-3)
 
+
 @pytest.mark.asyncio
 async def test_identify_project_risks_flags_multiple_categories():
     await reset_database()
@@ -520,7 +529,9 @@ async def test_identify_project_risks_flags_multiple_categories():
     assert payload["total_risks"] == 4
 
     risk_types = {item["type"] for item in payload["risks"]}
-    assert {"overdue_tasks", "blocked_tasks", "unestimated_tasks", "budget_overrun"}.issubset(risk_types)
+    assert {"overdue_tasks", "blocked_tasks", "unestimated_tasks", "budget_overrun"}.issubset(
+        risk_types
+    )
 
 
 @pytest.mark.asyncio

@@ -156,10 +156,12 @@ class TestLinkService:
         art1 = create_mock_artifact(1, "requirement")
         art2 = create_mock_artifact(2, "jira_issue")
 
-        db.set_execute_results([
-            MockResult([art1, art2]),  # Artifact lookup
-            MockResult([]),  # Cycle check (empty = no cycle)
-        ])
+        db.set_execute_results(
+            [
+                MockResult([art1, art2]),  # Artifact lookup
+                MockResult([]),  # Cycle check (empty = no cycle)
+            ]
+        )
 
         service = LinkService(db)
 
@@ -272,10 +274,12 @@ class TestValidationRulesService:
     async def test_validate_artifact_applies_correct_rules(self):
         """Test that only applicable rules are run."""
         db = MockAsyncSession()
-        db.set_execute_results([
-            MockResult([], scalar_data=0),  # RequirementMustHaveTest
-            MockResult([], scalar_data=0),  # ArtifactMustHaveAtLeastOneLink
-        ])
+        db.set_execute_results(
+            [
+                MockResult([], scalar_data=0),  # RequirementMustHaveTest
+                MockResult([], scalar_data=0),  # ArtifactMustHaveAtLeastOneLink
+            ]
+        )
 
         artifact = create_mock_artifact(1, "requirement")
 
@@ -296,19 +300,25 @@ class TestValidationRulesService:
         ]
 
         # Mock responses for project validation
-        db.set_execute_results([
-            MockResult(artifacts),  # Artifact query
-            MockResult([], scalar_data=0),  # First artifact validation
-            MockResult([], scalar_data=0),  # ArtifactMustHaveAtLeastOneLink
-            MockResult([], scalar_data=0),  # Second artifact validation
-            MockResult([], scalar_data=0),  # ArtifactMustHaveAtLeastOneLink
-        ])
+        db.set_execute_results(
+            [
+                MockResult(artifacts),  # Artifact query
+                MockResult([], scalar_data=0),  # First artifact validation
+                MockResult([], scalar_data=0),  # ArtifactMustHaveAtLeastOneLink
+                MockResult([], scalar_data=0),  # Second artifact validation
+                MockResult([], scalar_data=0),  # ArtifactMustHaveAtLeastOneLink
+            ]
+        )
 
         service = ValidationRulesService(db)
         result = await service.validate_project(1, limit=10)
 
         assert result.total_checked == 2
-        assert result.status in [ValidationStatus.PASS, ValidationStatus.FAIL, ValidationStatus.WARN]
+        assert result.status in [
+            ValidationStatus.PASS,
+            ValidationStatus.FAIL,
+            ValidationStatus.WARN,
+        ]
 
 
 # -----------------------------------------------------------------------------
@@ -327,10 +337,12 @@ class TestDerivationService:
         # Mock: artifact 1 -> artifact 2 directly
         link = create_mock_link(1, 1, 2, "implements")
 
-        db.set_execute_results([
-            MockResult([link]),  # First query
-            MockResult([]),  # No more links
-        ])
+        db.set_execute_results(
+            [
+                MockResult([link]),  # First query
+                MockResult([]),  # No more links
+            ]
+        )
 
         service = DerivationService(db)
         paths = await service.find_paths(1, 2, max_depth=3)
@@ -354,11 +366,13 @@ class TestDerivationService:
     async def test_get_derivation_stats(self):
         """Test derivation statistics."""
         db = MockAsyncSession()
-        db.set_execute_results([
-            MockResult([], scalar_data=5),  # Total count
-            MockResult([("requirement_to_commit", 3), ("requirement_to_test", 2)]),  # By type
-            MockResult([], scalar_data=0.75),  # Avg confidence
-        ])
+        db.set_execute_results(
+            [
+                MockResult([], scalar_data=5),  # Total count
+                MockResult([("requirement_to_commit", 3), ("requirement_to_test", 2)]),  # By type
+                MockResult([], scalar_data=0.75),  # Avg confidence
+            ]
+        )
 
         service = DerivationService(db)
         stats = await service.get_derivation_stats(1)
@@ -384,12 +398,14 @@ class TestImpactAnalysisService:
         target = create_mock_artifact(2, "jira_issue", "JIRA-1")
         link = create_mock_link(1, 1, 2, "implements")
 
-        db.set_execute_results([
-            MockResult([root]),  # Root artifact lookup
-            MockResult([(link, target)]),  # Forward links from root
-            MockResult([target]),  # Target artifact lookup
-            MockResult([]),  # No more forward links
-        ])
+        db.set_execute_results(
+            [
+                MockResult([root]),  # Root artifact lookup
+                MockResult([(link, target)]),  # Forward links from root
+                MockResult([target]),  # Target artifact lookup
+                MockResult([]),  # No more forward links
+            ]
+        )
 
         service = ImpactAnalysisService(db)
         analysis = await service.analyze_forward_impact(1, max_depth=2)
@@ -413,10 +429,12 @@ class TestImpactAnalysisService:
             create_mock_link(1, 1, 3),  # artifact 1 linked
         ]
 
-        db.set_execute_results([
-            MockResult(artifacts),  # Artifacts query
-            MockResult(links),  # Links query
-        ])
+        db.set_execute_results(
+            [
+                MockResult(artifacts),  # Artifacts query
+                MockResult(links),  # Links query
+            ]
+        )
 
         service = ImpactAnalysisService(db)
         metrics = await service.compute_coverage_metrics(1)
@@ -438,10 +456,12 @@ class TestImpactAnalysisService:
         # Only artifact 1 has a link
         links = [(1, 3)]  # from_id, to_id
 
-        db.set_execute_results([
-            MockResult(artifacts),  # Artifacts query
-            MockResult(links),  # Links query
-        ])
+        db.set_execute_results(
+            [
+                MockResult(artifacts),  # Artifacts query
+                MockResult(links),  # Links query
+            ]
+        )
 
         service = ImpactAnalysisService(db)
         orphans = await service.find_orphan_artifacts(1)
@@ -479,9 +499,7 @@ class TestConfidenceScoringService:
             "title": "Authentication bug",
         }
 
-        confidence, factors = service.calculate_confidence(
-            from_artifact, to_artifact, "implements"
-        )
+        confidence, factors = service.calculate_confidence(from_artifact, to_artifact, "implements")
 
         assert 0 <= confidence <= 1
         assert "text_similarity" in factors
@@ -507,9 +525,7 @@ class TestConfidenceScoringService:
             "title": "Add new feature",
         }
 
-        confidence, factors = service.calculate_confidence(
-            from_artifact, to_artifact, "implements"
-        )
+        confidence, factors = service.calculate_confidence(from_artifact, to_artifact, "implements")
 
         # Explicit reference should give high score
         assert factors["explicit_reference"] >= 0.5
@@ -530,9 +546,7 @@ class TestConfidenceScoringService:
             "created_at": datetime.now(timezone.utc),
         }
 
-        confidence, factors = service.calculate_confidence(
-            from_artifact, to_artifact, "implements"
-        )
+        confidence, factors = service.calculate_confidence(from_artifact, to_artifact, "implements")
 
         # Same-day artifacts should have high temporal proximity
         assert factors["temporal_proximity"] >= 0.8
@@ -618,7 +632,9 @@ class TestRuleEngineCycleDetection:
         # BFS starts from to_id=1, looking for from_id=2.
         # From node 1, we query outgoing links -> returns [(2,)] meaning 1 links to 2.
         # Then we check: is 2 == from_id(2)? Yes! Cycle detected.
-        mock_db.query.return_value.filter.return_value.all.return_value = [(2,)]  # Node 1 links to Node 2
+        mock_db.query.return_value.filter.return_value.all.return_value = [
+            (2,)
+        ]  # Node 1 links to Node 2
 
         mock_context = MagicMock()
         mock_context.db = mock_db

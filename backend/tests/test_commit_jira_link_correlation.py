@@ -10,6 +10,7 @@ masked this because it had a single commit (1x1).
 link when the commit's own text (message/branch/description/title) references
 that key, so each commit links solely to the issue it mentions.
 """
+
 from __future__ import annotations
 
 import pytest

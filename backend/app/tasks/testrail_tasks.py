@@ -11,7 +11,7 @@ from typing import Any, Optional
 from sqlalchemy import select
 
 from app.core.celery_async_runner import run_async
-from app.core.celery_app import celery_app
+from app.core.celery_app import TASK_RETRY_KWARGS, celery_app
 from app.core.database import AsyncSessionLocal
 from app.models.traceability import ConnectorConfig
 from app.services.testrail.linker import TestRailLinker
@@ -43,7 +43,7 @@ def _parse_suite_ids(settings: dict[str, Any]) -> Optional[list[int]]:
     return parsed or None
 
 
-@celery_app.task(name="testrail.sync_project")
+@celery_app.task(name="testrail.sync_project", **TASK_RETRY_KWARGS)
 def sync_testrail_project(
     project_id: Optional[int],
     testrail_project_id: Optional[int] = None,
@@ -87,7 +87,7 @@ def sync_testrail_project(
         return {"status": "error", "message": str(exc)}
 
 
-@celery_app.task(name="testrail.scheduled_sync")
+@celery_app.task(name="testrail.scheduled_sync", **TASK_RETRY_KWARGS)
 def scheduled_testrail_sync() -> dict[str, Any]:
     """Scheduled task to sync all enabled TestRail connector configs."""
     logger.info("Running scheduled TestRail sync")

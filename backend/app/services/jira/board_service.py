@@ -81,8 +81,8 @@ class JiraBoardService:
             if "application/json" not in ctype:
                 try:
                     metrics.inc("jira_non_json_total", labels={"ep": "boards"})
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("metrics recording failed (non-fatal): %s", exc)
                 body = (response.text or "")[:200]
                 logger.error("Non-JSON response from Jira boards: %s", ctype)
                 raise ValueError(f"Non-JSON response ctype={ctype} body={body}")
@@ -146,8 +146,8 @@ class JiraBoardService:
                 if "application/json" not in ctype:
                     try:
                         metrics.inc("jira_non_json_total", labels={"ep": "sprints"})
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("metrics recording failed (non-fatal): %s", exc)
                     body = (response.text or "")[:200]
                     raise ValueError(f"Non-JSON response ctype={ctype} body={body}")
 
@@ -232,8 +232,8 @@ class JiraBoardService:
                 if "application/json" not in ctype:
                     try:
                         metrics.inc("jira_non_json_total", labels={"ep": "sprint_issues"})
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("metrics recording failed (non-fatal): %s", exc)
                     body = (response.text or "")[:200]
                     raise ValueError(f"Non-JSON response ctype={ctype} body={body}")
 
@@ -342,8 +342,8 @@ class JiraBoardService:
                             metrics.inc(
                                 "jira_non_json_total", labels={"ep": "worklog", "ver": str(ver)}
                             )
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("metrics recording failed (non-fatal): %s", exc)
                         body = (response.text or "")[:200]
                         raise ValueError(f"Non-JSON response ctype={ctype} body={body}")
 
@@ -395,8 +395,8 @@ class JiraBoardService:
                             metrics.inc("jira_worklog_timeout_total", labels={"ver": str(ver)})
                         else:
                             metrics.inc("jira_worklog_fail_total", labels={"ver": str(ver)})
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("metrics recording failed (non-fatal): %s", exc)
 
                 self.circuit_breaker.record_failure()
                 continue
@@ -510,8 +510,8 @@ class JiraBoardService:
                     )
                     try:
                         metrics.inc("jira_worklog_timeout_total", labels={"ver": str(ver)})
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("metrics recording failed (non-fatal): %s", exc)
                     self.circuit_breaker.record_failure()
                     # Fail fast on timeout to avoid long hanging sync loops.
                     return []
