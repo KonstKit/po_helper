@@ -1,3 +1,0 @@
-artifact=artifacts/typecheck/plan_66_bypass_scan.txt
-matches=0
-status=PASS

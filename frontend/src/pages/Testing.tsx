@@ -11,6 +11,7 @@ import {
   listCoverageReports,
   listTestResults,
 } from '../services/api';
+import { downloadCsv } from '../utils/downloadCsv';
 import { useProjects } from '../services/api/hooks';
 import type {
   Project,
@@ -374,27 +375,12 @@ const Testing: React.FC = () => {
         </div>
         <Box display="flex" gap={1} mt={1}>
           <Button size="small" variant="outlined" onClick={()=>{
-            // Export test results (current 'results' state) as CSV
-            const rows = results;
             const headers = ['provider','commit_sha','pr_number','suite','classname','name','status','duration','message','created_at'];
-            const csv = [headers.join(',')].concat(rows.map((r) => {
-              const row = toRecord(r);
-              return headers.map(h => JSON.stringify(row[h] ?? '')).join(',');
-            })).join('\n');
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = 'test_results.csv'; a.click(); URL.revokeObjectURL(url);
+            downloadCsv('test_results.csv', headers, results.map(toRecord));
           }}>Export Results CSV</Button>
           <Button size="small" variant="outlined" disabled={!expandedCommit || !(filesForCommit[expandedCommit]?.length)} onClick={()=>{
-            const files = filesForCommit[expandedCommit] || [];
             const headers = ['file_path','line_coverage','branch_coverage','lines_covered','lines_total'];
-            const csv = [headers.join(',')].concat(files.map((f) => {
-              const row = toRecord(f);
-              return headers.map(h => JSON.stringify(row[h] ?? '')).join(',');
-            })).join('\n');
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = `coverage_files_${expandedCommit.slice(0,8)}.csv`; a.click(); URL.revokeObjectURL(url);
+            downloadCsv(`coverage_files_${expandedCommit.slice(0,8)}.csv`, headers, (filesForCommit[expandedCommit] || []).map(toRecord));
           }}>Export Coverage CSV</Button>
         </Box>
       </Paper>

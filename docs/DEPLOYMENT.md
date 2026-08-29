@@ -53,7 +53,7 @@ Key settings to review:
 ### Generate Secure Keys
 Use the helper script to create strong keys:
 `ash
-$ python backend/scripts/generate_secret_key.py --write
+$ python -c "import secrets; print(secrets.token_urlsafe(48))"
 `
 Re-run with --force when rotating secrets.
 

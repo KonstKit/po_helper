@@ -1,5 +1,0 @@
-domain=plan_63
-artifact=artifacts/typecheck/plan_63_full_typecheck.txt
-diagnostics=0
-domain_matches=0
-status=PASS
