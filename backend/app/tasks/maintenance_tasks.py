@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import delete, select
 
 from app.core.celery_async_runner import run_async
-from app.core.celery_app import celery_app
+from app.core.celery_app import TASK_RETRY_KWARGS, celery_app
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.analytics import AnalyticsEvent
@@ -17,7 +17,7 @@ from app.services.sync_tracking import recover_stale_running_sync_tasks
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name="maintenance.cleanup_exports")
+@celery_app.task(name="maintenance.cleanup_exports", **TASK_RETRY_KWARGS)
 def cleanup_exports_task() -> int:
     async def _cleanup() -> int:
         async with AsyncSessionLocal() as db:
@@ -28,7 +28,7 @@ def cleanup_exports_task() -> int:
     return deleted
 
 
-@celery_app.task(name="maintenance.cleanup_baselines")
+@celery_app.task(name="maintenance.cleanup_baselines", **TASK_RETRY_KWARGS)
 def cleanup_baselines_task() -> int:
     retention_days = int(getattr(settings, "BASELINE_RETENTION_DAYS", 0))
     if retention_days <= 0:
@@ -65,7 +65,7 @@ async def cleanup_analytics_events(retention_days: int) -> int:
         return int(result.rowcount or 0)
 
 
-@celery_app.task(name="maintenance.cleanup_analytics_events")
+@celery_app.task(name="maintenance.cleanup_analytics_events", **TASK_RETRY_KWARGS)
 def cleanup_analytics_events_task() -> int:
     """Delete `analytics_event` rows older than ANALYTICS_RETENTION_DAYS.
 
@@ -84,7 +84,7 @@ def cleanup_analytics_events_task() -> int:
     return deleted
 
 
-@celery_app.task(name="maintenance.recover_stale_sync_tasks")
+@celery_app.task(name="maintenance.recover_stale_sync_tasks", **TASK_RETRY_KWARGS)
 def recover_stale_sync_tasks_task() -> int:
     async def _recover() -> int:
         async with AsyncSessionLocal() as db:

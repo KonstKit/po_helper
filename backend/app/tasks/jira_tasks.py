@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import logging
 from celery import Task, states
 from sqlalchemy import select
-from app.core.celery_app import celery_app
+from app.core.celery_app import TASK_RETRY_KWARGS, celery_app
 from app.core.celery_async_runner import run_async
 from app.core.database import AsyncSessionLocal
 from app.services.jira_sync import perform_project_sync
@@ -250,7 +250,7 @@ def sync_jira_project(
         raise
 
 
-@celery_app.task(name="jira.scheduled_sync")
+@celery_app.task(name="jira.scheduled_sync", **TASK_RETRY_KWARGS)
 def scheduled_jira_sync() -> Dict[str, Any]:
     """Scheduled task to sync all active Jira projects."""
     logger.info("Running scheduled Jira sync")

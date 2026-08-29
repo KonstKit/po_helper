@@ -342,7 +342,7 @@ async def sync_project_data(
 
     # Dispatch sync via Celery (preferred) or FastAPI background task (fallback)
     task_id = None
-    use_celery = getattr(settings, "CELERY_ENABLED", True)
+    use_celery = settings.CELERY_ENABLED
 
     # Skip Celery in development if explicitly disabled
     if use_celery and getattr(settings, "is_development", False):
