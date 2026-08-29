@@ -229,7 +229,7 @@ const Quality: React.FC = () => {
         <Box display="flex" gap={1}>
           <Button size="small" variant="outlined" onClick={() => checkGate(params.row.number, params.row.provider)} disabled={gateMap[params.row.number]?.checking}>Check</Button>
           {checkUrl && (
-            <Button size="small" href={checkUrl} target="_blank">Check Run</Button>
+            <Button size="small" href={checkUrl} target="_blank" rel="noopener noreferrer">Check Run</Button>
           )}
         </Box>
       );

@@ -9,7 +9,6 @@ import asyncio
 import json
 import logging
 import re
-import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
@@ -19,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.config import settings
+from app.utils.http_retry import request_with_retry
 from app.core.crypto import decrypt_str
 from app.models import IntegrationSetting, Repository
 from app.services.integration_config import get_connector_overrides_map
@@ -65,54 +65,21 @@ class GitImportService:
             self._session = requests.Session()
         return self._session
 
-    def _request_with_retry(
-        self, url: str, *, headers: Dict[str, str], params: Dict[str, Any]
-    ) -> requests.Response:
-        max_retries = settings.INTEGRATION_HTTP_MAX_RETRIES
-        backoff_base = settings.INTEGRATION_HTTP_BACKOFF_SECONDS
-        backoff_max = settings.INTEGRATION_HTTP_BACKOFF_MAX_SECONDS
-        timeout = settings.INTEGRATION_HTTP_TIMEOUT
-        attempts = max_retries + 1
-
-        last_exc: Optional[Exception] = None
-        for attempt in range(attempts):
-            try:
-                resp = self._get_session().get(url, headers=headers, params=params, timeout=timeout)
-                if resp.status_code >= 500 and attempt < attempts - 1:
-                    delay = min(backoff_base * (2**attempt), backoff_max)
-                    logger.warning(
-                        "Git request failed (%s) retry %d/%d in %.1fs: %s",
-                        resp.status_code,
-                        attempt + 1,
-                        attempts - 1,
-                        delay,
-                        url,
-                    )
-                    time.sleep(delay)
-                    continue
-                return resp
-            except (requests.Timeout, requests.ConnectionError) as exc:
-                last_exc = exc
-                if attempt >= attempts - 1:
-                    raise
-                delay = min(backoff_base * (2**attempt), backoff_max)
-                logger.warning(
-                    "Git request error (%s) retry %d/%d in %.1fs: %s",
-                    exc.__class__.__name__,
-                    attempt + 1,
-                    attempts - 1,
-                    delay,
-                    url,
-                )
-                time.sleep(delay)
-
-        if last_exc:
-            raise last_exc
-        raise RuntimeError("Unexpected request retry loop exit")
-
     async def _session_get(self, url: str, **kwargs) -> requests.Response:
         """Run session.get in a worker thread to avoid blocking the event loop."""
         return await asyncio.to_thread(self._get_session().get, url, **kwargs)
+
+    def _request_with_retry(
+        self, url: str, *, headers: Dict[str, str], params: Dict[str, Any]
+    ) -> requests.Response:
+        session = self._get_session()
+        return request_with_retry(
+            lambda: session.get(
+                url, headers=headers, params=params, timeout=settings.INTEGRATION_HTTP_TIMEOUT
+            ),
+            url=url,
+            label="Git",
+        )
 
     def close(self) -> None:
         """Close the session and cleanup resources."""

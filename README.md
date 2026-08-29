@@ -106,10 +106,10 @@ docker-compose -f docker-compose.dev.yml logs -f
 
 For the strict localhost demo, `docker-compose.dev.yml` runs the backend with host networking so `uvicorn` still binds `127.0.0.1`. If host networking is unavailable in your Docker Desktop setup, run the backend locally with the provided start scripts instead of the Docker demo path.
 
-**Known limitation — proxied frontend → backend path:** because the backend is bound to the host loopback inside `network_mode: host`, the bridge-networked frontend container cannot reach it through nginx (`/api/*` and `/api/v1/ws` will 502). This is intentional for the security boundary; for the documented dev/demo flow prefer running the backend on the host (see *Backend Development* below) and loading `http://localhost:3000`. The header of `docker-compose.dev.yml` lists the two alternative escape hatches if you need a Docker-only path.
+**Known limitation — proxied frontend → backend path:** because the backend is bound to the host loopback inside `network_mode: host`, the bridge-networked frontend container cannot reach it through nginx (`/api/*` and `/api/v1/ws` will 502). This is intentional for the security boundary; for the documented dev/demo flow prefer running the backend on the host (see *Backend Development* below) and loading `http://localhost:3001`. The header of `docker-compose.dev.yml` lists the two alternative escape hatches if you need a Docker-only path.
 
 ### 4. Access Application
-- **Frontend**: http://localhost:3000
+- **Frontend**: http://localhost:3001 (Vite dev) / http://localhost:3000 (docker nginx)
 - **Backend API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
 

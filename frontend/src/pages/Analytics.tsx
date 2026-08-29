@@ -819,7 +819,7 @@ const Analytics = () => {
               <List>
                 {githubPulls.map((pr) => (
                   <ListItem key={pr.number} alignItems="flex-start" secondaryAction={pr.html_url ? (
-                    <Link href={pr.html_url} target="_blank" rel="noopener" display="inline-flex" alignItems="center" gap={0.5}>
+                    <Link href={pr.html_url} target="_blank" rel="noopener noreferrer" display="inline-flex" alignItems="center" gap={0.5}>
                       <OpenInNewIcon fontSize="small" />
                     </Link>
                   ) : null}>

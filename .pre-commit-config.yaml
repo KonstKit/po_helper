@@ -1,0 +1,23 @@
+# Local quality gate for changed files (roadmap Minor pool).
+# Install once: pip install pre-commit && pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.8
+    hooks:
+      - id: ruff
+        name: ruff (backend)
+        args: [--config, backend/ruff.toml]
+        files: ^backend/app/
+      - id: ruff-format
+        name: ruff-format (backend)
+        files: ^backend/app/
+
+  - repo: local
+    hooks:
+      - id: frontend-typecheck
+        name: frontend typecheck (tsc)
+        entry: npm --prefix frontend run typecheck
+        language: system
+        pass_filenames: false
+        files: ^frontend/src/
+        stages: [pre-push]
