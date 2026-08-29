@@ -55,8 +55,8 @@ def _record_integrations_guardrail(
                 "api_endpoint_slow_total",
                 labels={"endpoint": "health_integrations"},
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("non-fatal health check failed: %s", exc)
 
     if is_degraded:
         logger.warning(
@@ -194,8 +194,8 @@ async def _check_celery_queue_readiness() -> tuple[bool, str, dict[str, Any]]:
                 threshold,
                 labels={"queue": queue_name},
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("non-fatal health check failed: %s", exc)
         if backlog >= threshold:
             base_payload["status"] = "backlog_high"
             return True, "backlog_high", base_payload
@@ -381,8 +381,8 @@ async def integration_status(name: str, db: AsyncSession = Depends(get_db)):
             payload["has_token"] = bool(row.api_token)
             if nm in ("github", "gitlab", "bitbucket", "testrail"):
                 payload["configured"] = bool(row.base_url) or nm == "github"
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("non-fatal health check failed: %s", exc)
     return payload
 
 
