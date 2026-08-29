@@ -497,8 +497,8 @@ async def set_task_business_value(
                     reason=reason,
                 )
                 db.add(audit)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Audit trail write failed for task %s: %s", task_id, exc)
         await db.refresh(task)
 
         # Invalidate caches affected by business value update
@@ -515,8 +515,8 @@ async def set_task_business_value(
             old_roi,
             task.roi,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Business value update log failed for task %s: %s", task_id, exc)
 
     return {
         "task": TaskSchema.from_orm(task).dict(),
