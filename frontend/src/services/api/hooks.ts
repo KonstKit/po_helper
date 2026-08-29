@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { listProjects } from './index';
+import { PROJECTS_QUERY_KEY } from './queryClient';
 import type { Project } from './index';
 
 /**
@@ -9,8 +10,6 @@ import type { Project } from './index';
  * Single definition of the ['projects'] query: every page that needs the
  * list shares one cached request instead of re-fetching on each mount.
  */
-export const PROJECTS_QUERY_KEY = ['projects'] as const;
-
 export const useProjects = () =>
   useQuery<Project[], Error>({
     queryKey: PROJECTS_QUERY_KEY,

@@ -1,5 +1,6 @@
 import { createAsyncThunk } from '@reduxjs/toolkit';
 import { listProjects, listSprints, listTasks, listTasksPaginated } from '../services/api';
+import { PROJECTS_QUERY_KEY, queryClient } from '../services/api/queryClient';
 import { setProjects, setLoading, setError, setCurrentProject } from './projectSlice';
 import { setTasks, setTasksLoading, setTasksError, type Task } from './taskSlice';
 import { setSprints, setSprintsLoading, setSprintsError, setActiveSprintByProject } from './sprintSlice';
@@ -99,8 +100,17 @@ export const loadAllProjects = createAsyncThunk<
   const loadProjects = async () => {
     dispatch(setLoading(true));
     try {
-      const projectsResp = await listProjects();
-      const projects = projectsResp.data;
+      // Single owner of the list is the React Query cache (E1): fetching
+      // through it dedupes with useProjects() on mounted pages instead of
+      // issuing a second listProjects() request.
+      const projects = await queryClient.fetchQuery({
+        queryKey: PROJECTS_QUERY_KEY,
+        queryFn: async () => {
+          const projectsResp = await listProjects();
+          return projectsResp.data;
+        },
+        staleTime: CACHE_TTL,
+      });
 
       dispatch(setProjects(projects));
       // Do not eagerly fetch details for every project here.

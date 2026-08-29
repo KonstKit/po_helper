@@ -26,8 +26,10 @@ The access token lives in `localStorage` (`services/api/client.ts`,
    "logout everywhere" revokes all. Password change revokes all.
 4. **CSRF**: SameSite=Strict + custom `X-Requested-With` header check on
    mutating routes (cookie auth re-introduces CSRF surface).
-5. **WebSocket tickets unaffected**: the existing one-time ticket flow
-   (`POST /auth/ws-ticket`) switches to cookie auth transparently.
+5. **WebSocket tickets**: `POST /auth/ws-ticket` must accept the cookie
+   (today it requires a Bearer header, and `client.ts` reads the token
+   from localStorage) - a dedicated client + endpoint migration step,
+   not a transparent switch.
 
 ## Migration steps (each shippable independently)
 
@@ -40,8 +42,10 @@ The access token lives in `localStorage` (`services/api/client.ts`,
 
 ## Risks / open questions
 
-- Cross-origin dev (Vite :3001 → API :8000) needs `credentials: include`
-  and explicit CORS origins (already enumerated in settings).
+- Cross-origin mode (if the Vite proxy is dropped) needs `credentials:
+  include`, CORS origins that actually include the dev origin (today the
+  list has :3000/:5173 but NOT :3001), and `X-Requested-With` added to
+  the allowed CORS headers - none of which exist yet.
 - Service-to-service scoped tokens keep the `Authorization` header path
   (they are machine clients, not browsers).
 - Pen-test of the CSRF header check before M2.

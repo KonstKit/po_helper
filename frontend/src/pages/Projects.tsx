@@ -48,6 +48,7 @@ import {
   listJiraProjects,
   type Project,
 } from "../services/api";
+import { PROJECTS_QUERY_KEY, queryClient } from "../services/api/queryClient";
 import CircularProgressWithLabel from "../components/CircularProgressWithLabel";
 import { getErrorMessage, isRequestCanceled } from "../utils/errorUtils";
 
@@ -307,6 +308,7 @@ const Projects = () => {
     try {
       const owner_id = await ensureOwnerId();
       await apiCreateProject({ ...newProject, owner_id });
+      void queryClient.invalidateQueries({ queryKey: PROJECTS_QUERY_KEY }); // shared cache (E1)
       setOpenDialog(false);
       setNewProject(EMPTY_PROJECT);
       await loadProjects(true); // force refresh to include the new project
@@ -553,6 +555,7 @@ const Projects = () => {
           onClick={async () => {
             if (selectedProject && confirm("Delete this project?")) {
               await apiDeleteProject(selectedProject.id);
+              void queryClient.invalidateQueries({ queryKey: PROJECTS_QUERY_KEY }); // shared cache (E1)
               handleMenuClose();
               await loadProjects(true);
             }
@@ -628,6 +631,7 @@ const Projects = () => {
                   name: newProject.name,
                   description: newProject.description,
                 });
+                void queryClient.invalidateQueries({ queryKey: PROJECTS_QUERY_KEY }); // shared cache (E1)
                 setOpenDialog(false);
                 setSelectedProject(null);
                 await loadProjects(true);
