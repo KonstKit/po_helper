@@ -24,7 +24,11 @@
 > **волна C выполнена** (PR #9), **волна D выполнена** (D1: flow-валидация,
 > PRD-парсер и coverage-аналитика вынесены в сервисы; D2: rollback-контракт
 > get_db; D3: retry-политика для всех Celery-задач + выровненные дефолты;
-> D4: silent-except baseline 147 + non-regression гейт).
+> D4: silent-except baseline 147 + non-regression гейт), **волна E выполнена**
+> (E1: React Query провайдер + useProjects, 5 страниц мигрированы; E2: cancelled-гварды
+> Analytics/Testing; E3: 22×void err → логирование; E4: RFC docs/RFC_JWT_STORAGE.md;
+> E5: types.ts 1856 строк → 9 доменных модулей + барель). E6 (ProjectDetail
+> декомпозиция) — follow-up.
 > Статус волн: A выполнена (PR #7), B выполнена (PR #8), C выполнена (PR #9,
 
 > забатчены; C2: закрыт ревертом — owner сериализуется как owner_id,
