@@ -385,7 +385,7 @@ const Tasks = () => {
           <TextField
             autoFocus
             margin="dense"
-            label="Business value (РІвЂ°Тђ 0)"
+            label="Business value (≥ 0)"
             type="number"
             fullWidth
             value={businessDialog.value}

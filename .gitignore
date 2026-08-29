@@ -21,6 +21,7 @@
 # Temporary files
 # Testing
 # UI capture reference (large binary screenshots + index doc) — not app code
+# generated analysis artifacts / local run outputs
 # jscpd reports (generated)
 # not secret material. The broad patterns above would otherwise leave them
 # untracked, breaking imports/tests on a fresh checkout (e.g. CI).
@@ -32,6 +33,7 @@
 *.egg-info/
 *.env
 *.key
+*.log
 *.p12
 *.pem
 *.pfx
@@ -67,7 +69,11 @@
 Thumbs.db
 UI_SCREENSHOT_INDEX.md
 __pycache__/
+analysis_output/
+artifacts/
 backend/exports/
+backend/po_helper.db*
+backend/test.db*
 build/
 codex/
 credentials.json
@@ -78,6 +84,7 @@ e2e/playwright/test-results/
 env/
 exports/
 exports/rtm_matrix_*.pdf
+firebase-debug.log
 frontend/exports/
 htmlcov/
 jscpd-report/

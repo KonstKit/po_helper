@@ -23,6 +23,11 @@ if not hasattr(sa_orm, "DeclarativeBase"):
 
     sa_orm.DeclarativeBase = _CompatDeclarativeBase  # type: ignore[attr-defined]
 
+# Import-time isolation only: swap in a no-op rate_limit stub JUST for the
+# duration of importing the endpoint modules (they only need `limiter` to
+# exist), then restore sys.modules. The previous implementation left the
+# stub installed forever, silently poisoning later imports of the real
+# module for every test that runs after this file (order-dependent tests).
 rate_limit_module = types.ModuleType("app.core.rate_limit")
 
 
@@ -37,10 +42,17 @@ class _NoopLimiter:
 rate_limit_module.limiter = _NoopLimiter()
 rate_limit_module.RateLimitExceeded = Exception
 rate_limit_module._rate_limit_exceeded_handler = lambda *args, **kwargs: None
-sys.modules["app.core.rate_limit"] = rate_limit_module
 
-links_module = importlib.import_module("app.api.api_v1.endpoints.traceability.links")
-common_module = importlib.import_module("app.api.api_v1.endpoints.traceability.common")
+_real_rate_limit = sys.modules.get("app.core.rate_limit")
+sys.modules["app.core.rate_limit"] = rate_limit_module
+try:
+    links_module = importlib.import_module("app.api.api_v1.endpoints.traceability.links")
+    common_module = importlib.import_module("app.api.api_v1.endpoints.traceability.common")
+finally:
+    if _real_rate_limit is not None:
+        sys.modules["app.core.rate_limit"] = _real_rate_limit
+    else:
+        del sys.modules["app.core.rate_limit"]
 settings = importlib.import_module("app.core.config").settings
 
 traceability_matrix = links_module.traceability_matrix
@@ -179,3 +191,16 @@ async def test_traceability_matrix_includes_link_type_counts():
     commit_stats = per_type["commit"]
     assert commit_stats["link_type_counts"]["derives_from"] == 1
     assert commit_stats["link_type_artifact_counts"]["derives_from"] == 1
+
+
+def test_real_rate_limit_module_restored_after_import():
+    """The import-time stub must not leak: the real limiter stays
+    importable for every test that runs after this file."""
+    import app.core.rate_limit as real_module
+    import sys
+
+    assert sys.modules["app.core.rate_limit"] is real_module
+    assert isinstance(real_module.limiter, __import__(
+        "slowapi", fromlist=["Limiter"]
+    ).Limiter)
+    assert real_module.limiter is not rate_limit_module.limiter

@@ -1,5 +1,0 @@
-artifact=artifacts/tests/plan_60_dashboard_tests.txt
-Test Files  1 passed (1)
-Tests  17 passed (17)
-Duration  391.75s (transform 2.33s, setup 13.34s, collect 335.61s, tests 18.45s, environment 20.80s, prepare 1.88s)
-status=PASS

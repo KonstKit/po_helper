@@ -21,6 +21,7 @@ import {
   Autocomplete,
   InputAdornment,
 } from '@mui/material';
+import TabPanel from '../components/TabPanel';
 import { Save as SaveIcon, Science as TestIcon, AutoAwesome as AutoAwesomeIcon } from '@mui/icons-material';
 import { getJiraSettings, putJiraSettings, getConfluenceSettings, putConfluenceSettings, testJiraConnection, testConfluenceConnection, testGithubConnection, testGitlabConnection, testTestrailConnection, getGithubSettings, putGithubSettings, getGitlabSettings, putGitlabSettings, getTestrailSettings, putTestrailSettings } from '../services/api';
 import { analytics } from '../services/analytics';
@@ -30,12 +31,6 @@ import { OptionalIntegrations } from '../components/OptionalIntegrations';
 import { IntegrationCard } from '../components/IntegrationCard';
 import { ConfluenceSpaceMapping } from '../components/ConfluenceSpaceMapping';
 import { HelpPanel } from '../components/HelpPanel';
-
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
 
 type AuthMode = 'PAT' | 'Basic';
 
@@ -122,20 +117,6 @@ function getTimezoneOptions(): string[] {
     // Intl.supportedValuesOf not available — fall through to fallback list
   }
   return FALLBACK_TIMEZONES;
-}
-
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      {...other}
-    >
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
-    </div>
-  );
 }
 
 const Settings = () => {
