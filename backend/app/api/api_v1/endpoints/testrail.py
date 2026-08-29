@@ -103,7 +103,7 @@ async def sync_testrail(
     link: bool = Query(default=False, description="Link TestRail artifacts after sync"),
     db: AsyncSession = Depends(get_db),
 ):
-    use_celery = getattr(settings, "CELERY_ENABLED", False)
+    use_celery = settings.CELERY_ENABLED
     if use_celery and getattr(settings, "is_development", False):
         if not getattr(settings, "CELERY_USE_IN_DEV", True):
             use_celery = False

@@ -203,9 +203,7 @@ def _parse_args() -> argparse.Namespace:
 
 async def _main() -> int:
     args = _parse_args()
-    legacy_count, rewritten_count = await _scan_rules(
-        rewrite=args.rewrite, dry_run=args.dry_run
-    )
+    legacy_count, rewritten_count = await _scan_rules(rewrite=args.rewrite, dry_run=args.dry_run)
     _print_summary(
         legacy_count,
         rewritten_count,

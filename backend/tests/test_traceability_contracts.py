@@ -228,16 +228,28 @@ async def test_impact_analysis_returns_canonical_shape():
         await session.flush()
 
         req = Artifact(
-            project_id=project.id, type="requirement", source="internal",
-            external_id="IMP-REQ", display_key="IMP-REQ", title="Requirement",
+            project_id=project.id,
+            type="requirement",
+            source="internal",
+            external_id="IMP-REQ",
+            display_key="IMP-REQ",
+            title="Requirement",
         )
         jira = Artifact(
-            project_id=project.id, type="jira_issue", source="jira",
-            external_id="IMP-1", display_key="IMP-1", title="Issue",
+            project_id=project.id,
+            type="jira_issue",
+            source="jira",
+            external_id="IMP-1",
+            display_key="IMP-1",
+            title="Issue",
         )
         test = Artifact(
-            project_id=project.id, type="test_case", source="testrail",
-            external_id="IMP-TC", display_key="IMP-TC", title="Test",
+            project_id=project.id,
+            type="test_case",
+            source="testrail",
+            external_id="IMP-TC",
+            display_key="IMP-TC",
+            title="Test",
         )
         session.add_all([req, jira, test])
         await session.flush()
@@ -247,12 +259,18 @@ async def test_impact_analysis_returns_canonical_shape():
         session.add_all(
             [
                 ArtifactLink(
-                    project_id=project.id, from_artifact_id=jira.id,
-                    to_artifact_id=req.id, link_type="implements", created_via="manual",
+                    project_id=project.id,
+                    from_artifact_id=jira.id,
+                    to_artifact_id=req.id,
+                    link_type="implements",
+                    created_via="manual",
                 ),
                 ArtifactLink(
-                    project_id=project.id, from_artifact_id=req.id,
-                    to_artifact_id=test.id, link_type="tests", created_via="manual",
+                    project_id=project.id,
+                    from_artifact_id=req.id,
+                    to_artifact_id=test.id,
+                    link_type="tests",
+                    created_via="manual",
                 ),
             ]
         )
@@ -268,8 +286,14 @@ async def test_impact_analysis_returns_canonical_shape():
         await _close_session(session)
 
     for key in (
-        "source_artifact_id", "change_type", "directly_affected",
-        "indirectly_affected", "risk_score", "risk_level", "recommendations", "stats",
+        "source_artifact_id",
+        "change_type",
+        "directly_affected",
+        "indirectly_affected",
+        "risk_score",
+        "risk_level",
+        "recommendations",
+        "stats",
     ):
         assert key in payload, f"missing top-level key: {key}"
 
@@ -279,7 +303,10 @@ async def test_impact_analysis_returns_canonical_shape():
 
     # stats block — the field whose absence crashed the UI.
     assert set(payload["stats"].keys()) == {
-        "total_affected", "direct_count", "indirect_count", "affected_types",
+        "total_affected",
+        "direct_count",
+        "indirect_count",
+        "affected_types",
     }
     assert payload["stats"]["direct_count"] == 1
     assert payload["stats"]["indirect_count"] == 1

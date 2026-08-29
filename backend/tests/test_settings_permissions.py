@@ -148,6 +148,7 @@ async def test_optional_integration_get_requires_auth(client, override_user_dep,
     decrypts the stored token and issues a request to an arbitrary base_url —
     secret-use leak + SSRF).
     """
+
     def _raise_unauth():
         raise HTTPException(status_code=401, detail="Not authenticated")
 
@@ -209,9 +210,7 @@ async def test_scoped_token_rejects_inactive_user(client, override_user_dep):
 
 
 @pytest.mark.asyncio
-async def test_scoped_token_rejects_ttl_above_access_policy(
-    client, override_user_dep, monkeypatch
-):
+async def test_scoped_token_rejects_ttl_above_access_policy(client, override_user_dep, monkeypatch):
     from app.api.api_v1.endpoints.auth import settings as auth_settings
 
     user = _PermissionUser(user_id=21, permissions={Permissions.ADMIN}, is_active=True)
@@ -250,11 +249,11 @@ async def test_scoped_token_cannot_escalate_beyond_caller_scopes(client, overrid
 
 
 @pytest.mark.asyncio
-async def test_scoped_token_rejects_tenant_mismatch_with_caller_token(
-    client, override_user_dep
-):
+async def test_scoped_token_rejects_tenant_mismatch_with_caller_token(client, override_user_dep):
     user = _PermissionUser(user_id=23, permissions={Permissions.PROJECT_VIEW}, is_active=True)
-    override_user_dep(_user_dep(user, tenant_id="tenant-a", token_scopes=[Permissions.PROJECT_VIEW]))
+    override_user_dep(
+        _user_dep(user, tenant_id="tenant-a", token_scopes=[Permissions.PROJECT_VIEW])
+    )
 
     response = await client.post(
         "/api/v1/auth/scoped-token",
@@ -282,9 +281,7 @@ async def test_scoped_token_rejects_arbitrary_tenant_for_non_admin_without_tenan
 
 
 @pytest.mark.asyncio
-async def test_scoped_token_allows_member_accessible_tenant(
-    client, db_session, override_user_dep
-):
+async def test_scoped_token_allows_member_accessible_tenant(client, db_session, override_user_dep):
     user = _PermissionUser(user_id=25, permissions={Permissions.PROJECT_VIEW}, is_active=True)
     override_user_dep(_user_dep(user, tenant_id=None, token_scopes=[Permissions.PROJECT_VIEW]))
 
@@ -308,11 +305,15 @@ async def test_scoped_token_allows_member_accessible_tenant(
 
 
 @pytest.mark.asyncio
-async def test_projects_list_filters_by_tenant_and_membership(client, db_session, override_user_dep):
+async def test_projects_list_filters_by_tenant_and_membership(
+    client, db_session, override_user_dep
+):
     viewer = _PermissionUser(user_id=30, permissions={Permissions.PROJECT_VIEW}, is_active=True)
     override_user_dep(_user_dep(viewer, tenant_id="tenant-a"))
 
-    p_owned = Project(jira_key="TEN-A-OWN", name="Owned", owner_id=viewer.id, meta={"tenant_id": "tenant-a"})
+    p_owned = Project(
+        jira_key="TEN-A-OWN", name="Owned", owner_id=viewer.id, meta={"tenant_id": "tenant-a"}
+    )
     p_member = Project(
         jira_key="TEN-A-MEMBER",
         name="Member",
@@ -344,9 +345,7 @@ async def test_projects_list_filters_by_tenant_and_membership(client, db_session
 
 
 @pytest.mark.asyncio
-async def test_projects_list_returns_empty_for_zero_limit(
-    client, db_session, override_user_dep
-):
+async def test_projects_list_returns_empty_for_zero_limit(client, db_session, override_user_dep):
     viewer = _PermissionUser(user_id=37, permissions={Permissions.PROJECT_VIEW}, is_active=True)
     override_user_dep(_user_dep(viewer, tenant_id="tenant-a"))
 
@@ -384,15 +383,18 @@ async def test_project_detail_denies_tenant_mismatch(client, db_session, overrid
 
 
 @pytest.mark.asyncio
-async def test_project_create_enforces_owner_and_sets_membership(
-    client, override_user_dep
-):
+async def test_project_create_enforces_owner_and_sets_membership(client, override_user_dep):
     creator = _PermissionUser(user_id=32, permissions={Permissions.PROJECT_CREATE}, is_active=True)
     override_user_dep(_user_dep(creator, tenant_id="tenant-a"))
 
     forbidden = await client.post(
         "/api/v1/projects/",
-        json={"jira_key": "TEN-A-403", "name": "Denied", "owner_id": 999, "meta": {"tenant_id": "tenant-a"}},
+        json={
+            "jira_key": "TEN-A-403",
+            "name": "Denied",
+            "owner_id": 999,
+            "meta": {"tenant_id": "tenant-a"},
+        },
     )
     assert forbidden.status_code == 403
 

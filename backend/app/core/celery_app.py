@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 import platform
+
+import httpx
+import redis
+import requests
+from sqlalchemy.exc import OperationalError
 from celery import Celery
 from celery.schedules import crontab
 
@@ -9,6 +14,30 @@ from app.core.config import settings
 
 broker_url = settings.CELERY_BROKER_URL or settings.REDIS_URL
 backend_url = settings.CELERY_RESULT_BACKEND or settings.REDIS_URL
+
+# Transient failures worth retrying in background tasks. Business errors
+# (ValueError and friends) must NOT be retried - they fail deterministically.
+# NB: narrow transport-level classes only - requests.RequestException and
+# httpx.HTTPError include permanent 4xx status errors which must not retry.
+TRANSIENT_TASK_ERRORS = (
+    ConnectionError,
+    TimeoutError,
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+    httpx.TransportError,
+    httpx.TimeoutException,
+    redis.exceptions.RedisError,
+    OperationalError,
+)
+
+TASK_RETRY_KWARGS = {
+    "autoretry_for": TRANSIENT_TASK_ERRORS,
+    "retry_backoff": True,
+    "retry_backoff_max": 600,
+    "retry_jitter": True,
+    "max_retries": 3,
+}
+
 
 celery_app = Celery(
     "po_helper",

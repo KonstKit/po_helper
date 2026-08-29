@@ -7,6 +7,7 @@
   only the in-memory ``cancellation_token`` (which is per-process and re-created
   unset whenever a task is rehydrated from Redis / after a local-cache eviction).
 """
+
 from __future__ import annotations
 
 import asyncio

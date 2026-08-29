@@ -23,10 +23,7 @@ from app.core.database import AsyncSessionLocal
 from app.models import Role, SYSTEM_ROLES
 import logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -42,9 +39,7 @@ async def seed_roles(session: AsyncSession):
 
     for role_name, role_config in SYSTEM_ROLES.items():
         # Check if role exists
-        result = await session.execute(
-            select(Role).where(Role.name == role_name)
-        )
+        result = await session.execute(select(Role).where(Role.name == role_name))
         role = result.scalar_one_or_none()
 
         if role:

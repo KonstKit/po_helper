@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
 
 from app.core.celery_async_runner import run_async
-from app.core.celery_app import celery_app
+from app.core.celery_app import TASK_RETRY_KWARGS, TRANSIENT_TASK_ERRORS, celery_app
 from app.core.database import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
@@ -219,7 +219,7 @@ async def _validate_project_async(project_id: int) -> Dict[str, Any]:
 # -----------------------------------------------------------------------------
 
 
-@celery_app.task(name="traceability.execute_rule")
+@celery_app.task(name="traceability.execute_rule", **TASK_RETRY_KWARGS)
 def execute_rule_task(rule_id: int) -> Dict[str, Any]:
     """
     Execute a single traceability rule.
@@ -236,12 +236,17 @@ def execute_rule_task(rule_id: int) -> Dict[str, Any]:
             result.get("links_created", 0),
         )
         return result
+    except TRANSIENT_TASK_ERRORS:
+        # transport/DB hiccups must reach Celery so autoretry can engage;
+        # swallowing them here made the task look successful (review D3)
+        logger.warning("Transient failure executing rule %d; re-raising for retry", rule_id)
+        raise
     except Exception as e:
         logger.error("Error executing rule %d: %s", rule_id, e)
         return {"rule_id": rule_id, "status": "error", "error": str(e)}
 
 
-@celery_app.task(name="traceability.execute_all_rules")
+@celery_app.task(name="traceability.execute_all_rules", **TASK_RETRY_KWARGS)
 def execute_all_rules_task(project_id: Optional[int] = None) -> List[Dict[str, Any]]:
     """
     Execute all enabled traceability rules.
@@ -254,7 +259,7 @@ def execute_all_rules_task(project_id: Optional[int] = None) -> List[Dict[str, A
     return results
 
 
-@celery_app.task(name="traceability.generate_suggestions")
+@celery_app.task(name="traceability.generate_suggestions", **TASK_RETRY_KWARGS)
 def generate_suggestions_task(project_id: int) -> Dict[str, Any]:
     """Generate TF-IDF suggestions after artifact ingestion."""
     logger.info("Generating traceability suggestions for project %d", project_id)
@@ -268,7 +273,7 @@ def generate_suggestions_task(project_id: int) -> Dict[str, Any]:
     return result
 
 
-@celery_app.task(name="traceability.execute_sync_complete_rules")
+@celery_app.task(name="traceability.execute_sync_complete_rules", **TASK_RETRY_KWARGS)
 def execute_sync_complete_rules_task(
     project_id: int,
     source: Optional[str] = None,
@@ -292,7 +297,7 @@ def execute_sync_complete_rules_task(
     return results
 
 
-@celery_app.task(name="traceability.recompute_derived_links")
+@celery_app.task(name="traceability.recompute_derived_links", **TASK_RETRY_KWARGS)
 def recompute_derived_links_task(
     project_id: int,
     from_type: str = "requirement",
@@ -319,7 +324,7 @@ def recompute_derived_links_task(
     return result
 
 
-@celery_app.task(name="traceability.validate_project")
+@celery_app.task(name="traceability.validate_project", **TASK_RETRY_KWARGS)
 def validate_project_task(project_id: int) -> Dict[str, Any]:
     """
     Run validation rules on a project.
@@ -336,7 +341,7 @@ def validate_project_task(project_id: int) -> Dict[str, Any]:
     return result
 
 
-@celery_app.task(name="traceability.scheduled_rule_execution")
+@celery_app.task(name="traceability.scheduled_rule_execution", **TASK_RETRY_KWARGS)
 def scheduled_rule_execution_task() -> Dict[str, Any]:
     """
     Check and execute rules based on their cron schedules.
@@ -414,7 +419,7 @@ def scheduled_rule_execution_task() -> Dict[str, Any]:
     }
 
 
-@celery_app.task(name="traceability.batch_materialize")
+@celery_app.task(name="traceability.batch_materialize", **TASK_RETRY_KWARGS)
 def batch_materialize_task(project_id: int) -> Dict[str, Any]:
     """
     Batch materialization of all derived link types for a project.

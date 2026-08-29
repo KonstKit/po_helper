@@ -157,4 +157,3 @@ async def test_team_health_endpoint_returns_counts_and_cycles():
     assert data["spent_hours"] == pytest.approx(15.5, rel=1e-3)
     # cycle samples should be 2 (two done tasks)
     assert data["cycle_samples"] == 2
-

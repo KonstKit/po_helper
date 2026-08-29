@@ -7,6 +7,7 @@ Covers three layers:
 - API: list/get/claim/resolve/reject/reopen lifecycle, RBAC for reopen,
   invalid-transition and validation errors, and audit records.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -305,9 +306,7 @@ async def test_get_missing_review_item_returns_404(client, auth_headers):
 
 @pytest.mark.asyncio
 async def test_list_rejects_invalid_status(client, auth_headers):
-    resp = await client.get(
-        "/api/v1/traceability/review-items?status=bogus", headers=auth_headers
-    )
+    resp = await client.get("/api/v1/traceability/review-items?status=bogus", headers=auth_headers)
     assert resp.status_code == 400
 
 
@@ -339,10 +338,14 @@ async def test_claim_resolve_lifecycle_and_audit(client, db_session, seeded_item
     assert body["resolved_at"] is not None
 
     audits = (
-        await db_session.execute(
-            select(AuditLog).where(AuditLog.entity_type == "traceability_review_item")
+        (
+            await db_session.execute(
+                select(AuditLog).where(AuditLog.entity_type == "traceability_review_item")
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     actions = {a.action for a in audits}
     assert {"review_claim", "review_resolve"}.issubset(actions)
 
@@ -435,9 +438,7 @@ async def test_reopen_forbidden_for_non_admin_manager(db_session, client, auth_h
     async with AsyncSessionLocal() as s:
         status = (
             await s.execute(
-                select(TraceabilityReviewItem.status).where(
-                    TraceabilityReviewItem.id == item.id
-                )
+                select(TraceabilityReviewItem.status).where(TraceabilityReviewItem.id == item.id)
             )
         ).scalar_one()
         assert status == REVIEW_STATUS_RESOLVED

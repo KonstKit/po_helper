@@ -195,9 +195,7 @@ async def test_oauth_login_refuses_email_linking_by_default(client):
     from app.core.oauth import OAuth2UserInfo
     from app.core.database import AsyncSessionLocal
 
-    await _register_and_login(
-        client, "existing@example.com", "existing_user"
-    )
+    await _register_and_login(client, "existing@example.com", "existing_user")
 
     user_info = OAuth2UserInfo(
         provider="google",
@@ -322,7 +320,10 @@ async def test_oauth_accepts_allowlisted_redirect_override(client, monkeypatch):
         params={"redirect_uri": "http://localhost:3001/oauth/callback"},
     )
     assert response.status_code == 200, response.text
-    assert "localhost%3A3001" in response.json()["authorization_url"] or "localhost:3001" in response.json()["authorization_url"]
+    assert (
+        "localhost%3A3001" in response.json()["authorization_url"]
+        or "localhost:3001" in response.json()["authorization_url"]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -371,9 +372,7 @@ async def test_websocket_accepts_ticket_and_bearer(client):
         with tc.websocket_connect(f"/api/v1/ws?ticket={ticket}") as ws:
             ws.send_text("ping")
         # bearer header path (non-browser clients)
-        with tc.websocket_connect(
-            "/api/v1/ws", headers={"Authorization": f"Bearer {token}"}
-        ) as ws:
+        with tc.websocket_connect("/api/v1/ws", headers={"Authorization": f"Bearer {token}"}) as ws:
             ws.send_text("ping")
 
 
@@ -463,9 +462,7 @@ async def test_connect_pat_and_confluence_connect_gated(client):
 def test_handle_api_error_hides_5xx_details():
     with pytest.raises(HTTPException) as exc_info:
         with handle_api_error(operation="boom", status_code=500):
-            raise SQLAlchemyError(
-                "(sqlite3.OperationalError) no such table: secret_table"
-            )
+            raise SQLAlchemyError("(sqlite3.OperationalError) no such table: secret_table")
     assert exc_info.value.status_code == 500
     assert "sqlite3" not in exc_info.value.detail
     assert exc_info.value.detail == "Request could not be completed. Check server logs for details."
@@ -478,9 +475,7 @@ def test_handle_api_error_sanitizes_integrity_error_on_409():
 
     with pytest.raises(HTTPException) as exc_info:
         with handle_api_error(operation="conflict", status_code=400):
-            raise IntegrityError(
-                "INSERT INTO users...", {"email": "x@y.dev"}, Exception()
-            )
+            raise IntegrityError("INSERT INTO users...", {"email": "x@y.dev"}, Exception())
     assert exc_info.value.status_code == 409
     assert "users" not in exc_info.value.detail
     assert exc_info.value.detail == "Request could not be completed. Check server logs for details."

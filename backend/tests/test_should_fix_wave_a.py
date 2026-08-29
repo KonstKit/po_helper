@@ -91,9 +91,7 @@ async def test_fk_indexes_exist(db_session):
         "ix_suggested_links_to_artifact_id",
         "ix_artifacts_parent_version_id",
     }
-    result = await db_session.execute(
-        text("SELECT name FROM sqlite_master WHERE type='index'")
-    )
+    result = await db_session.execute(text("SELECT name FROM sqlite_master WHERE type='index'"))
     existing = {row[0] for row in result}
     missing = expected - existing
     assert not missing, f"missing FK indexes: {missing} (create_all must reflect migration 037)"

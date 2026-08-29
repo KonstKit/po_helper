@@ -12,6 +12,7 @@ re-running ``upgrade()``. This proves the partial-unique open index
 ``uq_traceability_review_items_open`` is restored on a second run rather than
 silently left absent.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -68,9 +69,7 @@ def test_migration_035_upgrade_is_idempotent_for_open_index():
         # Pre-create the minimal parent tables the migration's FKs point at.
         with engine.begin() as conn:
             for parent in _PARENT_TABLES:
-                conn.exec_driver_sql(
-                    f"CREATE TABLE {parent} (id INTEGER PRIMARY KEY)"
-                )
+                conn.exec_driver_sql(f"CREATE TABLE {parent} (id INTEGER PRIMARY KEY)")
 
         # (1) First upgrade: table + open partial-unique index must exist.
         with engine.connect() as conn:

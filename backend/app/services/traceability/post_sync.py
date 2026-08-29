@@ -28,7 +28,7 @@ async def run_traceability_post_sync(
         generate_suggestions_task,
     )
 
-    if getattr(settings, "CELERY_ENABLED", False):
+    if settings.CELERY_ENABLED:
         try:
             generate_suggestions_task.delay(project_id)
         except Exception as exc:

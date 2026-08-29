@@ -6,6 +6,7 @@ Scheduler due-selection and invalid-cron disabling are already covered by
 test_traceability_rule_builder_contracts.py; this module covers webhook token
 authorization, execution-history recording, and post-sync idempotency.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -206,9 +207,9 @@ async def test_manual_execution_records_trigger_source(client):
 @pytest.mark.asyncio
 async def test_webhook_execution_records_trigger_source(client):
     rule_id = await _create_rule_via_api(client, "trig-webhook")
-    token = (
-        await client.post(f"/api/v1/traceability/rules/{rule_id}/webhook/enable")
-    ).json()["webhook_token"]
+    token = (await client.post(f"/api/v1/traceability/rules/{rule_id}/webhook/enable")).json()[
+        "webhook_token"
+    ]
 
     assert (await client.post(f"/api/v1/traceability/webhook/{token}")).status_code == 200
     assert await _latest_trigger_source(rule_id) == "webhook"

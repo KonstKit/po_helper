@@ -25,6 +25,7 @@ This module proves the path that matters under redelivery:
 Counts are read from a fresh ``AsyncSessionLocal()`` to avoid WAL snapshot
 staleness, mirroring the other traceability test modules.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -168,7 +169,13 @@ def _link_flow(a_id: int, b_id: int):
             },
         ],
         "edges": [
-            {"id": "e1", "source": "src", "target": "act", "sourceHandle": "output", "targetHandle": "input"}
+            {
+                "id": "e1",
+                "source": "src",
+                "target": "act",
+                "sourceHandle": "output",
+                "targetHandle": "input",
+            }
         ],
         "version": "1.0",
         "metadata": {},
@@ -183,12 +190,18 @@ async def sync_complete_link_rule(db_session):
     db_session.add(project)
     await db_session.flush()
     art_a = Artifact(
-        project_id=project.id, type="requirement", source="internal",
-        external_id="REQ-A", title="Requirement A",
+        project_id=project.id,
+        type="requirement",
+        source="internal",
+        external_id="REQ-A",
+        title="Requirement A",
     )
     art_b = Artifact(
-        project_id=project.id, type="requirement", source="internal",
-        external_id="REQ-B", title="Requirement B",
+        project_id=project.id,
+        type="requirement",
+        source="internal",
+        external_id="REQ-B",
+        title="Requirement B",
     )
     db_session.add_all([art_a, art_b])
     await db_session.flush()
@@ -219,18 +232,14 @@ async def test_sync_complete_redelivery_creates_no_new_links(sync_complete_link_
     project_id, rule_id = sync_complete_link_rule
 
     # First delivery: the rule creates exactly one link.
-    results_1 = await _execute_sync_complete_rules_async(
-        project_id, source="jira", trigger="sync"
-    )
+    results_1 = await _execute_sync_complete_rules_async(project_id, source="jira", trigger="sync")
     assert len(results_1) == 1
     assert results_1[0]["rule_id"] == rule_id
     assert await _execution_count(rule_id) == 1
     assert await _link_count(project_id=project_id) == 1
 
     # Redelivery (at-least-once): same project, same sync-complete rule.
-    results_2 = await _execute_sync_complete_rules_async(
-        project_id, source="jira", trigger="sync"
-    )
+    results_2 = await _execute_sync_complete_rules_async(project_id, source="jira", trigger="sync")
     assert len(results_2) == 1
     assert results_2[0]["rule_id"] == rule_id
 
