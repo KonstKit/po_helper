@@ -145,7 +145,9 @@ def _stub_metrics(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.asyncio
-async def test_async_get_issue_worklogs_stops_by_total_and_max_results(monkeypatch: pytest.MonkeyPatch):
+async def test_async_get_issue_worklogs_stops_by_total_and_max_results(
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.setattr("app.services.jira.board_service.settings.JIRA_WORKLOG_MAX_PAGES", 50)
 
     fake_client = _patch_async_client(
@@ -172,7 +174,9 @@ async def test_async_get_issue_worklogs_stops_by_total_and_max_results(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_async_get_issue_worklogs_stops_when_page_limit_reached(monkeypatch: pytest.MonkeyPatch):
+async def test_async_get_issue_worklogs_stops_when_page_limit_reached(
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.setattr("app.services.jira.board_service.settings.JIRA_WORKLOG_MAX_PAGES", 2)
 
     fake_client = _patch_async_client(

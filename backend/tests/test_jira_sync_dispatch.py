@@ -40,7 +40,9 @@ async def test_sync_project_returns_existing_fresh_running_sync(
         dispatch_called = True
         raise AssertionError("sync should not dispatch while a fresh running task exists")
 
-    monkeypatch.setattr("app.api.api_v1.endpoints.jira.sync_jira_project.delay", _unexpected_dispatch)
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.jira.sync_jira_project.delay", _unexpected_dispatch
+    )
 
     response = await client.post("/api/v1/jira/projects/WAB/sync")
 

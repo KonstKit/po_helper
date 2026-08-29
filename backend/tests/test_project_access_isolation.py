@@ -52,7 +52,9 @@ def test_can_access_project_allows_owner_when_tenant_matches():
 
 @pytest.mark.asyncio
 async def test_ensure_project_access_denies_tenant_project_without_claim(db_session):
-    project = Project(jira_key="TEN-1", name="Tenant Project", owner_id=11, meta={"tenant_id": "t1"})
+    project = Project(
+        jira_key="TEN-1", name="Tenant Project", owner_id=11, meta={"tenant_id": "t1"}
+    )
     db_session.add(project)
     await db_session.commit()
     await db_session.refresh(project)

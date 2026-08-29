@@ -4,6 +4,7 @@ Covers approve (link creation), duplicate handling, cycle prevention, reject,
 bulk approve with item-level partial results, already-processed handling,
 stats, and audit records.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -87,10 +88,10 @@ async def test_approve_creates_link_and_audit(client, db_session, two_artifacts,
 
     # Audit recorded
     audits = (
-        await db_session.execute(
-            select(AuditLog).where(AuditLog.action == "suggestion_approve")
-        )
-    ).scalars().all()
+        (await db_session.execute(select(AuditLog).where(AuditLog.action == "suggestion_approve")))
+        .scalars()
+        .all()
+    )
     assert len(audits) == 1
 
 
@@ -133,9 +134,7 @@ async def test_approve_duplicate_does_not_create_second_link(
     assert resp.status_code == 200
     assert "already exist" in resp.json()["message"].lower()
 
-    count = (
-        await db_session.execute(select(func.count()).select_from(ArtifactLink))
-    ).scalar()
+    count = (await db_session.execute(select(func.count()).select_from(ArtifactLink))).scalar()
     assert count == 1  # no duplicate created
 
 
@@ -162,9 +161,7 @@ async def test_approve_cycle_is_prevented(client, db_session, two_artifacts, aut
 
     assert await _suggestion_status(sug.id) == "rejected"
     # No B->A link created
-    count = (
-        await db_session.execute(select(func.count()).select_from(ArtifactLink))
-    ).scalar()
+    count = (await db_session.execute(select(func.count()).select_from(ArtifactLink))).scalar()
     assert count == 1
 
 
@@ -230,9 +227,7 @@ async def test_stats_reflect_status_counts(client, db_session, two_artifacts, au
     await _suggestion(db_session, a_id, c.id)  # pending
     await db_session.commit()
 
-    resp = await client.get(
-        "/api/v1/traceability/suggested-links/stats", headers=auth_headers
-    )
+    resp = await client.get("/api/v1/traceability/suggested-links/stats", headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert body["total"] == 2
@@ -323,10 +318,10 @@ async def test_generate_reads_project_id_and_params_from_request_body(
     # to the project from the body. Read from a fresh session post-commit.
     async with AsyncSessionLocal() as s:
         audit = (
-            await s.execute(
-                select(AuditLog).where(AuditLog.action == "suggestions_generate")
-            )
-        ).scalars().first()
+            (await s.execute(select(AuditLog).where(AuditLog.action == "suggestions_generate")))
+            .scalars()
+            .first()
+        )
     assert audit is not None
     assert audit.project_id == 4242
 
@@ -344,7 +339,9 @@ async def test_generate_with_empty_body_is_allowed_for_admin(
             self.min_similarity = 0.3
             self.max_suggestions_per_artifact = 5
 
-        async def generate_suggestions(self, db, project_id=None, artifact_types=None, rebuild_index=True):
+        async def generate_suggestions(
+            self, db, project_id=None, artifact_types=None, rebuild_index=True
+        ):
             return []  # nothing to store -> early return
 
         async def store_suggestions(self, db, suggestions, project_id=None, tenant_id=None):
@@ -352,8 +349,6 @@ async def test_generate_with_empty_body_is_allowed_for_admin(
 
     monkeypatch.setattr(suggestions_module, "get_similarity_service", lambda: _StubService())
 
-    resp = await client.post(
-        "/api/v1/traceability/suggested-links/generate", headers=auth_headers
-    )
+    resp = await client.post("/api/v1/traceability/suggested-links/generate", headers=auth_headers)
     assert resp.status_code == 200, resp.text
     assert resp.json()["suggestions_created"] == 0

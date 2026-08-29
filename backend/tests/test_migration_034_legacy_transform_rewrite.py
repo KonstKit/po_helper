@@ -4,6 +4,7 @@ The migration touches DB rows, but its core decision is encapsulated in the
 pure ``_rewrite_flow`` function. We test that here so the data step has
 explicit acceptance evidence without spinning up Alembic.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -109,7 +110,11 @@ def test_handles_multiple_nodes_and_unrelated_types():
     new_flow, count = migration._rewrite_flow(flow, TS)
 
     assert count == 2
-    types = [n["data"]["config"].get("transform_type") for n in new_flow["nodes"] if n["type"] == "transformNode"]
+    types = [
+        n["data"]["config"].get("transform_type")
+        for n in new_flow["nodes"]
+        if n["type"] == "transformNode"
+    ]
     assert types == ["passthrough", "passthrough", "passthrough"]
     # Filter node config preserved unchanged.
     filter_config = new_flow["nodes"][1]["data"]["config"]
@@ -128,7 +133,10 @@ def test_handles_non_string_transform_type():
 
 
 def test_handles_empty_or_missing_nodes():
-    assert migration._rewrite_flow({"nodes": [], "edges": []}, TS) == ({"nodes": [], "edges": []}, 0)
+    assert migration._rewrite_flow({"nodes": [], "edges": []}, TS) == (
+        {"nodes": [], "edges": []},
+        0,
+    )
     assert migration._rewrite_flow({"edges": []}, TS) == ({"edges": []}, 0)
 
 

@@ -129,7 +129,9 @@ async def test_update_project_succeeds_without_nested_transaction_error(
     db_session,
     override_user_dep,
 ):
-    project = Project(jira_key="PJT-5", name="Before Update", owner_id=42, meta={"member_ids": [42]})
+    project = Project(
+        jira_key="PJT-5", name="Before Update", owner_id=42, meta={"member_ids": [42]}
+    )
     db_session.add(project)
     await db_session.commit()
     await db_session.refresh(project)

@@ -42,7 +42,9 @@ async def test_security_headers_are_emitted_and_hsts_is_https_only(monkeypatch):
         )
 
     assert "Strict-Transport-Security" not in http_response.headers
-    assert https_response.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"
+    assert (
+        https_response.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"
+    )
 
 
 def test_cors_configuration_uses_explicit_allowlists():
@@ -170,7 +172,9 @@ def test_production_logging_uses_json_formatter(monkeypatch):
     try:
         app_main._configure_logging()
 
-        assert any(isinstance(handler.formatter, _JsonLogFormatter) for handler in root_logger.handlers)
+        assert any(
+            isinstance(handler.formatter, _JsonLogFormatter) for handler in root_logger.handlers
+        )
 
         formatter = next(
             handler.formatter

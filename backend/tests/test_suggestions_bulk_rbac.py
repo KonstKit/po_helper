@@ -8,6 +8,7 @@ current user with a NON-admin manager who cannot access the suggestion's project
 so `ensure_project_access` raises 403 and bulk-approve must surface it as a real
 403 (not swallow it into an item-level error / 200).
 """
+
 from __future__ import annotations
 
 import pytest
@@ -45,12 +46,18 @@ async def suggestion_in_foreign_project(db_session):
     db_session.add(project)
     await db_session.flush()
     a = Artifact(
-        project_id=project.id, type="requirement", source="internal",
-        external_id="REQ-S1", title="S1",
+        project_id=project.id,
+        type="requirement",
+        source="internal",
+        external_id="REQ-S1",
+        title="S1",
     )
     b = Artifact(
-        project_id=project.id, type="requirement", source="internal",
-        external_id="REQ-S2", title="S2",
+        project_id=project.id,
+        type="requirement",
+        source="internal",
+        external_id="REQ-S2",
+        title="S2",
     )
     db_session.add_all([a, b])
     await db_session.flush()
@@ -98,12 +105,8 @@ async def test_bulk_approve_inaccessible_project_returns_403(
     # And nothing was approved / no link created behind the 403.
     async with AsyncSessionLocal() as s:
         status = (
-            await s.execute(
-                select(SuggestedLink.status).where(SuggestedLink.id == sug_id)
-            )
+            await s.execute(select(SuggestedLink.status).where(SuggestedLink.id == sug_id))
         ).scalar_one()
         assert status == "pending"
-        link_count = (
-            await s.execute(select(func.count()).select_from(ArtifactLink))
-        ).scalar()
+        link_count = (await s.execute(select(func.count()).select_from(ArtifactLink))).scalar()
         assert link_count == 0

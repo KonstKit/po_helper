@@ -73,13 +73,17 @@ async def test_sync_project_aborts_when_reserved_lease_is_not_running(
     assert stale_lease_after.error_code == "dispatch_failed"
 
     tasks = (
-        await db_session.execute(
-            select(SyncTask).where(
-                SyncTask.project_id == project.id,
-                SyncTask.task_type == "jira_sync",
+        (
+            await db_session.execute(
+                select(SyncTask).where(
+                    SyncTask.project_id == project.id,
+                    SyncTask.task_type == "jira_sync",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(tasks) == 1
 
 
@@ -129,11 +133,15 @@ async def test_sync_project_aborts_when_unreserved_lease_acquire_fails(
     assert running_lease_after.status == "running"
 
     tasks = (
-        await db_session.execute(
-            select(SyncTask).where(
-                SyncTask.project_id == project.id,
-                SyncTask.task_type == "jira_sync",
+        (
+            await db_session.execute(
+                select(SyncTask).where(
+                    SyncTask.project_id == project.id,
+                    SyncTask.task_type == "jira_sync",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(tasks) == 1

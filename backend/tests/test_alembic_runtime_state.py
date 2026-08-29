@@ -99,4 +99,3 @@ async def test_alembic_runtime_state_is_noop_for_sqlite(monkeypatch: pytest.Monk
 
     await app_main._ensure_postgres_alembic_runtime_state()
     assert connection.executed_sql == []
-

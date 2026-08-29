@@ -14,6 +14,7 @@ Three independent corner cases that the happy-path suite does not exercise:
   ``bool`` ids (``bool`` subclasses ``int``) and ``None``, while a real ``int``
   id creates a row.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -67,11 +68,7 @@ async def test_pagination_with_identical_created_at_has_no_gaps_or_dupes(db_sess
     # Read paginated results from a fresh session to avoid WAL snapshot
     # staleness against the just-committed writes.
     async with AsyncSessionLocal() as s:
-        all_ids = set(
-            (
-                await s.execute(select(TraceabilityReviewItem.id))
-            ).scalars().all()
-        )
+        all_ids = set((await s.execute(select(TraceabilityReviewItem.id))).scalars().all())
         assert len(all_ids) == total_rows
 
         collected: list[int] = []

@@ -76,7 +76,9 @@ def test_jira_key_extractor_alias_mapping():
     normalized = executor._normalize_search_fields(["branch_name", "body", "message"])
     assert normalized == ["branch", "description", "message"]
 
-    artifact = SimpleNamespace(type="commit", meta={"branch": "main", "description": "POH-12"}, title=None)
+    artifact = SimpleNamespace(
+        type="commit", meta={"branch": "main", "description": "POH-12"}, title=None
+    )
     assert executor._get_field_value(artifact, "branch_name") == "main"
     assert executor._get_field_value(artifact, "body") == "POH-12"
 

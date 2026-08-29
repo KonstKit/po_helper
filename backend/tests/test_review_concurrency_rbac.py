@@ -14,6 +14,7 @@ Two behaviors are pinned here:
 The reopen-terminal-403 case is already covered by
 ``test_traceability_review.py`` and is intentionally not duplicated here.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -101,9 +102,7 @@ async def test_reclaim_rejected_after_claim(client, pending_item, auth_headers):
 # Case #4: release-claim RBAC
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_non_admin_manager_cannot_release_others_claim(
-    db_session, client, auth_headers
-):
+async def test_non_admin_manager_cannot_release_others_claim(db_session, client, auth_headers):
     """A non-admin manager releasing ANOTHER operator's claim must get 403
     (releasing someone else's claim requires administrator rights)."""
     from app.api.deps import get_current_user
@@ -151,9 +150,7 @@ async def test_non_admin_manager_cannot_release_others_claim(
 
 
 @pytest.mark.asyncio
-async def test_non_admin_manager_can_release_own_claim(
-    db_session, client, auth_headers
-):
+async def test_non_admin_manager_can_release_own_claim(db_session, client, auth_headers):
     """A non-admin manager releasing their OWN claim is permitted (200), and the
     item returns to pending with the assignee cleared."""
     from app.api.deps import get_current_user

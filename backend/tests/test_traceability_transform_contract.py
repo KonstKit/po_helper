@@ -4,6 +4,7 @@ Covers:
 - TransformNodeExecutor: passthrough, default value, empty input, unsupported.
 - validate_flow save-time validation: accepts whitelist, rejects unsupported.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -165,9 +166,7 @@ def test_unsupported_transform_type_raises_even_on_empty_input():
     context = _ContextStub([])
 
     with pytest.raises(ValueError) as excinfo:
-        executor.execute(
-            {"id": "tx", "data": {"config": {"transform_type": "uppercase"}}}, context
-        )
+        executor.execute({"id": "tx", "data": {"config": {"transform_type": "uppercase"}}}, context)
 
     assert "TransformNode tx" in str(excinfo.value)
     assert "passthrough" in str(excinfo.value)

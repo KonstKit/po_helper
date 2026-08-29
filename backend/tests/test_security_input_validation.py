@@ -94,13 +94,13 @@ class TestInputValidator:
     def test_validate_regex_safe_pattern(self):
         """Test that safe whitelisted patterns are allowed."""
         # Default Jira key pattern
-        pattern = r'\b[A-Z][A-Z0-9_]+-[0-9]+\b'
+        pattern = r"\b[A-Z][A-Z0-9_]+-[0-9]+\b"
         result = InputValidator.validate_regex_pattern(pattern, allow_custom=False)
         assert result == pattern
 
     def test_validate_regex_rejects_custom_without_flag(self):
         """Test that custom patterns are rejected when allow_custom=False."""
-        custom_pattern = r'(a+)+'  # Dangerous nested quantifier
+        custom_pattern = r"(a+)+"  # Dangerous nested quantifier
         with pytest.raises(ValueError, match="Custom regex patterns are not allowed"):
             InputValidator.validate_regex_pattern(custom_pattern, allow_custom=False)
 
@@ -108,10 +108,10 @@ class TestInputValidator:
         """Test detection of nested quantifiers (ReDoS vulnerability)."""
         # Common ReDoS patterns
         redos_patterns = [
-            r'(a+)+',      # Nested +
-            r'(a*)*',      # Nested *
-            r'(a+)*',      # Mixed quantifiers
-            r'(a{1,5})+',  # Nested with range
+            r"(a+)+",  # Nested +
+            r"(a*)*",  # Nested *
+            r"(a+)*",  # Mixed quantifiers
+            r"(a{1,5})+",  # Nested with range
         ]
 
         for pattern in redos_patterns:
@@ -120,24 +120,24 @@ class TestInputValidator:
 
     def test_validate_regex_rejects_too_long(self):
         """Test that excessively long regex patterns are rejected."""
-        long_pattern = 'a' * 201
+        long_pattern = "a" * 201
         with pytest.raises(ValueError, match="too long"):
             InputValidator.validate_regex_pattern(long_pattern, allow_custom=True)
 
     def test_validate_regex_rejects_too_many_quantifiers(self):
         """Test that patterns with too many quantifiers are rejected."""
         # Pattern with 6 quantifiers (exceeds MAX_REGEX_QUANTIFIERS=5)
-        pattern = r'a+b*c?d{1,3}e+f*'
+        pattern = r"a+b*c?d{1,3}e+f*"
         with pytest.raises(ValueError, match="too many quantifiers"):
             InputValidator.validate_regex_pattern(pattern, allow_custom=True)
 
     def test_validate_regex_rejects_invalid_syntax(self):
         """Test that invalid regex syntax is rejected."""
         invalid_patterns = [
-            r'[',           # Unclosed bracket
-            r'(?P<)',       # Invalid group name
-            r'(?P<test',    # Unclosed group
-            r'*',           # Nothing to repeat
+            r"[",  # Unclosed bracket
+            r"(?P<)",  # Invalid group name
+            r"(?P<test",  # Unclosed group
+            r"*",  # Nothing to repeat
         ]
 
         for pattern in invalid_patterns:
@@ -213,7 +213,7 @@ class TestInputValidator:
     def test_redos_attack_prevented(self):
         """Test that ReDoS attack patterns are blocked."""
         # Real-world ReDoS pattern from OWASP
-        redos_pattern = r'(a+)+'
+        redos_pattern = r"(a+)+"
 
         with pytest.raises(ValueError, match="nested quantifiers"):
             InputValidator.validate_regex_pattern(redos_pattern, allow_custom=True)
@@ -266,6 +266,7 @@ class TestSecurityIntegration:
 # Performance Tests
 # ============================================================================
 
+
 class TestPerformance:
     """Performance tests to ensure validation doesn't slow down execution."""
 
@@ -286,7 +287,7 @@ class TestPerformance:
         """Test that regex validation is fast."""
         import time
 
-        pattern = r'\b[A-Z][A-Z0-9_]+-[0-9]+\b'
+        pattern = r"\b[A-Z][A-Z0-9_]+-[0-9]+\b"
 
         # Validate 1,000 patterns
         start = time.time()
