@@ -3,7 +3,9 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_list_capacity_settings_returns_empty_page(client):
-    response = await client.get("/api/v1/capacity/settings", params={"project_id": 1, "skip": 0, "limit": 50})
+    response = await client.get(
+        "/api/v1/capacity/settings", params={"project_id": 1, "skip": 0, "limit": 50}
+    )
 
     assert response.status_code == 200
     payload = response.json()

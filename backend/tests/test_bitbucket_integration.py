@@ -6,6 +6,7 @@ Covers:
 - Bitbucket webhook handling
 - Bitbucket settings endpoints
 """
+
 import json
 import hmac
 import hashlib
@@ -222,68 +223,57 @@ class TestBitbucketWebhook:
     @pytest.fixture
     def bitbucket_webhook_headers(self, bitbucket_webhook_secret: str):
         """Generate valid Bitbucket webhook headers."""
+
         def _headers(body: bytes) -> dict:
             signature = hmac.new(
-                bitbucket_webhook_secret.encode("utf-8"),
-                msg=body,
-                digestmod=hashlib.sha256
+                bitbucket_webhook_secret.encode("utf-8"), msg=body, digestmod=hashlib.sha256
             )
             return {
                 "X-Hub-Signature": f"sha256={signature.hexdigest()}",
-                "X-Event-Key": "repo:push"
+                "X-Event-Key": "repo:push",
             }
+
         return _headers
 
     async def test_bitbucket_push_webhook(
-        self,
-        client,
-        db_session,
-        bitbucket_webhook_headers,
-        bitbucket_webhook_secret,
-        monkeypatch
+        self, client, db_session, bitbucket_webhook_headers, bitbucket_webhook_secret, monkeypatch
     ):
         """Test Bitbucket push webhook processing."""
         monkeypatch.setattr(
-            "app.core.config.settings.BITBUCKET_WEBHOOK_SECRET",
-            bitbucket_webhook_secret
+            "app.core.config.settings.BITBUCKET_WEBHOOK_SECRET", bitbucket_webhook_secret
         )
 
         payload = {
-            "repository": {
-                "full_name": "workspace/repo"
-            },
+            "repository": {"full_name": "workspace/repo"},
             "push": {
                 "changes": [
                     {
-                        "new": {
-                            "name": "main",
-                            "type": "branch"
-                        },
+                        "new": {"name": "main", "type": "branch"},
                         "commits": [
                             {
                                 "hash": "abc123",
                                 "message": "Fix issue PROJ-100",
                                 "author": {
                                     "user": {"display_name": "John Doe"},
-                                    "raw": "John Doe <john@example.com>"
+                                    "raw": "John Doe <john@example.com>",
                                 },
                                 "links": {
-                                    "html": {"href": "https://bitbucket.org/workspace/repo/commits/abc123"}
-                                }
+                                    "html": {
+                                        "href": "https://bitbucket.org/workspace/repo/commits/abc123"
+                                    }
+                                },
                             }
-                        ]
+                        ],
                     }
                 ]
-            }
+            },
         }
 
         body = json.dumps(payload).encode("utf-8")
         headers = bitbucket_webhook_headers(body)
 
         response = await client.post(
-            "/api/v1/git/webhooks/bitbucket",
-            content=body,
-            headers=headers
+            "/api/v1/git/webhooks/bitbucket", content=body, headers=headers
         )
 
         assert response.status_code == 200
@@ -292,23 +282,15 @@ class TestBitbucketWebhook:
         assert data["event"] == "repo:push"
 
     async def test_bitbucket_pr_webhook(
-        self,
-        client,
-        db_session,
-        bitbucket_webhook_headers,
-        bitbucket_webhook_secret,
-        monkeypatch
+        self, client, db_session, bitbucket_webhook_headers, bitbucket_webhook_secret, monkeypatch
     ):
         """Test Bitbucket pull request webhook."""
         monkeypatch.setattr(
-            "app.core.config.settings.BITBUCKET_WEBHOOK_SECRET",
-            bitbucket_webhook_secret
+            "app.core.config.settings.BITBUCKET_WEBHOOK_SECRET", bitbucket_webhook_secret
         )
 
         payload = {
-            "repository": {
-                "full_name": "workspace/repo"
-            },
+            "repository": {"full_name": "workspace/repo"},
             "pullrequest": {
                 "id": 42,
                 "title": "Add feature PROJ-200",
@@ -318,25 +300,21 @@ class TestBitbucketWebhook:
                 "links": {
                     "html": {"href": "https://bitbucket.org/workspace/repo/pull-requests/42"}
                 },
-                "created_on": "2024-01-01T00:00:00Z"
-            }
+                "created_on": "2024-01-01T00:00:00Z",
+            },
         }
 
         body = json.dumps(payload).encode("utf-8")
         signature = hmac.new(
-            bitbucket_webhook_secret.encode("utf-8"),
-            msg=body,
-            digestmod=hashlib.sha256
+            bitbucket_webhook_secret.encode("utf-8"), msg=body, digestmod=hashlib.sha256
         )
         headers = {
             "X-Hub-Signature": f"sha256={signature.hexdigest()}",
-            "X-Event-Key": "pullrequest:created"
+            "X-Event-Key": "pullrequest:created",
         }
 
         response = await client.post(
-            "/api/v1/git/webhooks/bitbucket",
-            content=body,
-            headers=headers
+            "/api/v1/git/webhooks/bitbucket", content=body, headers=headers
         )
 
         assert response.status_code == 200
@@ -350,10 +328,7 @@ class TestBitbucketSettings:
 
     async def test_get_bitbucket_settings(self, client, auth_headers):
         """Test getting Bitbucket settings."""
-        response = await client.get(
-            "/api/v1/settings/bitbucket",
-            headers=auth_headers
-        )
+        response = await client.get("/api/v1/settings/bitbucket", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -367,8 +342,8 @@ class TestBitbucketSettings:
             json={
                 "base_url": "https://bitbucket.org",
                 "email": "user@example.com",
-                "api_token": "app-password-123"
-            }
+                "api_token": "app-password-123",
+            },
         )
 
         assert response.status_code == 200
@@ -379,18 +354,12 @@ class TestBitbucketSettings:
 
     async def test_test_bitbucket_connection(self, client, auth_headers, monkeypatch):
         """Test Bitbucket connection test endpoint."""
+
         # Mock the connection test
         async def mock_test_connection(*args, **kwargs):
-            return {
-                "status": "connected",
-                "instance_type": "cloud",
-                "username": "testuser"
-            }
+            return {"status": "connected", "instance_type": "cloud", "username": "testuser"}
 
-        monkeypatch.setattr(
-            "app.services.bitbucket_client.test_connection",
-            mock_test_connection
-        )
+        monkeypatch.setattr("app.services.bitbucket_client.test_connection", mock_test_connection)
 
         response = await client.post(
             "/api/v1/settings/bitbucket/test",
@@ -398,8 +367,8 @@ class TestBitbucketSettings:
             json={
                 "base_url": "https://bitbucket.org",
                 "email": "user@example.com",
-                "api_token": "password"
-            }
+                "api_token": "password",
+            },
         )
 
         assert response.status_code == 200

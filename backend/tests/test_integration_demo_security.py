@@ -20,7 +20,9 @@ def use_real_integration_access():
         app.dependency_overrides.pop(require_integration_access, None)
 
 
-async def _create_auth_headers(db_session, suffix: str, *, privileged: bool = False) -> dict[str, str]:
+async def _create_auth_headers(
+    db_session, suffix: str, *, privileged: bool = False
+) -> dict[str, str]:
     user = User(
         email=f"integration-{suffix}@example.com",
         username=f"integration-{suffix}",
@@ -159,7 +161,9 @@ async def test_confluence_connect_accepts_authenticated_json_body_and_rejects_qu
         del func, args, kwargs
         return None
 
-    monkeypatch.setattr("app.api.api_v1.endpoints.confluence._call_confluence", _fake_call_confluence)
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.confluence._call_confluence", _fake_call_confluence
+    )
     monkeypatch.setattr(
         "app.api.api_v1.endpoints.confluence.confluence_service.status",
         lambda: {"configured": True},
@@ -199,7 +203,9 @@ async def test_confluence_connect_allows_unauthenticated_demo_bypass(
         del func, args, kwargs
         return None
 
-    monkeypatch.setattr("app.api.api_v1.endpoints.confluence._call_confluence", _fake_call_confluence)
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.confluence._call_confluence", _fake_call_confluence
+    )
     monkeypatch.setattr(
         "app.api.api_v1.endpoints.confluence.confluence_service.status",
         lambda: {"configured": True},

@@ -118,7 +118,9 @@ async def test_sync_task_heartbeat_lifecycle(db_session):
 
 
 @pytest.mark.asyncio
-async def test_sync_tasks_endpoint_no_side_effect_on_project_scoped_list_request(client, db_session):
+async def test_sync_tasks_endpoint_no_side_effect_on_project_scoped_list_request(
+    client, db_session
+):
     project = Project(jira_key="RECAP", name="Recovery API Project", status="active")
     db_session.add(project)
     await db_session.commit()

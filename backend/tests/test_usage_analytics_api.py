@@ -79,9 +79,7 @@ async def test_track_batch_persists_all(client, db_session):
             "sessionId": "session-B",
         },
     ]
-    response = await client.post(
-        f"{API_PREFIX}/track/batch", json={"events": events}
-    )
+    response = await client.post(f"{API_PREFIX}/track/batch", json={"events": events})
     assert response.status_code == 201, response.text
     assert response.json()["accepted"] == 2
 
@@ -484,12 +482,8 @@ async def test_strict_endpoints_reject_no_token():
 
     saved = {
         get_current_user: app.dependency_overrides.pop(get_current_user, None),
-        get_current_user_strict: app.dependency_overrides.pop(
-            get_current_user_strict, None
-        ),
-        require_integration_access: app.dependency_overrides.pop(
-            require_integration_access, None
-        ),
+        get_current_user_strict: app.dependency_overrides.pop(get_current_user_strict, None),
+        require_integration_access: app.dependency_overrides.pop(require_integration_access, None),
     }
     saved_debug = app_settings.DEBUG
     # DEBUG=False removes the demo-fallback path entirely so the test
@@ -506,11 +500,7 @@ async def test_strict_endpoints_reject_no_token():
             assert r.status_code == 401, r.text
             r = await no_auth_client.post(
                 f"{API_PREFIX}/track/batch",
-                json={
-                    "events": [
-                        {"eventName": "page_view", "timestamp": ts, "sessionId": "s"}
-                    ]
-                },
+                json={"events": [{"eventName": "page_view", "timestamp": ts, "sessionId": "s"}]},
             )
             assert r.status_code == 401, r.text
             for path in (
@@ -547,12 +537,8 @@ async def test_track_returns_404_for_jwt_without_user_row():
 
     saved = {
         get_current_user: app.dependency_overrides.pop(get_current_user, None),
-        get_current_user_strict: app.dependency_overrides.pop(
-            get_current_user_strict, None
-        ),
-        require_integration_access: app.dependency_overrides.pop(
-            require_integration_access, None
-        ),
+        get_current_user_strict: app.dependency_overrides.pop(get_current_user_strict, None),
+        require_integration_access: app.dependency_overrides.pop(require_integration_access, None),
     }
     try:
         token = create_access_token({"sub": "ghost-user@example.com"})
@@ -575,9 +561,7 @@ async def test_track_returns_404_for_jwt_without_user_row():
 
 
 @pytest.mark.asyncio
-async def test_onboarding_skip_at_later_step_does_not_inflate_step0_dropoff(
-    client, db_session
-):
+async def test_onboarding_skip_at_later_step_does_not_inflate_step0_dropoff(client, db_session):
     """A skip emitted from step 1 must not be charged to step 0 attrition."""
     from app.services import analytics_service
 
@@ -621,9 +605,7 @@ async def test_onboarding_skip_at_later_step_does_not_inflate_step0_dropoff(
 
 
 @pytest.mark.asyncio
-async def test_onboarding_dropoff_includes_start_to_first_step_attrition(
-    client, db_session
-):
+async def test_onboarding_dropoff_includes_start_to_first_step_attrition(client, db_session):
     """Attempts that emit `onboarding_started` and abandon before any step
     must be reflected in `dropOffStep` as step 0. Without this, the most
     common abandonment case (immediate drop) is silently invisible."""

@@ -7,7 +7,12 @@ from datetime import datetime, timedelta, timezone
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from app.api.api_v1.endpoints.git.metrics import histogram_counts as _histogram_counts, calculate_pr_metrics as pull_request_metrics, RECENT_THROUGHPUT_DAYS, PR_METRICS_SAMPLE_LIMIT
+from app.api.api_v1.endpoints.git.metrics import (
+    histogram_counts as _histogram_counts,
+    calculate_pr_metrics as pull_request_metrics,
+    RECENT_THROUGHPUT_DAYS,
+    PR_METRICS_SAMPLE_LIMIT,
+)
 
 
 class _DummyResult:
@@ -45,8 +50,8 @@ async def test_pull_request_metrics_aggregation():
     pr_recent = SimpleNamespace(
         id=1,
         number=101,
-        title='Recent PR',
-        provider='github',
+        title="Recent PR",
+        provider="github",
         cycle_time_hours=4.0,
         lead_time_hours=4.5,
         time_to_first_review_hours=2.0,
@@ -55,15 +60,15 @@ async def test_pull_request_metrics_aggregation():
         created_at=recent_iso,
         merged_at=recent_iso,
         closed_at=recent_iso,
-        state='merged',
-        jira_keys=['ABC-1'],
+        state="merged",
+        jira_keys=["ABC-1"],
     )
 
     pr_old = SimpleNamespace(
         id=2,
         number=102,
-        title='Older PR',
-        provider='github',
+        title="Older PR",
+        provider="github",
         cycle_time_hours=30.0,
         lead_time_hours=32.0,
         time_to_first_review_hours=None,
@@ -72,30 +77,36 @@ async def test_pull_request_metrics_aggregation():
         created_at=older_iso,
         merged_at=older_iso,
         closed_at=older_iso,
-        state='closed',
-        jira_keys=['ABC-2'],
+        state="closed",
+        jira_keys=["ABC-2"],
     )
 
     db = _DummyDB([pr_recent, pr_old])
 
-    metrics_all = await pull_request_metrics(project_id=None, provider='github', limit=None, since_days=90, db=db)
+    metrics_all = await pull_request_metrics(
+        project_id=None, provider="github", limit=None, since_days=90, db=db
+    )
 
-    assert metrics_all['total'] == 2
-    assert metrics_all['cycle_samples'] == 2
-    assert metrics_all['lead_samples'] == 2
-    assert metrics_all['first_review_samples'] == 1
-    assert metrics_all['recent_throughput']['days'] == RECENT_THROUGHPUT_DAYS
-    assert metrics_all['recent_throughput']['merged'] == 1
-    assert metrics_all['histogram']['cycle_counts'][0] == 1
-    assert metrics_all['histogram']['cycle_counts'][4] == 1
-    assert metrics_all['rework_rate'] == pytest.approx(0.5)
-    assert metrics_all['sample_prs']
-    assert len(metrics_all['sample_prs']) <= PR_METRICS_SAMPLE_LIMIT
-    assert metrics_all['cache_hit'] is False
+    assert metrics_all["total"] == 2
+    assert metrics_all["cycle_samples"] == 2
+    assert metrics_all["lead_samples"] == 2
+    assert metrics_all["first_review_samples"] == 1
+    assert metrics_all["recent_throughput"]["days"] == RECENT_THROUGHPUT_DAYS
+    assert metrics_all["recent_throughput"]["merged"] == 1
+    assert metrics_all["histogram"]["cycle_counts"][0] == 1
+    assert metrics_all["histogram"]["cycle_counts"][4] == 1
+    assert metrics_all["rework_rate"] == pytest.approx(0.5)
+    assert metrics_all["sample_prs"]
+    assert len(metrics_all["sample_prs"]) <= PR_METRICS_SAMPLE_LIMIT
+    assert metrics_all["cache_hit"] is False
 
-    metrics_cached = await pull_request_metrics(project_id=None, provider='github', limit=None, since_days=90, db=db)
-    assert metrics_cached['cache_hit'] is True
+    metrics_cached = await pull_request_metrics(
+        project_id=None, provider="github", limit=None, since_days=90, db=db
+    )
+    assert metrics_cached["cache_hit"] is True
 
-    metrics_recent = await pull_request_metrics(project_id=None, provider='github', since_days=14, db=db)
-    assert metrics_recent['total'] == 1
-    assert all((sample.get('number') == 101) for sample in metrics_recent['sample_prs'])
+    metrics_recent = await pull_request_metrics(
+        project_id=None, provider="github", since_days=14, db=db
+    )
+    assert metrics_recent["total"] == 1
+    assert all((sample.get("number") == 101) for sample in metrics_recent["sample_prs"])

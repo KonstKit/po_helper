@@ -52,7 +52,9 @@ async def test_sync_project_imports_commits_and_prs(monkeypatch, async_session: 
     async_session.add(repository)
     await async_session.flush()
 
-    project_repo = ProjectRepository(project_id=project.id, repository_id=repository.id, is_primary=True)
+    project_repo = ProjectRepository(
+        project_id=project.id, repository_id=repository.id, is_primary=True
+    )
     async_session.add(project_repo)
 
     token_bundle = json.dumps({"api_token": "dummy-token"})
@@ -86,8 +88,12 @@ async def test_sync_project_imports_commits_and_prs(monkeypatch, async_session: 
         }
     ]
 
-    monkeypatch.setattr(git_import_service, "_fetch_github_commits", lambda config, repo_slug: commit_payload)
-    monkeypatch.setattr(git_import_service, "_fetch_github_pull_requests", lambda config, repo_slug: pr_payload)
+    monkeypatch.setattr(
+        git_import_service, "_fetch_github_commits", lambda config, repo_slug: commit_payload
+    )
+    monkeypatch.setattr(
+        git_import_service, "_fetch_github_pull_requests", lambda config, repo_slug: pr_payload
+    )
 
     async def _fake_ensure_branch(db: AsyncSession, repo: Repository, config):
         return repo.default_branch or "main"
@@ -112,7 +118,5 @@ async def test_sync_project_imports_commits_and_prs(monkeypatch, async_session: 
     ).scalar_one()
     assert pr_artifact.meta.get("repo") == "org/repo"
 
-    link_count = (
-        await async_session.execute(select(ArtifactLink))
-    ).scalars().all()
+    link_count = (await async_session.execute(select(ArtifactLink))).scalars().all()
     assert len(link_count) >= 2

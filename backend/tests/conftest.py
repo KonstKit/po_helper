@@ -114,15 +114,11 @@ def pytest_collection_modifyitems(config, items):
             continue
 
         if not run_quarantined:
-            item.add_marker(
-                pytest.mark.skip(reason=build_flaky_quarantine_skip_reason(metadata))
-            )
+            item.add_marker(pytest.mark.skip(reason=build_flaky_quarantine_skip_reason(metadata)))
 
     if policy_errors:
         details = "\n- ".join(policy_errors)
-        raise pytest.UsageError(
-            "Invalid flaky_quarantine marker configuration:\n- " + details
-        )
+        raise pytest.UsageError("Invalid flaky_quarantine marker configuration:\n- " + details)
 
 
 @pytest_asyncio.fixture

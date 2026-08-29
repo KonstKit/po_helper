@@ -1,6 +1,7 @@
 """
 Tests for Git integration endpoints.
 """
+
 import json
 import hmac
 import hashlib
@@ -16,16 +17,13 @@ from app.models import Repository, Commit, PullRequest, Artifact, ArtifactLink
 @pytest.fixture
 def github_webhook_headers(github_webhook_secret: str):
     """Generate valid GitHub webhook headers."""
+
     def _headers(body: bytes) -> dict:
         signature = hmac.new(
-            github_webhook_secret.encode("utf-8"),
-            msg=body,
-            digestmod=hashlib.sha256
+            github_webhook_secret.encode("utf-8"), msg=body, digestmod=hashlib.sha256
         )
-        return {
-            "X-Hub-Signature-256": f"sha256={signature.hexdigest()}",
-            "X-GitHub-Event": "push"
-        }
+        return {"X-Hub-Signature-256": f"sha256={signature.hexdigest()}", "X-GitHub-Event": "push"}
+
     return _headers
 
 
@@ -38,10 +36,7 @@ def github_webhook_secret():
 @pytest.fixture
 def gitlab_webhook_headers(gitlab_webhook_secret: str):
     """Generate valid GitLab webhook headers."""
-    return {
-        "X-Gitlab-Token": gitlab_webhook_secret,
-        "Content-Type": "application/json"
-    }
+    return {"X-Gitlab-Token": gitlab_webhook_secret, "Content-Type": "application/json"}
 
 
 @pytest.fixture
@@ -59,39 +54,28 @@ class TestGitWebhooks:
         db_session: AsyncSession,
         github_webhook_headers,
         github_webhook_secret,
-        monkeypatch
+        monkeypatch,
     ):
         """Test GitHub push webhook processing."""
         monkeypatch.setattr("app.core.config.settings.GITHUB_WEBHOOK_SECRET", github_webhook_secret)
 
         payload = {
             "ref": "refs/heads/main",
-            "repository": {
-                "full_name": "owner/repo",
-                "name": "repo",
-                "owner": {"login": "owner"}
-            },
+            "repository": {"full_name": "owner/repo", "name": "repo", "owner": {"login": "owner"}},
             "commits": [
                 {
                     "id": "abc123",
                     "message": "Fix bug PROJ-123",
-                    "author": {
-                        "name": "John Doe",
-                        "email": "john@example.com"
-                    },
-                    "url": "https://github.com/owner/repo/commit/abc123"
+                    "author": {"name": "John Doe", "email": "john@example.com"},
+                    "url": "https://github.com/owner/repo/commit/abc123",
                 }
-            ]
+            ],
         }
 
         body = json.dumps(payload).encode("utf-8")
         headers = github_webhook_headers(body)
 
-        response = await client.post(
-            "/api/v1/git/webhooks/github",
-            content=body,
-            headers=headers
-        )
+        response = await client.post("/api/v1/git/webhooks/github", content=body, headers=headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -118,16 +102,14 @@ class TestGitWebhooks:
         db_session: AsyncSession,
         github_webhook_headers,
         github_webhook_secret,
-        monkeypatch
+        monkeypatch,
     ):
         """Test GitHub pull request webhook processing."""
         monkeypatch.setattr("app.core.config.settings.GITHUB_WEBHOOK_SECRET", github_webhook_secret)
 
         payload = {
             "action": "opened",
-            "repository": {
-                "full_name": "owner/repo"
-            },
+            "repository": {"full_name": "owner/repo"},
             "pull_request": {
                 "number": 42,
                 "title": "Add feature PROJ-456",
@@ -136,19 +118,15 @@ class TestGitWebhooks:
                 "user": {"login": "johndoe"},
                 "html_url": "https://github.com/owner/repo/pull/42",
                 "created_at": "2024-01-01T00:00:00Z",
-                "head": {"sha": "def456"}
-            }
+                "head": {"sha": "def456"},
+            },
         }
 
         body = json.dumps(payload).encode("utf-8")
         headers = github_webhook_headers(body)
         headers["X-GitHub-Event"] = "pull_request"
 
-        response = await client.post(
-            "/api/v1/git/webhooks/github",
-            content=body,
-            headers=headers
-        )
+        response = await client.post("/api/v1/git/webhooks/github", content=body, headers=headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -162,7 +140,7 @@ class TestGitWebhooks:
         db_session: AsyncSession,
         gitlab_webhook_headers,
         gitlab_webhook_secret,
-        monkeypatch
+        monkeypatch,
     ):
         """Test GitLab push webhook processing."""
         monkeypatch.setattr("app.core.config.settings.GITLAB_WEBHOOK_SECRET", gitlab_webhook_secret)
@@ -170,26 +148,19 @@ class TestGitWebhooks:
         payload = {
             "object_kind": "push",
             "ref": "refs/heads/main",
-            "project": {
-                "path_with_namespace": "group/project"
-            },
+            "project": {"path_with_namespace": "group/project"},
             "commits": [
                 {
                     "id": "xyz789",
                     "message": "Update docs TASK-111",
-                    "author": {
-                        "name": "Jane Smith",
-                        "email": "jane@example.com"
-                    },
-                    "url": "https://gitlab.com/group/project/-/commit/xyz789"
+                    "author": {"name": "Jane Smith", "email": "jane@example.com"},
+                    "url": "https://gitlab.com/group/project/-/commit/xyz789",
                 }
-            ]
+            ],
         }
 
         response = await client.post(
-            "/api/v1/git/webhooks/gitlab",
-            json=payload,
-            headers=gitlab_webhook_headers
+            "/api/v1/git/webhooks/gitlab", json=payload, headers=gitlab_webhook_headers
         )
 
         assert response.status_code == 200
@@ -197,11 +168,7 @@ class TestGitWebhooks:
         assert data["ok"] is True
         assert data["event"] == "push"
 
-    async def test_invalid_github_signature(
-        self,
-        client: AsyncClient,
-        monkeypatch
-    ):
+    async def test_invalid_github_signature(self, client: AsyncClient, monkeypatch):
         """Test GitHub webhook with invalid signature."""
         monkeypatch.setattr("app.core.config.settings.GITHUB_WEBHOOK_SECRET", "real-secret")
 
@@ -211,10 +178,7 @@ class TestGitWebhooks:
         response = await client.post(
             "/api/v1/git/webhooks/github",
             content=body,
-            headers={
-                "X-Hub-Signature-256": "sha256=invalid",
-                "X-GitHub-Event": "push"
-            }
+            headers={"X-Hub-Signature-256": "sha256=invalid", "X-GitHub-Event": "push"},
         )
 
         assert response.status_code == 401
@@ -225,10 +189,7 @@ class TestGitMetrics:
     """Test metrics endpoints."""
 
     async def test_pull_request_list(
-        self,
-        client: AsyncClient,
-        db_session: AsyncSession,
-        auth_headers
+        self, client: AsyncClient, db_session: AsyncSession, auth_headers
     ):
         """Test listing pull requests."""
         # Create test data
@@ -245,15 +206,12 @@ class TestGitMetrics:
             author_login="testuser",
             opened_at=datetime.now(),
             cycle_time_hours=24.5,
-            lead_time_hours=36.2
+            lead_time_hours=36.2,
         )
         db_session.add(pr)
         await db_session.commit()
 
-        response = await client.get(
-            "/api/v1/git/pull-requests",
-            headers=auth_headers
-        )
+        response = await client.get("/api/v1/git/pull-requests", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -263,10 +221,7 @@ class TestGitMetrics:
         assert data["pull_requests"][0]["cycle_time_hours"] == 24.5
 
     async def test_pr_metrics_calculation(
-        self,
-        client: AsyncClient,
-        db_session: AsyncSession,
-        auth_headers
+        self, client: AsyncClient, db_session: AsyncSession, auth_headers
     ):
         """Test PR metrics calculation."""
         # Create test PRs with various metrics
@@ -287,16 +242,14 @@ class TestGitMetrics:
                 cycle_time_hours=12.0 + i * 4,
                 lead_time_hours=15.0 + i * 4,
                 time_to_first_review_hours=2.0 + i,
-                rework_count=1 if i % 2 == 0 else 0
+                rework_count=1 if i % 2 == 0 else 0,
             )
             db_session.add(pr)
 
         await db_session.commit()
 
         response = await client.get(
-            "/api/v1/git/pr-metrics",
-            headers=auth_headers,
-            params={"since_days": 30}
+            "/api/v1/git/pr-metrics", headers=auth_headers, params={"since_days": 30}
         )
 
         assert response.status_code == 200
@@ -312,10 +265,7 @@ class TestGitMetrics:
         assert len(data["sample_prs"]) <= 20
 
     async def test_commits_for_issue(
-        self,
-        client: AsyncClient,
-        db_session: AsyncSession,
-        auth_headers
+        self, client: AsyncClient, db_session: AsyncSession, auth_headers
     ):
         """Test getting commits for a JIRA issue."""
         # Create test data
@@ -329,22 +279,16 @@ class TestGitMetrics:
             message="Fix bug PROJ-100",
             author_name="Developer",
             author_email="dev@example.com",
-            jira_keys=["PROJ-100"]
+            jira_keys=["PROJ-100"],
         )
         db_session.add(commit)
 
         # Create artifacts
         issue_artifact = Artifact(
-            type="jira_issue",
-            source="jira",
-            external_id="PROJ-100",
-            title="Bug in system"
+            type="jira_issue", source="jira", external_id="PROJ-100", title="Bug in system"
         )
         commit_artifact = Artifact(
-            type="commit",
-            source="github",
-            external_id="abc123def456",
-            title="Fix bug PROJ-100"
+            type="commit", source="github", external_id="abc123def456", title="Fix bug PROJ-100"
         )
         db_session.add(issue_artifact)
         db_session.add(commit_artifact)
@@ -355,15 +299,12 @@ class TestGitMetrics:
             from_artifact_id=commit_artifact.id,
             to_artifact_id=issue_artifact.id,
             link_type="relates_to",
-            confidence=0.9
+            confidence=0.9,
         )
         db_session.add(link)
         await db_session.commit()
 
-        response = await client.get(
-            "/api/v1/git/commits/PROJ-100",
-            headers=auth_headers
-        )
+        response = await client.get("/api/v1/git/commits/PROJ-100", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -377,10 +318,7 @@ class TestCIIntegration:
     """Test CI/CD integration endpoints."""
 
     async def test_ci_results_with_junit(
-        self,
-        client: AsyncClient,
-        db_session: AsyncSession,
-        auth_headers
+        self, client: AsyncClient, db_session: AsyncSession, auth_headers
     ):
         """Test CI results ingestion with JUnit XML."""
         junit_xml = """<?xml version="1.0" encoding="UTF-8"?>
@@ -401,18 +339,11 @@ class TestCIIntegration:
             "commit_sha": "abc123",
             "pr_number": 42,
             "junit_xml": junit_xml,
-            "coverage": {
-                "line": 85.5,
-                "branch": 72.3
-            },
-            "report_url": "https://jenkins.example.com/job/123"
+            "coverage": {"line": 85.5, "branch": 72.3},
+            "report_url": "https://jenkins.example.com/job/123",
         }
 
-        response = await client.post(
-            "/api/v1/git/ci/results",
-            json=payload,
-            headers=auth_headers
-        )
+        response = await client.post("/api/v1/git/ci/results", json=payload, headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -423,11 +354,7 @@ class TestCIIntegration:
         assert data["tests_skipped"] == 1
         assert data["coverage_saved"] is True
 
-    async def test_ci_results_with_cobertura(
-        self,
-        client: AsyncClient,
-        auth_headers
-    ):
+    async def test_ci_results_with_cobertura(self, client: AsyncClient, auth_headers):
         """Test CI results with Cobertura coverage."""
         cobertura_xml = """<?xml version="1.0"?>
         <coverage line-rate="0.90" branch-rate="0.85">
@@ -449,14 +376,10 @@ class TestCIIntegration:
         payload = {
             "provider": "github-actions",
             "commit_sha": "def456",
-            "cobertura_xml": cobertura_xml
+            "cobertura_xml": cobertura_xml,
         }
 
-        response = await client.post(
-            "/api/v1/git/ci/results",
-            json=payload,
-            headers=auth_headers
-        )
+        response = await client.post("/api/v1/git/ci/results", json=payload, headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -469,10 +392,7 @@ class TestRepositoryManagement:
     """Test repository management endpoints."""
 
     async def test_list_repositories(
-        self,
-        client: AsyncClient,
-        db_session: AsyncSession,
-        auth_headers
+        self, client: AsyncClient, db_session: AsyncSession, auth_headers
     ):
         """Test listing repositories."""
         # Create test repositories
@@ -484,10 +404,7 @@ class TestRepositoryManagement:
             db_session.add(repo)
         await db_session.commit()
 
-        response = await client.get(
-            "/api/v1/git/repositories",
-            headers=auth_headers
-        )
+        response = await client.get("/api/v1/git/repositories", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()

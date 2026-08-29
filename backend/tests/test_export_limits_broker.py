@@ -15,6 +15,7 @@ Two corner cases that the happy-path export tests don't pin down:
     terminal ``failed`` with a readable message and surface HTTP 503, not leak a
     raw 500 or leave the task stuck in ``pending``.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -127,9 +128,7 @@ async def test_broker_down_returns_503_and_persists_failed(client, broker_projec
     # The task row must be persisted as a terminal failure with a usable message.
     async with AsyncSessionLocal() as s:
         task = (
-            await s.execute(
-                select(ExportTask).where(ExportTask.project_id == broker_project)
-            )
+            await s.execute(select(ExportTask).where(ExportTask.project_id == broker_project))
         ).scalar_one()
         assert task.status == "failed"
         assert task.error_message

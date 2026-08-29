@@ -28,7 +28,9 @@ class _DummyJiraService:
 
 
 @pytest.mark.asyncio
-async def test_sync_boards_deduplicates_sprints_across_multiple_boards(monkeypatch: pytest.MonkeyPatch):
+async def test_sync_boards_deduplicates_sprints_across_multiple_boards(
+    monkeypatch: pytest.MonkeyPatch,
+):
     service = BoardSyncService(_DummyJiraService())  # type: ignore[arg-type]
     processed_sprint_ids: list[int] = []
     heartbeat_payloads: list[dict[str, int]] = []

@@ -43,15 +43,12 @@ def validate_flaky_quarantine_metadata(
     try:
         expires = date.fromisoformat(expires_text)
     except ValueError as exc:
-        raise ValueError(
-            "flaky_quarantine expires must be an ISO date (YYYY-MM-DD)"
-        ) from exc
+        raise ValueError("flaky_quarantine expires must be an ISO date (YYYY-MM-DD)") from exc
 
     reference_day = today or date.today()
     if expires < reference_day:
         raise ValueError(
-            f"flaky_quarantine expired on {expires.isoformat()} "
-            f"(issue={issue}, owner={owner})"
+            f"flaky_quarantine expired on {expires.isoformat()} " f"(issue={issue}, owner={owner})"
         )
 
     return FlakyQuarantineMetadata(issue=issue, owner=owner, expires=expires)

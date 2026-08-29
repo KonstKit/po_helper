@@ -249,9 +249,7 @@ async def test_health_ready_stays_200_when_queue_backlog_is_high(
     assert data["dependencies"]["queue"]["ok"] is True
 
 
-async def test_health_alerts_use_server_error_counter_only(
-    monkeypatch: Any, client: Any
-) -> None:
+async def test_health_alerts_use_server_error_counter_only(monkeypatch: Any, client: Any) -> None:
     from app.api.api_v1.endpoints import health as health_endpoint
 
     async def _queue_ok() -> tuple[bool, str, dict[str, Any]]:
@@ -267,12 +265,16 @@ async def test_health_alerts_use_server_error_counter_only(
         }
 
     monkeypatch.setattr("app.api.api_v1.endpoints.health._check_celery_queue_readiness", _queue_ok)
-    monkeypatch.setattr("app.api.api_v1.endpoints.health._recent_sync_failure_alerts", _no_sync_failures)
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health._recent_sync_failure_alerts", _no_sync_failures
+    )
     monkeypatch.setattr(health_endpoint.settings, "ALERT_API_ERROR_THRESHOLD", 2)
     monkeypatch.setattr(
         health_endpoint.metrics,
         "recent_counter_sum",
-        lambda name, *_args, **_kwargs: {"http_request_errors": 1, "http_requests": 100}.get(name, 0),
+        lambda name, *_args, **_kwargs: {"http_request_errors": 1, "http_requests": 100}.get(
+            name, 0
+        ),
     )
 
     response = await client.get("/api/v1/health/alerts")
@@ -283,9 +285,7 @@ async def test_health_alerts_use_server_error_counter_only(
     assert payload["alerts"] == []
 
 
-async def test_health_alerts_include_backlog_high_signal(
-    monkeypatch: Any, client: Any
-) -> None:
+async def test_health_alerts_include_backlog_high_signal(monkeypatch: Any, client: Any) -> None:
     async def _queue_backlog_high() -> tuple[bool, str, dict[str, Any]]:
         return True, "backlog_high", {"required": True, "queue_name": "celery", "backlog": 101}
 
@@ -306,7 +306,9 @@ async def test_health_alerts_include_backlog_high_signal(
         "app.api.api_v1.endpoints.health._check_celery_queue_readiness",
         _queue_backlog_high,
     )
-    monkeypatch.setattr("app.api.api_v1.endpoints.health._recent_sync_failure_alerts", _no_sync_failures)
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health._recent_sync_failure_alerts", _no_sync_failures
+    )
 
     response = await client.get("/api/v1/health/alerts")
     payload = response.json()
@@ -501,9 +503,7 @@ async def test_health_alerts_do_not_trigger_on_client_error_noise(
     assert payload["alerts"] == []
 
 
-async def test_health_ready_degrades_when_queue_probe_fails(
-    monkeypatch: Any, client: Any
-) -> None:
+async def test_health_ready_degrades_when_queue_probe_fails(monkeypatch: Any, client: Any) -> None:
     async def _db_ready() -> tuple[bool, str]:
         return True, "ok"
 
@@ -547,7 +547,9 @@ async def test_health_alerts_include_queue_probe_unavailable_signal(
         "app.api.api_v1.endpoints.health._check_celery_queue_readiness",
         _queue_probe_error,
     )
-    monkeypatch.setattr("app.api.api_v1.endpoints.health._recent_sync_failure_alerts", _no_sync_failures)
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.health._recent_sync_failure_alerts", _no_sync_failures
+    )
     monkeypatch.setattr(settings, "CELERY_ENABLED", True)
     monkeypatch.setattr(
         "app.api.api_v1.endpoints.health.metrics.recent_counter_sum",

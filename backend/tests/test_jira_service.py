@@ -10,7 +10,14 @@ os.environ["SKIP_SERVICE_AUTOCONNECT"] = "1"
 from app.services.jira_service import JiraAuthError, JiraService, JiraUnexpectedResponse
 
 
-def _make_response(status: int = 200, *, data=None, text: str = "{}", ctype: str = "application/json", url: str = "https://example.atlassian.net/api") -> Response:
+def _make_response(
+    status: int = 200,
+    *,
+    data=None,
+    text: str = "{}",
+    ctype: str = "application/json",
+    url: str = "https://example.atlassian.net/api",
+) -> Response:
     resp = Response()
     resp.status_code = status
     resp.url = url

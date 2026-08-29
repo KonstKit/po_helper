@@ -6,6 +6,7 @@ contains the expected matrix data, plus empty-matrix and unsupported-format
 (terminal failure) behavior. Renderers use the already-declared backend
 dependencies (openpyxl for xlsx, reportlab for pdf); no new renderer is added.
 """
+
 from __future__ import annotations
 
 import os

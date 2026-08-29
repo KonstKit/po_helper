@@ -35,37 +35,39 @@ async def test_team_health_metrics(async_session: AsyncSession):
 
     now = datetime.now(timezone.utc)
 
-    async_session.add_all([
-        Task(
-            jira_id="TASK-1",
-            key="TASK-1",
-            summary="Completed work",
-            status="Done",
-            project_id=project.id,
-            created_date=now - timedelta(days=5),
-            resolved_date=now - timedelta(days=1),
-            estimate_hours=5.0,
-            spent_hours=6.0,
-        ),
-        Task(
-            jira_id="TASK-2",
-            key="TASK-2",
-            summary="Working item",
-            status="In Progress",
-            project_id=project.id,
-            estimate_hours=3.0,
-            spent_hours=1.5,
-            is_blocker=True,
-        ),
-        Task(
-            jira_id="TASK-3",
-            key="TASK-3",
-            summary="Queued",
-            status="Todo",
-            project_id=project.id,
-            due_date=now - timedelta(days=2),
-        ),
-    ])
+    async_session.add_all(
+        [
+            Task(
+                jira_id="TASK-1",
+                key="TASK-1",
+                summary="Completed work",
+                status="Done",
+                project_id=project.id,
+                created_date=now - timedelta(days=5),
+                resolved_date=now - timedelta(days=1),
+                estimate_hours=5.0,
+                spent_hours=6.0,
+            ),
+            Task(
+                jira_id="TASK-2",
+                key="TASK-2",
+                summary="Working item",
+                status="In Progress",
+                project_id=project.id,
+                estimate_hours=3.0,
+                spent_hours=1.5,
+                is_blocker=True,
+            ),
+            Task(
+                jira_id="TASK-3",
+                key="TASK-3",
+                summary="Queued",
+                status="Todo",
+                project_id=project.id,
+                due_date=now - timedelta(days=2),
+            ),
+        ]
+    )
     await async_session.commit()
 
     result = await get_project_team_health(project.id, db=async_session)

@@ -13,6 +13,7 @@ no-op when the column already exists. ``downgrade()`` removes the column again.
 This proves the full round-trip (upgrade -> upgrade -> downgrade) leaves the
 schema in the expected state at every step.
 """
+
 from __future__ import annotations
 
 import importlib.util

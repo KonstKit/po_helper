@@ -149,7 +149,11 @@ async def test_source_health_offloads_blocking_validation_to_worker_thread(
     )
 
     assert observed["func"] is validator
-    expected_email = None if kind == "jira" and getattr(health_module.settings, "JIRA_FORCE_PAT", True) else f"{kind}@example.com"
+    expected_email = (
+        None
+        if kind == "jira" and getattr(health_module.settings, "JIRA_FORCE_PAT", True)
+        else f"{kind}@example.com"
+    )
     assert observed["args"] == (
         f"https://{kind}.example.com",
         expected_email,
@@ -197,7 +201,9 @@ async def test_manual_repair_does_not_trigger_git_post_sync_twice(db_session, mo
         lambda: _ArtifactSyncService(),
     )
     monkeypatch.setattr(links_module, "AsyncSessionLocal", lambda: _FakeGitSessionContext())
-    monkeypatch.setattr(links_module.git_import_service, "sync_project", AsyncMock(return_value=git_result))
+    monkeypatch.setattr(
+        links_module.git_import_service, "sync_project", AsyncMock(return_value=git_result)
+    )
     monkeypatch.setattr(links_module, "run_traceability_post_sync", post_sync_mock)
 
     response = await links_module.backfill_artifacts(

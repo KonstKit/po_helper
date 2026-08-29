@@ -16,6 +16,7 @@ state is read from a fresh AsyncSessionLocal() to avoid WAL snapshot staleness.
 Mirrors the seed helpers and _suggestion_status pattern from
 tests/test_traceability_suggestions_workflow.py.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -144,9 +145,7 @@ async def mixed_batch(db_session):
 
 
 @pytest.mark.asyncio
-async def test_bulk_approve_mixed_batch_per_item_correctness(
-    client, mixed_batch, auth_headers
-):
+async def test_bulk_approve_mixed_batch_per_item_correctness(client, mixed_batch, auth_headers):
     valid = mixed_batch["valid"]
     duplicate = mixed_batch["duplicate"]
     cycle = mixed_batch["cycle"]

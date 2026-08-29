@@ -27,6 +27,7 @@ comparisons). The dedup is *sequential only* — a truly concurrent NULL-tenant
 insert is a known, documented limitation (see the ``create_link`` docstring's
 "Idempotency (sequential only)" note) and is intentionally not exercised here.
 """
+
 from __future__ import annotations
 
 import pytest
