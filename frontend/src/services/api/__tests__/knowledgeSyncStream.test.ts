@@ -24,6 +24,15 @@ class MockEventSource {
 
 describe('startConfluenceSyncStream', () => {
   beforeEach(() => {
+    if (typeof localStorage === 'undefined') {
+      const store = new Map<string, string>();
+      vi.stubGlobal('localStorage', {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, String(v)),
+        removeItem: (k: string) => void store.delete(k),
+        clear: () => void store.clear(),
+      });
+    }
     localStorage.clear();
     MockEventSource.instances = [];
     demoEnv.VITE_ALLOW_UNAUTHENTICATED_DEMO_API = 'false';
