@@ -7,6 +7,17 @@
  */
 import { trackEventsBatch } from './api/usageAnalyticsApi';
 
+// Safe accessor: in some vitest workers / SSR contexts localStorage is
+// undefined at module-eval time; the service must not crash on construction.
+const safeLocalStorage = (): Storage | undefined => {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+
 export interface AnalyticsEvent {
   eventName: string;
   eventData?: Record<string, unknown>;
@@ -118,7 +129,7 @@ class AnalyticsService {
   private hasAuthToken(): boolean {
     if (typeof window === 'undefined') return false;
     try {
-      return Boolean(localStorage.getItem('token'));
+      return Boolean(safeLocalStorage()?.getItem('token'));
     } catch {
       return false;
     }
@@ -147,7 +158,7 @@ class AnalyticsService {
   private currentOwnerMarker(): string | null {
     if (typeof window === 'undefined') return null;
     try {
-      const token = localStorage.getItem('token');
+      const token = safeLocalStorage()?.getItem('token');
       if (!token) return null;
       const payload = this.extractJwtPayload(token);
       const sub = typeof payload?.sub === 'string' ? payload.sub : null;
@@ -229,7 +240,7 @@ class AnalyticsService {
       // (see utils/logout.ts), and dropInheritedStateIfOwnerChanged()
       // consumes it after the new token is set.
       try {
-        localStorage.setItem(this.previousOwnerKey, liveOwner);
+        safeLocalStorage()?.setItem(this.previousOwnerKey, liveOwner);
       } catch {
         // localStorage write can fail in private/quota-limited contexts;
         // a missing previous owner just means we cannot detect cross-user
@@ -265,7 +276,7 @@ class AnalyticsService {
     if (typeof window === 'undefined') return;
     let previous: string | null = null;
     try {
-      previous = localStorage.getItem(this.previousOwnerKey);
+      previous = safeLocalStorage()?.getItem(this.previousOwnerKey) ?? null;
     } catch {
       previous = null;
     }
@@ -275,7 +286,7 @@ class AnalyticsService {
       // (call ordering issue) — clear the marker either way; nothing to
       // do until softResetForAuthError records a fresh one.
       try {
-        localStorage.removeItem(this.previousOwnerKey);
+        safeLocalStorage()?.removeItem(this.previousOwnerKey);
       } catch {
         // ignore
       }
@@ -284,7 +295,7 @@ class AnalyticsService {
     if (previous === current) {
       // Same user re-authenticated; preserved keys belong to them.
       try {
-        localStorage.removeItem(this.previousOwnerKey);
+        safeLocalStorage()?.removeItem(this.previousOwnerKey);
       } catch {
         // ignore
       }
@@ -300,15 +311,15 @@ class AnalyticsService {
       // back into memory, and the dashboard's "Export Local Cache" /
       // session-duration widgets would keep showing stale data until
       // new events overwrite it.
-      localStorage.removeItem(this.storageKey);
-      localStorage.removeItem('onboarding_metrics');
-      localStorage.removeItem('onboarding_progress');
-      localStorage.removeItem('onboarding_completed');
-      localStorage.removeItem('account_created_at');
-      localStorage.removeItem('first_login_at');
-      localStorage.removeItem('time_to_value_metrics');
-      localStorage.removeItem(this.pendingBatchKey);
-      localStorage.removeItem(this.pendingOwnerKey);
+      safeLocalStorage()?.removeItem(this.storageKey);
+      safeLocalStorage()?.removeItem('onboarding_metrics');
+      safeLocalStorage()?.removeItem('onboarding_progress');
+      safeLocalStorage()?.removeItem('onboarding_completed');
+      safeLocalStorage()?.removeItem('account_created_at');
+      safeLocalStorage()?.removeItem('first_login_at');
+      safeLocalStorage()?.removeItem('time_to_value_metrics');
+      safeLocalStorage()?.removeItem(this.pendingBatchKey);
+      safeLocalStorage()?.removeItem(this.pendingOwnerKey);
       const keys: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
@@ -316,8 +327,8 @@ class AnalyticsService {
           keys.push(k);
         }
       }
-      keys.forEach((k) => localStorage.removeItem(k));
-      localStorage.removeItem(this.previousOwnerKey);
+      keys.forEach((k) => safeLocalStorage()?.removeItem(k));
+      safeLocalStorage()?.removeItem(this.previousOwnerKey);
     } catch (e) {
       console.error('Failed to drop inherited analytics state:', e);
     }
@@ -397,7 +408,7 @@ class AnalyticsService {
           keys.push(key);
         }
       }
-      keys.forEach((k) => localStorage.removeItem(k));
+      keys.forEach((k) => safeLocalStorage()?.removeItem(k));
     } catch (e) {
       console.error('Failed to clear first-view markers:', e);
     }
@@ -409,7 +420,7 @@ class AnalyticsService {
 
   private loadEvents(): void {
     try {
-      const stored = localStorage.getItem(this.storageKey);
+      const stored = safeLocalStorage()?.getItem(this.storageKey);
       if (stored) {
         // Guard against non-array JSON (e.g. {}, 0, a partial/legacy write):
         // without this, this.events becomes a non-array and the next track()
@@ -427,7 +438,7 @@ class AnalyticsService {
     try {
       // Keep only last 1000 events to prevent localStorage bloat
       const recentEvents = this.events.slice(-1000);
-      localStorage.setItem(this.storageKey, JSON.stringify(recentEvents));
+      safeLocalStorage()?.setItem(this.storageKey, JSON.stringify(recentEvents));
     } catch (e) {
       console.error('Failed to save analytics events:', e);
     }
@@ -435,7 +446,7 @@ class AnalyticsService {
 
   private loadPendingBatch(): void {
     try {
-      const stored = localStorage.getItem(this.pendingBatchKey);
+      const stored = safeLocalStorage()?.getItem(this.pendingBatchKey);
       if (!stored) {
         this.pendingBatch = [];
         return;
@@ -445,14 +456,14 @@ class AnalyticsService {
       // product analytics. We only enforce this when both markers exist;
       // a legitimate first-time load on the same browser may have a saved
       // batch with no owner (legacy data) — keep that for retry.
-      const owner = localStorage.getItem(this.pendingOwnerKey);
+      const owner = safeLocalStorage()?.getItem(this.pendingOwnerKey);
       const currentOwner = this.currentOwnerMarker();
       if (owner && currentOwner && owner !== currentOwner) {
         console.warn(
           'Discarding persisted analytics batch: owner mismatch (different account)',
         );
-        localStorage.removeItem(this.pendingBatchKey);
-        localStorage.removeItem(this.pendingOwnerKey);
+        safeLocalStorage()?.removeItem(this.pendingBatchKey);
+        safeLocalStorage()?.removeItem(this.pendingOwnerKey);
         this.pendingBatch = [];
         return;
       }
@@ -467,13 +478,13 @@ class AnalyticsService {
   private savePendingBatch(): void {
     try {
       if (this.pendingBatch.length === 0) {
-        localStorage.removeItem(this.pendingBatchKey);
-        localStorage.removeItem(this.pendingOwnerKey);
+        safeLocalStorage()?.removeItem(this.pendingBatchKey);
+        safeLocalStorage()?.removeItem(this.pendingOwnerKey);
         // Empty queue means there is no owner to remember anymore.
         this.cachedOwnerMarker = null;
         return;
       }
-      localStorage.setItem(this.pendingBatchKey, JSON.stringify(this.pendingBatch));
+      safeLocalStorage()?.setItem(this.pendingBatchKey, JSON.stringify(this.pendingBatch));
       // Prefer the live JWT-derived marker; fall back to the cached one
       // captured by softResetForAuthError() before the token was wiped.
       // Without the fallback, a non-empty queue persisted after auth-
@@ -482,7 +493,7 @@ class AnalyticsService {
       // short-circuiting to "allow".
       const owner = this.currentOwnerMarker() ?? this.cachedOwnerMarker;
       if (owner) {
-        localStorage.setItem(this.pendingOwnerKey, owner);
+        safeLocalStorage()?.setItem(this.pendingOwnerKey, owner);
       }
     } catch (e) {
       console.error('Failed to persist pending analytics batch:', e);
@@ -517,7 +528,7 @@ class AnalyticsService {
     try {
       const now = Date.now();
       const readPreserved = (key: string): number | undefined => {
-        const raw = localStorage.getItem(key);
+        const raw = safeLocalStorage()?.getItem(key);
         if (!raw) return undefined;
         const parsed = Number(raw);
         return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
@@ -529,10 +540,10 @@ class AnalyticsService {
       // Persist raw baseline keys so the next reseed (after Clear Local Cache)
       // can recover the original timestamps instead of resetting them to "now".
       if (preservedCreated === undefined) {
-        localStorage.setItem('account_created_at', String(now));
+        safeLocalStorage()?.setItem('account_created_at', String(now));
       }
       if (preservedFirstLogin === undefined) {
-        localStorage.setItem('first_login_at', String(now));
+        safeLocalStorage()?.setItem('first_login_at', String(now));
       }
 
       // Each trackTimeToValue() call re-enters track() and updates
@@ -565,7 +576,7 @@ class AnalyticsService {
 
     // Update feature adoption metrics
     const adoptionKey = `feature_${pageName}_visited`;
-    localStorage.setItem(adoptionKey, Date.now().toString());
+    safeLocalStorage()?.setItem(adoptionKey, Date.now().toString());
   }
 
   /**
@@ -612,16 +623,16 @@ class AnalyticsService {
       case 'completed':
         metrics.completed = true;
         metrics.completedAt = Date.now();
-        localStorage.setItem('onboarding_completed', 'true');
+        safeLocalStorage()?.setItem('onboarding_completed', 'true');
         break;
 
       case 'skipped':
         metrics.skipped = true;
-        localStorage.setItem('onboarding_completed', 'true');
+        safeLocalStorage()?.setItem('onboarding_completed', 'true');
         break;
     }
 
-    localStorage.setItem(metricsKey, JSON.stringify(metrics));
+    safeLocalStorage()?.setItem(metricsKey, JSON.stringify(metrics));
     this.track(`onboarding_${action}`, data);
   }
 
@@ -630,7 +641,7 @@ class AnalyticsService {
    */
   getOnboardingMetrics(): OnboardingMetrics {
     try {
-      const stored = localStorage.getItem('onboarding_metrics');
+      const stored = safeLocalStorage()?.getItem('onboarding_metrics');
       if (stored) {
         return JSON.parse(stored);
       }
@@ -661,7 +672,7 @@ class AnalyticsService {
       typeof overrideTimestampMs === 'number' && Number.isFinite(overrideTimestampMs)
         ? overrideTimestampMs
         : Date.now();
-    localStorage.setItem(metricsKey, JSON.stringify(metrics));
+    safeLocalStorage()?.setItem(metricsKey, JSON.stringify(metrics));
     this.track('time_to_value_milestone', { milestone });
   }
 
@@ -670,7 +681,7 @@ class AnalyticsService {
    */
   getTimeToValueMetrics(): TimeToValueMetrics {
     try {
-      const stored = localStorage.getItem('time_to_value_metrics');
+      const stored = safeLocalStorage()?.getItem('time_to_value_metrics');
       if (stored) {
         return JSON.parse(stored);
       }
@@ -718,7 +729,7 @@ class AnalyticsService {
 
   private getFeatureVisit(feature: string): { visited: boolean; lastVisit?: number } {
     const key = `feature_${feature}_visited`;
-    const lastVisit = localStorage.getItem(key);
+    const lastVisit = safeLocalStorage()?.getItem(key);
 
     if (lastVisit) {
       return { visited: true, lastVisit: parseInt(lastVisit, 10) };
@@ -788,21 +799,21 @@ class AnalyticsService {
   clearLocalUiCache(options: { preserveSessionInvariant?: boolean } = {}): void {
     const { preserveSessionInvariant = false } = options;
     try {
-      localStorage.removeItem(this.storageKey);
+      safeLocalStorage()?.removeItem(this.storageKey);
       // onboarding_metrics is a derived aggregate that gets recomputed
       // from raw onboarding_* events, so it is safe to drop in both modes.
-      localStorage.removeItem('onboarding_metrics');
+      safeLocalStorage()?.removeItem('onboarding_metrics');
       if (!preserveSessionInvariant) {
         // Per-user UI state. Wiping these resets the onboarding wizard and
         // the TTV baseline, which is the contract of the dashboard
         // "Clear Local Cache" button. The auth-error path passes
         // preserveSessionInvariant so a returning user sees their
         // onboarded state survive a session expiry.
-        localStorage.removeItem('time_to_value_metrics');
-        localStorage.removeItem('onboarding_progress');
-        localStorage.removeItem('onboarding_completed');
-        localStorage.removeItem('account_created_at');
-        localStorage.removeItem('first_login_at');
+        safeLocalStorage()?.removeItem('time_to_value_metrics');
+        safeLocalStorage()?.removeItem('onboarding_progress');
+        safeLocalStorage()?.removeItem('onboarding_completed');
+        safeLocalStorage()?.removeItem('account_created_at');
+        safeLocalStorage()?.removeItem('first_login_at');
       }
       // Note: when preserveSessionInvariant is true we keep
       // `time_to_value_metrics` because it stores already-achieved local
@@ -811,7 +822,7 @@ class AnalyticsService {
       const keys = Object.keys(localStorage);
       keys.forEach(key => {
         if (key.startsWith('feature_') && key.endsWith('_visited')) {
-          localStorage.removeItem(key);
+          safeLocalStorage()?.removeItem(key);
         }
       });
     } catch (e) {
@@ -832,8 +843,8 @@ class AnalyticsService {
   clear(): void {
     this.clearLocalUiCache();
     try {
-      localStorage.removeItem(this.pendingBatchKey);
-      localStorage.removeItem(this.pendingOwnerKey);
+      safeLocalStorage()?.removeItem(this.pendingBatchKey);
+      safeLocalStorage()?.removeItem(this.pendingOwnerKey);
     } catch (e) {
       console.error('Failed to clear analytics transport queue:', e);
     }
@@ -866,7 +877,7 @@ class AnalyticsService {
     // appending — otherwise savePendingBatch below would rewrite the
     // owner marker and the next flush would attribute pre-login events
     // to the new user.
-    const owner = localStorage.getItem(this.pendingOwnerKey);
+    const owner = safeLocalStorage()?.getItem(this.pendingOwnerKey);
     const currentOwner = this.currentOwnerMarker();
     if (owner && currentOwner && owner !== currentOwner) {
       console.warn(
@@ -874,8 +885,8 @@ class AnalyticsService {
       );
       this.pendingBatch = [];
       try {
-        localStorage.removeItem(this.pendingBatchKey);
-        localStorage.removeItem(this.pendingOwnerKey);
+        safeLocalStorage()?.removeItem(this.pendingBatchKey);
+        safeLocalStorage()?.removeItem(this.pendingOwnerKey);
       } catch (e) {
         console.error('Failed to clear stale pending batch:', e);
       }
@@ -926,7 +937,7 @@ class AnalyticsService {
     // Re-check owner against the persisted marker. If the token rotated to
     // a different account between load and now (rare but possible across
     // multi-tab login flows), drop the batch instead of replaying it.
-    const owner = localStorage.getItem(this.pendingOwnerKey);
+    const owner = safeLocalStorage()?.getItem(this.pendingOwnerKey);
     const currentOwner = this.currentOwnerMarker();
     if (owner && currentOwner && owner !== currentOwner) {
       console.warn(

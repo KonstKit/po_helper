@@ -50,6 +50,27 @@ afterEach(() => {
   }
 });
 
+// jsdom in some vitest workers does not provision localStorage; provide a
+// minimal in-memory implementation so service singletons can evaluate.
+if (typeof localStorage === 'undefined') {
+  const store = new Map<string, string>();
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    get() {
+      return {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, String(v)),
+        removeItem: (k: string) => void store.delete(k),
+        clear: () => void store.clear(),
+        key: (i: number) => Array.from(store.keys())[i] ?? null,
+        get length() {
+          return store.size;
+        },
+      };
+    },
+  });
+}
+
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,

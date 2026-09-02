@@ -150,9 +150,12 @@ const ProjectDetail = () => {
     sprints: true,
     sprintInsights: true,
   });
+  const showToast = useCallback((t: { open: boolean; type: "success" | "error" | "info" | "warning"; msg: string }) => {
+    setToast(t);
+  }, []);
   const repo = useProjectRepositories({
     projectId: id,
-    showToast: (t) => setToast(t),
+    showToast,
   });
   const [toast, setToast] = useState<{
     open: boolean;

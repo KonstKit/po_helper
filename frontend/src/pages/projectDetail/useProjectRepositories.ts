@@ -69,14 +69,14 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
         setRepoBindings(updated);
       } catch (error) {
         if (showError) {
-          const message = getErrorMessage(error, "Failed to refresh repositories");
+          const message = getErrorMessage(error, "Failed to load repositories");
           showToast({ open: true, type: "error", msg: message });
         }
       } finally {
         setRepoLoading(false);
       }
     },
-    [id],
+    [id, showToast],
   );
 
   const performGitlabSearch = useCallback(
@@ -234,7 +234,33 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
     }
   };
 
-  // provider availability + initial bindings load (moved from the page, E6)
+  // initial bindings load with stale-response guard (review MF-02)
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    (async () => {
+      setRepoLoading(true);
+      try {
+        const data = await getProjectRepositories(Number(id));
+        if (!cancelled) setRepoBindings(data);
+      } catch (error) {
+        if (!cancelled) {
+          showToast({
+            open: true,
+            type: 'error',
+            msg: getErrorMessage(error, 'Failed to load repositories'),
+          });
+        }
+      } finally {
+        if (!cancelled) setRepoLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, showToast]);
+
+  // provider availability (moved from the page, E6)
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -280,7 +306,7 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
           repositoryUrl: "",
           provider: defaultProvider,
           repoSlug: "",
-          isPrimary: repoBindings.length === 0 && prev.repositoryUrl === "",
+          isPrimary: repoBindings.length === 0,
         }));
         setRepoError(null);
       } catch (error) {
@@ -292,7 +318,7 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
     return () => {
       cancelled = true;
     };
-  }, [repoDialogOpen, repoBindings.length]);
+  }, [repoDialogOpen, (repoBindings ?? []).length]);
 
   const resetGitlabResults = useCallback(() => {
     setGitlabProjects([]);
