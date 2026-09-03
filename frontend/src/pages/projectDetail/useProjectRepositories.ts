@@ -70,7 +70,10 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
       setRepoLoading(true);
       try {
         const updated = await getProjectRepositories(Number(targetId));
-        if (loadId !== repoLoadIdRef.current) return; // superseded by a newer load
+        // a late response must not land on a project the user has navigated
+        // away from, and must not be superseded by a newer load
+        if (loadId !== repoLoadIdRef.current) return;
+        if (String(targetId) !== String(id)) return; // user navigated away
         setRepoBindings(updated);
       } catch (error) {
         if (loadId !== repoLoadIdRef.current) return; // stale error is irrelevant
