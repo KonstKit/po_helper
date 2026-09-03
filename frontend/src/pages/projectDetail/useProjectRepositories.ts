@@ -64,12 +64,12 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
   const repoLoadIdRef = useRef(0);
 
   const reloadRepositories = useCallback(
-    async (showError = true) => {
-      if (!id) return;
+    async (targetId: number | string | undefined = id, showError = true) => {
+      if (!targetId) return;
       const loadId = ++repoLoadIdRef.current;
       setRepoLoading(true);
       try {
-        const updated = await getProjectRepositories(Number(id));
+        const updated = await getProjectRepositories(Number(targetId));
         if (loadId !== repoLoadIdRef.current) return; // superseded by a newer load
         setRepoBindings(updated);
       } catch (error) {
@@ -188,7 +188,7 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
         type: 'success',
         msg: 'Repository linked to project.',
       });
-      await reloadRepositories();
+      await reloadRepositories(id);
     } catch (error) {
       setRepoError(getErrorMessage(error, 'Failed to link repository'));
     } finally {
@@ -206,7 +206,7 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
         type: 'success',
         msg: 'Primary repository updated.',
       });
-      await reloadRepositories();
+      await reloadRepositories(id);
     } catch (error) {
       showToast({
         open: true,
@@ -228,7 +228,7 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
         type: 'success',
         msg: 'Repository unlinked from project.',
       });
-      await reloadRepositories();
+      await reloadRepositories(id);
     } catch (error) {
       showToast({
         open: true,
@@ -244,7 +244,7 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
   // so a stale project-A response can never land on project B
   useEffect(() => {
     if (!id) return;
-    void reloadRepositories();
+    void reloadRepositories(id);
   }, [id, reloadRepositories]);
 
   // provider availability (moved from the page, E6)
@@ -271,7 +271,7 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
 
   useEffect(() => {
     if (!id) return;
-    void reloadRepositories();
+    void reloadRepositories(id);
   }, [id, reloadRepositories]);
 
   useEffect(() => {
