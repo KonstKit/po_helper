@@ -60,20 +60,26 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
   const [repoSaving, setRepoSaving] = useState(false);
   const [repoAction, setRepoAction] = useState<{ type: "primary" | "remove"; id: number } | null>(null);
 
+  // guards against stale project-A responses landing on project B
+  const repoLoadIdRef = useRef(0);
+
   const reloadRepositories = useCallback(
     async (showError = true) => {
       if (!id) return;
+      const loadId = ++repoLoadIdRef.current;
       setRepoLoading(true);
       try {
         const updated = await getProjectRepositories(Number(id));
+        if (loadId !== repoLoadIdRef.current) return; // superseded by a newer load
         setRepoBindings(updated);
       } catch (error) {
+        if (loadId !== repoLoadIdRef.current) return; // stale error is irrelevant
         if (showError) {
           const message = getErrorMessage(error, "Failed to load repositories");
           showToast({ open: true, type: "error", msg: message });
         }
       } finally {
-        setRepoLoading(false);
+        if (loadId === repoLoadIdRef.current) setRepoLoading(false);
       }
     },
     [id, showToast],
