@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   DASHBOARD_DEFAULTS,
@@ -9,6 +10,15 @@ import {
 
 describe('dashboardContract persistence migration', () => {
   beforeEach(() => {
+    if (typeof localStorage === 'undefined') {
+      const store = new Map<string, string>();
+      vi.stubGlobal('localStorage', {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, String(v)),
+        removeItem: (k: string) => void store.delete(k),
+        clear: () => void store.clear(),
+      });
+    }
     localStorage.clear();
   });
 

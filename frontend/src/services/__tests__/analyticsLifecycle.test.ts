@@ -137,6 +137,17 @@ describe('AnalyticsService transport-queue lifecycle', () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    // jsdom localStorage is not provisioned for this suite in some workers;
+    // provide a minimal in-memory shim so lifecycle assertions stay stable.
+    if (typeof localStorage === 'undefined') {
+      const store = new Map<string, string>();
+      vi.stubGlobal('localStorage', {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, String(v)),
+        removeItem: (k: string) => void store.delete(k),
+        clear: () => void store.clear(),
+      });
+    }
     localStorage.clear();
     trackEventsBatchMock.mockReset();
     vi.useRealTimers();
