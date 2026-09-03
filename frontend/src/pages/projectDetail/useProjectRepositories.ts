@@ -81,6 +81,7 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
         if (String(targetId) !== String(projectIdRef.current)) return; // user navigated away
         setRepoBindings(updated);
       } catch (error) {
+        if (String(targetId) !== String(projectIdRef.current)) return;
         if (loadId !== repoLoadIdRef.current) return; // stale error is irrelevant
         if (showError) {
           const message = getErrorMessage(error, "Failed to load repositories");
