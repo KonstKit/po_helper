@@ -302,12 +302,12 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
         setRepoProviders(nextProviders);
         const defaultProvider: RepositoryProvider =
           nextProviders.github ? "github" : nextProviders.gitlab ? "gitlab" : "github";
-        setRepoForm((prev) => ({
+        setRepoForm({
           repositoryUrl: "",
           provider: defaultProvider,
           repoSlug: "",
           isPrimary: repoBindings.length === 0,
-        }));
+        });
         setRepoError(null);
       } catch (error) {
         if (!cancelled) {
