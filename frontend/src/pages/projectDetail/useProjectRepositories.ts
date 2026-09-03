@@ -343,7 +343,6 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
     setGitlabGroupPath,
     gitlabPage,
     repoProviders,
-    setRepoProviders,
     repoError,
     repoSaving,
     repoAction,
