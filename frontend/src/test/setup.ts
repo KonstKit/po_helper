@@ -51,22 +51,60 @@ afterEach(() => {
 });
 
 // jsdom in some vitest workers does not provision localStorage; provide a
-// minimal in-memory implementation so service singletons can evaluate.
-if (typeof localStorage === 'undefined') {
+// minimal Storage-compatible implementation whose stored keys are own
+// enumerable properties (matching browser behavior, so code that does
+// Object.keys(localStorage) to enumerate feature_* markers keeps working).
+if (typeof localStorage === "undefined") {
   const store = new Map<string, string>();
-  Object.defineProperty(globalThis, 'localStorage', {
+  const shim: Record<string, unknown> = {};
+  Object.defineProperties(shim, {
+    getItem: {
+      value: (k: string) => (store.has(k) ? store.get(k)! : null),
+      enumerable: false,
+    },
+    setItem: {
+      value: (k: string, v: string) => {
+        store.set(k, String(v));
+        Object.defineProperty(shim, k, {
+          value: String(v),
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
+      },
+      enumerable: false,
+    },
+    removeItem: {
+      value: (k: string) => {
+        store.delete(k);
+        delete (shim as Record<string, unknown>)[k];
+      },
+      enumerable: false,
+    },
+    clear: {
+      value: () => {
+        store.clear();
+        for (const k of Object.keys(shim)) {
+          if (k !== "getItem" && k !== "setItem" && k !== "removeItem" && k !== "clear" && k !== "key" && k !== "length") {
+            delete (shim as Record<string, unknown>)[k];
+          }
+        }
+      },
+      enumerable: false,
+    },
+    key: {
+      value: (i: number) => Array.from(store.keys())[i] ?? null,
+      enumerable: false,
+    },
+    length: {
+      get: () => store.size,
+      enumerable: false,
+    },
+  });
+  Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
     get() {
-      return {
-        getItem: (k: string) => store.get(k) ?? null,
-        setItem: (k: string, v: string) => void store.set(k, String(v)),
-        removeItem: (k: string) => void store.delete(k),
-        clear: () => void store.clear(),
-        key: (i: number) => Array.from(store.keys())[i] ?? null,
-        get length() {
-          return store.size;
-        },
-      };
+      return shim as unknown as Storage;
     },
   });
 }

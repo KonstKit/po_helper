@@ -72,15 +72,6 @@ const renderRQ = () => {
 
 describe('ReviewQueue', () => {
   beforeEach(() => {
-    if (typeof localStorage === 'undefined') {
-      const store = new Map<string, string>();
-      vi.stubGlobal('localStorage', {
-        getItem: (k: string) => store.get(k) ?? null,
-        setItem: (k: string, v: string) => void store.set(k, String(v)),
-        removeItem: (k: string) => void store.delete(k),
-        clear: () => void store.clear(),
-      });
-    }
     vi.clearAllMocks();
     mockedList.mockResolvedValue({ total: 1, items: [pendingItem] } as never);
     mockedClaim.mockResolvedValue({ ...pendingItem, status: 'claimed' } as never);

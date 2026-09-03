@@ -6,6 +6,10 @@ const mocks = vi.hoisted(() => ({
   getProjectRepositories: vi.fn(),
   getIntegrationsStatus: vi.fn(),
   clearIntegrationStatusCache: vi.fn(),
+  listGitlabProjects: vi.fn(),
+  bindRepositoryToProject: vi.fn(),
+  unbindRepositoryFromProject: vi.fn(),
+  setPrimaryRepository: vi.fn(),
 }));
 
 vi.mock('../../../services/api', () => ({
@@ -15,7 +19,7 @@ vi.mock('../../../services/api', () => ({
   bindRepositoryToProject: vi.fn(),
   unbindRepositoryFromProject: vi.fn(),
   setPrimaryRepository: vi.fn(),
-  listGitlabProjects: vi.fn(),
+  listGitlabProjects: mocks.listGitlabProjects,
 }));
 
 import { useProjectRepositories } from '../useProjectRepositories';
@@ -35,7 +39,7 @@ describe('useProjectRepositories', () => {
     vi.clearAllMocks();
     mocks.getIntegrationsStatus.mockResolvedValue({
       github: { configured: true, has_token: true },
-      gitlab: { configured: false, has_token: false },
+      gitlab: { configured: true, has_token: true },
     });
   });
 
@@ -97,5 +101,37 @@ describe('useProjectRepositories', () => {
     });
     expect(hook.result.current.gitlabProjects).toEqual([]);
     expect(hook.result.current.gitlabHasNextPageRef.current).toBe(false);
+  });
+
+  it('gitlab search replaces on page 1 and appends page 2 (SF-2)', async () => {
+    mocks.listGitlabProjects
+      .mockResolvedValueOnce({ projects: [{ id: 10, name: 'p1' }], pagination: { next_page: 2 } })
+      .mockResolvedValueOnce({ projects: [{ id: 11, name: 'p2' }], pagination: { next_page: null } });
+
+    const hook = render('1');
+    await act(async () => { hook.rerender({ projectId: '2' }); });
+    await act(async () => {
+      await hook.result.current.performGitlabSearch(1);
+    });
+    await act(async () => {
+      await hook.result.current.performGitlabSearch(2, { append: true });
+    });
+    expect(hook.result.current.gitlabProjects.map((p) => p.id)).toEqual([10, 11]);
+  });
+
+  it('gitlab search treats zero next_page as the last page (SF-2)', async () => {
+    mocks.listGitlabProjects
+      .mockResolvedValueOnce({ projects: [{ id: 1 }], pagination: {} });
+
+    const hook = render('1');
+    await act(async () => { hook.rerender({ projectId: '2' }); });
+    await act(async () => {
+      await hook.result.current.performGitlabSearch(1);
+    });
+    await act(async () => {
+      await hook.result.current.performGitlabSearch(2, { append: true });
+    });
+    // no next page -> append is skipped, results stay as after page 1
+    expect(hook.result.current.gitlabProjects).toEqual([{ id: 1 }]);
   });
 });
