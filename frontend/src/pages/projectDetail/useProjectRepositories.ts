@@ -68,7 +68,9 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
 
   const reloadRepositories = useCallback(
     async (targetId: number | string | undefined = projectIdRef.current, showError = true) => {
-      if (!targetId) return;
+      // Reject a foreign target BEFORE bumping the load generation: a stale
+      // reload of project A must not invalidate the in-flight load of B.
+      if (String(targetId) !== String(projectIdRef.current)) return;
       const loadId = ++repoLoadIdRef.current;
       setRepoLoading(true);
       try {
