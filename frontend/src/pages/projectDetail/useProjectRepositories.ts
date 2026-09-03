@@ -240,31 +240,12 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
     }
   };
 
-  // initial bindings load with stale-response guard (review MF-02)
+  // initial bindings load: reloadRepositories carries the loadId guard,
+  // so a stale project-A response can never land on project B
   useEffect(() => {
     if (!id) return;
-    let cancelled = false;
-    (async () => {
-      setRepoLoading(true);
-      try {
-        const data = await getProjectRepositories(Number(id));
-        if (!cancelled) setRepoBindings(data);
-      } catch (error) {
-        if (!cancelled) {
-          showToast({
-            open: true,
-            type: 'error',
-            msg: getErrorMessage(error, 'Failed to load repositories'),
-          });
-        }
-      } finally {
-        if (!cancelled) setRepoLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [id, showToast]);
+    void reloadRepositories();
+  }, [id, reloadRepositories]);
 
   // provider availability (moved from the page, E6)
   useEffect(() => {

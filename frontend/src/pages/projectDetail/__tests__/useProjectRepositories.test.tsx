@@ -70,6 +70,25 @@ describe('useProjectRepositories', () => {
     await waitFor(() =>
       expect((hook.result.current.repoBindings ?? []).map((b) => b.repository_id)).toEqual([2]),
     );
+
+  });
+
+  it('late A response never clobbers B bindings (MF-02)', async () => {
+    let resolveA: (v: Array<{ repository_id: number }>) => void = () => {};
+    const calls: number[] = [];
+    mocks.getProjectRepositories.mockImplementation((pid: number) => {
+      calls.push(pid);
+      if (pid === 1) {
+        return new Promise<Array<{ repository_id: number }>>((res) => { resolveA = res; });
+      }
+      return Promise.resolve([{ repository_id: 2 }]);
+    });
+
+    const hook = render('1');
+    await act(async () => { hook.rerender({ projectId: '2' }); });
+    // resolve A (project 1 data) LATE, while the hook is already on project 2
+    await act(async () => { resolveA([{ repository_id: 99 }]); });
+    expect((hook.result.current.repoBindings ?? []).map((b) => b.repository_id)).toEqual([2]);
   });
 
   it('marks the first binding as primary on dialog reopen (MF-01)', async () => {
