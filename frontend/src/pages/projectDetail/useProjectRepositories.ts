@@ -35,6 +35,9 @@ interface RepoManagerOptions {
 export function useProjectRepositories({ projectId, showToast }: RepoManagerOptions) {
   const id = projectId;
   const gitlabHasNextPageRef = useRef<boolean>(false);
+  // актуальный id проекта: используется отложенными вызовами reloadRepositories
+  const projectIdRef = useRef<number | string | undefined>(id);
+  projectIdRef.current = id;
   const [repoBindings, setRepoBindings] = useState<ProjectRepositoryLink[]>([]);
   const [repoLoading, setRepoLoading] = useState(false);
   const [repoDialogOpen, setRepoDialogOpen] = useState(false);
@@ -64,7 +67,7 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
   const repoLoadIdRef = useRef(0);
 
   const reloadRepositories = useCallback(
-    async (targetId: number | string | undefined = id, showError = true) => {
+    async (targetId: number | string | undefined = projectIdRef.current, showError = true) => {
       if (!targetId) return;
       const loadId = ++repoLoadIdRef.current;
       setRepoLoading(true);
@@ -73,7 +76,7 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
         // a late response must not land on a project the user has navigated
         // away from, and must not be superseded by a newer load
         if (loadId !== repoLoadIdRef.current) return;
-        if (String(targetId) !== String(id)) return; // user navigated away
+        if (String(targetId) !== String(projectIdRef.current)) return; // user navigated away
         setRepoBindings(updated);
       } catch (error) {
         if (loadId !== repoLoadIdRef.current) return; // stale error is irrelevant
