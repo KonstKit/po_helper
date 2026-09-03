@@ -112,19 +112,19 @@ describe('useProjectRepositories', () => {
     expect(hook.result.current.gitlabProjects.map((p) => p.id)).toEqual([10, 11]);
   });
 
-  it('gitlab search treats zero next_page as the last page (SF-2)', async () => {
+  it('gitlab search stops when a later page has no next_page (SF-2)', async () => {
+    // page 1 returns data WITH next_page: 0 (i.e. last page), page 2 must never be requested
     mocks.listGitlabProjects
-      .mockResolvedValueOnce({ projects: [{ id: 1 }], pagination: {} });
+      .mockResolvedValueOnce({ projects: [{ id: 1, name: 'p1' }], pagination: { next_page: 0 } });
 
     const hook = render('1');
     await act(async () => { hook.rerender({ projectId: '2' }); });
     await act(async () => {
       await hook.result.current.performGitlabSearch(1);
     });
-    await act(async () => {
-      await hook.result.current.performGitlabSearch(2, { append: true });
-    });
-    // no next page -> append is skipped, results stay as after page 1
-    expect(hook.result.current.gitlabProjects).toEqual([{ id: 1 }]);
+    expect(hook.result.current.gitlabProjects.map((p) => p.id)).toEqual([1]);
+    // page 2 must never be requested since next_page is 0
+    const pages = mocks.listGitlabProjects.mock.calls.map((c) => c[0].page);
+    expect(pages).toEqual([1]);
   });
 });
