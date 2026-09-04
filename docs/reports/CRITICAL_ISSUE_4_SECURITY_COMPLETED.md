@@ -1,5 +1,12 @@
 # Critical Issue #4: Security - Input Validation ✅ COMPLETED
 
+> [!WARNING]
+> Historical snapshot: this document is preserved as-is for context and
+> its links may point to files that no longer exist. It is excluded from
+> the docs link-integrity check (scripts/check_docs_links.py). Do not
+> update it going forward; write new docs in docs/ instead.
+
+
 ## Overview
 
 Successfully implemented comprehensive input validation and sanitization in the rule execution engine to prevent:
