@@ -30,7 +30,7 @@ describe("useQualityControl", () => {
     );
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.updateProject.mockResolvedValue({});
     mocks.evaluateQualityGateAndCheck.mockResolvedValue({});
     mocks.getQualityHistory.mockResolvedValue({ history: [{ id: 1 }] });
