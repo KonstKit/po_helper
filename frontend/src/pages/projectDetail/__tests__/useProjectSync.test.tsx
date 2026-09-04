@@ -355,6 +355,29 @@ describe("useProjectSync lifecycle", () => {
     expect(hook.result.current.syncing).toBe(false);
   });
 
+
+it("stops the auto-sync timeout fallback poll on unmount", async () => {
+  mocks.listTasksByProjectPaginated.mockRejectedValue(
+    new Error("timeout of 8000ms exceeded"),
+  );
+  const hook = render();
+  await act(async () => {
+    hook.result.current.runAutoSyncIfStale(0, "KEY", 1);
+    await vi.advanceTimersByTimeAsync(50);
+  });
+  // the initial fetch timed out, so the 2s fallback poll is now scheduled
+  hook.unmount();
+  const calls = mocks.listTasksByProjectPaginated.mock.calls.length;
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(60000);
+  });
+  expect(mocks.listTasksByProjectPaginated.mock.calls.length).toBe(calls);
+  expect(onTasksLoaded).not.toHaveBeenCalled();
+  expect(showToast).not.toHaveBeenCalledWith(
+    expect.objectContaining({ msg: "Auto-sync completed" }),
+  );
+});
+
   it("purge poll aborts the previous in-flight request before issuing the next", async () => {
     const signals: AbortSignal[] = [];
     let call = 0;
