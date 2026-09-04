@@ -17,58 +17,34 @@ import {
 } from "@mui/material";
 import { GridColDef, GridPaginationModel } from "@mui/x-data-grid";
 import {
-  api,
   getProjectById,
   listTasksByProjectPaginated,
-  syncJiraProject,
   getBurndown,
   getRisks,
-  getProjectSprints,
-  getSprintBurndown,
-  getSprintQuality,
-  getBoardsForProject,
-  updateProject,
-  listPullRequests,
-  evaluateQualityGateAndCheck,
-  getQualityHistory,
-  getIntegrationsStatus,
-  clearIntegrationStatusCache,
   getProjectBudgetHours,
   getProjectValueMetrics,
-  getSprintCapacity,
-  purgeProject,
   getTeamMembersActivity,
-  openWebSocket,
 } from "../services/api";
 import type {
   Project,
-  Sprint,
   TaskItem,
   BurndownResponse,
   RisksResponse,
-  SprintQuality,
-  SprintCapacity,
   TeamMemberActivity,
-  QualityHistoryItem,
   BudgetHoursResponse,
   ValueMetricsResponse,
-  Board,
 } from "../services/api";
 import { Snackbar, Alert, Tooltip } from "@mui/material";
 import CircularProgressWithLabel from "../components/CircularProgressWithLabel";
 import RepositoryDialog from "./projectDetail/RepositoryDialog";
 import { useProjectRepositories } from "./projectDetail/useProjectRepositories";
+import { useProjectSync } from "./projectDetail/useProjectSync";
+import { useQualityControl } from "./projectDetail/useQualityControl";
+import { useSprintInsights } from "./projectDetail/useSprintInsights";
 import { isDevelopment } from "../utils/env";
-import { getErrorMessage, getErrorCode } from "../utils/errorUtils";
-import { normalizeQualityGateProvider } from "../utils/qualityGate";
-import { getCanonicalSprintId, selectActiveSprint } from "../utils/sprintNormalization";
+import { getErrorMessage } from "../utils/errorUtils";
 import ProjectDetailTabs from "./projectDetail/ProjectDetailTabs";
-import {
-  getNextSyncProgress,
-  getSyncProgressFromTask,
-  selectRelevantJiraSyncTask,
-  type JiraSyncTaskStatus,
-} from "./projectDetail/syncProgress";
+
 
 const cacheKeyForTasks = (projectId: number) =>
   `project_tasks_cache_${projectId}`;
@@ -105,7 +81,7 @@ const ProjectDetail = () => {
     setLoading(true);
     try {
       await loadProjectDetails(true);
-      await loadTasksPage();
+      await fetchTasksPage();
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to reload project data'));
     } finally {
@@ -121,12 +97,6 @@ const ProjectDetail = () => {
   const [taskRowCount, setTaskRowCount] = useState(0);
   const [risks, setRisks] = useState<RisksResponse | null>(null);
   const [burndown, setBurndown] = useState<BurndownResponse | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [sprints, setSprints] = useState<Sprint[]>([]);
-  const [selectedSprint, setSelectedSprint] = useState<number | "">("");
-  const [sprintBurndown, setSprintBurndown] = useState<BurndownResponse | null>(null);
-  const [sprintQuality, setSprintQuality] = useState<SprintQuality | null>(null);
-  const [sprintCapacity, setSprintCapacity] = useState<SprintCapacity | null>(null);
   const [budgetHours, setBudgetHours] = useState<BudgetHoursResponse | null>(null);
   const [valueMetrics, setValueMetrics] = useState<ValueMetricsResponse | null>(null);
   const [teamMembers, setTeamMembers] = useState<TeamMemberActivity[]>([]);
@@ -167,42 +137,42 @@ const ProjectDetail = () => {
   const logNonFatal = useCallback((label: string, err: unknown) => {
     console.warn(`[ProjectDetail] ${label} failed:`, err);
   }, []);
-  const [error, setError] = useState<string | null>(null);
-  const [boards, setBoards] = useState<Board[]>([]);
-  const [boardId, setBoardId] = useState<number | "">("");
-  const taskPaginationRef = useRef(taskPaginationModel);
-  const boardIdRef = useRef(boardId);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [syncProgress, setSyncProgress] = useState<{
-    active: boolean;
-    percent: number;
-    step: string;
-  }>({ active: false, percent: 0, step: "" });
-  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const syncStatusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const syncStatusPollStateRef = useRef<{
-    startedAt: number;
-    seenRunning: boolean;
-    relevantTaskNotBeforeMs: number;
-  }>({
-    startedAt: 0,
-    seenRunning: false,
-    relevantTaskNotBeforeMs: 0,
+  const quality = useQualityControl({ projectId: id, showToast, logNonFatal });
+  const {
+    thresholds,
+    setThresholds,
+    hist,
+    qualityLoading,
+    bulkProgress,
+    loadQualityHistory,
+    handleSaveThresholds,
+    handleBulkQualityCheck,
+    applyThresholds,
+  } = quality;
+  const sprintInsights = useSprintInsights({
+    projectId: id,
+    logNonFatal,
+    setSectionLoading,
   });
-  const purgePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const purgeReqCtrlRef = useRef<AbortController | null>(null);
+  const {
+    boards,
+    boardId,
+    sprints,
+    selectedSprint,
+    sprintBurndown,
+    sprintQuality,
+    sprintCapacity,
+    handleBoardChange,
+    handleSprintChange,
+    loadSprintsSection,
+    resetForProjectSwitch,
+  } = sprintInsights;
+  const [error, setError] = useState<string | null>(null);
+  const taskPaginationRef = useRef(taskPaginationModel);
   useEffect(() => {
     taskPaginationRef.current = taskPaginationModel;
   }, [taskPaginationModel]);
 
-  useEffect(() => {
-    boardIdRef.current = boardId;
-  }, [boardId]);
-  const [thresholds, setThresholds] = useState<{
-    min_line?: number | "";
-
-    min_branch?: number | "";
-  }>({});
   const applyProjectData = useCallback((data: Project | null) => {
     if (!data) {
       return;
@@ -216,12 +186,8 @@ const ProjectDetail = () => {
       in_progress_tasks: data.in_progress_tasks ?? 0,
       spent_budget: data.spent_budget ?? 0,
     });
-    const qt = data?.quality_thresholds || {};
-    setThresholds({
-      min_line: typeof qt.min_line === "number" ? qt.min_line : "",
-      min_branch: typeof qt.min_branch === "number" ? qt.min_branch : "",
-    });
-  }, []);
+    applyThresholds(data?.quality_thresholds || {});
+  }, [applyThresholds]);
 
   const loadProjectDetails = useCallback(async (forceRefresh = false) => {
     if (!id || Number.isNaN(Number(id))) {
@@ -232,223 +198,38 @@ const ProjectDetail = () => {
     return data;
   }, [id, applyProjectData]);
 
-  // Load tasks with server-side pagination
-  const loadTasksPage = useCallback(async () => {
-    if (!id || Number.isNaN(Number(id))) {
-      return;
-    }
-    try {
-      const { page, pageSize } = taskPaginationRef.current;
-      const response = await listTasksByProjectPaginated(Number(id), {
-        skip: page * pageSize,
-        limit: pageSize,
-      });
-      setRows(response.data);
-      setTaskRowCount(response.meta.total);
-      lastRowsRef.current = response.data;
-    } catch (err) {
-      console.error('Failed to load tasks page', err);
-    }
-  }, [id]);
-
-  const wsRef = useRef<WebSocket | null>(null);
-  const autoSyncTriedRef = useRef<boolean>(false);
-  const autoSyncDisabledRef = useRef<boolean>(false);
-  const autoSyncTimeoutRef = useRef<number | null>(null);
-
-
-  const timedOut = (e: unknown) => {
-    const msg = getErrorMessage(e, "").toLowerCase();
-    return getErrorCode(e) === "ECONNABORTED" || msg.includes("timeout");
-  };
-  const stopSyncProgressTicker = useCallback(() => {
-    if (syncTimerRef.current) {
-      clearInterval(syncTimerRef.current);
-      syncTimerRef.current = null;
-    }
-  }, []);
-
-  const startSyncProgressTicker = useCallback(
-    (initialPercent = 15, initialStep = "Background sync in progress...") => {
-      stopSyncProgressTicker();
-      setSyncProgress((current) => ({
-        active: true,
-        percent: Math.max(current.percent, initialPercent),
-        step: initialStep,
-      }));
-      syncTimerRef.current = setInterval(() => {
-        setSyncProgress((current) => ({
-          active: true,
-          percent: getNextSyncProgress(current.percent),
-          step: current.step || initialStep,
-        }));
-      }, 4000);
+  const handleTasksLoaded = useCallback(
+    (rows: TaskItem[], total: number) => {
+      setRows(rows);
+      setTaskRowCount(total);
+      lastRowsRef.current = rows;
     },
-    [stopSyncProgressTicker],
+    [],
   );
-
-  const clearSyncStatusPoll = useCallback(() => {
-    if (syncStatusPollRef.current) {
-      clearInterval(syncStatusPollRef.current);
-      syncStatusPollRef.current = null;
-    }
-    syncStatusPollStateRef.current = { startedAt: 0, seenRunning: false, relevantTaskNotBeforeMs: 0 };
-  }, []);
-
-  const startSyncStatusPoll = useCallback(
-    (projectId: number, relevantTaskNotBeforeMs?: number) => {
-      clearSyncStatusPoll();
-      const pollStartedAt = Date.now();
-      syncStatusPollStateRef.current = {
-        startedAt: pollStartedAt,
-        seenRunning: false,
-        relevantTaskNotBeforeMs: relevantTaskNotBeforeMs ?? pollStartedAt,
-      };
-
-      let pollInFlight = false;
-      syncStatusPollRef.current = setInterval(async () => {
-        if (pollInFlight) {
-          return;
-        }
-        pollInFlight = true;
-        try {
-          const response = await api.get<JiraSyncTaskStatus[]>("/v1/traceability/sync-tasks", {
-            params: { project_id: projectId },
-            timeout: 8000,
-          });
-
-          const tasks = Array.isArray(response.data) ? response.data : [];
-          const latestJiraSyncTask = selectRelevantJiraSyncTask(
-            tasks,
-            syncStatusPollStateRef.current.relevantTaskNotBeforeMs,
-          );
-          const derivedProgress = getSyncProgressFromTask(latestJiraSyncTask);
-          if (derivedProgress) {
-            setSyncProgress((current) => ({
-              active: true,
-              percent: Math.max(current.percent, derivedProgress.percent),
-              step: derivedProgress.step,
-            }));
-          }
-
-          const hasRunningJiraSync = latestJiraSyncTask?.status === "running";
-
-          if (hasRunningJiraSync) {
-            syncStatusPollStateRef.current.seenRunning = true;
-            return;
-          }
-
-          const elapsedMs = Date.now() - syncStatusPollStateRef.current.startedAt;
-          const canFinalize =
-            syncStatusPollStateRef.current.seenRunning || elapsedMs >= 30000;
-
-          if (canFinalize) {
-            clearSyncStatusPoll();
-            stopSyncProgressTicker();
-            setSyncProgress({
-              active: false,
-              percent: 100,
-              step: "Sync complete",
-            });
-            setSyncing(false);
-            await loadTasksPage();
-            await loadProjectDetails(true);
-            if (latestJiraSyncTask?.status === "failed") {
-              setToast({
-                open: true,
-                type: "error",
-                msg: "Sync failed (status poll fallback)",
-              });
-            } else {
-              setToast({
-                open: true,
-                type: "success",
-                msg: "Sync completed (status poll fallback)",
-              });
-            }
-          }
-        } catch (err) {
-          logNonFatal('background load', err);
-        } finally {
-          pollInFlight = false;
-        }
-      }, 5000);
-    },
-    [clearSyncStatusPoll, loadProjectDetails, loadTasksPage, logNonFatal, stopSyncProgressTicker],
-  );
-
-  const handleManualSync = async () => {
-    if (!project?.jira_key) {
-      setToast({
-        open: true,
-        type: "warning",
-        msg: "Project has no Jira key configured.",
-      });
-      return;
-    }
-    try {
-      try {
-        const integ = await getIntegrationsStatus();
-        if (!(integ?.jira?.configured && integ?.jira?.has_token)) {
-          setToast({
-            open: true,
-            type: "warning",
-            msg: "Jira not configured or token missing",
-          });
-          return;
-        }
-      } catch (err) { logNonFatal('background load', err); }
-      setSyncing(true);
-      setSyncProgress({
-        active: true,
-        percent: 5,
-        step: "Syncing with Jira...",
-      });
-      const syncResponse = await syncJiraProject(project.jira_key, { timeout: 15000 });
-      const existingRunning = syncResponse.method === "existing_running";
-      setSyncProgress((p) => ({
-        ...p,
-        percent: Math.max(p.percent, 15),
-        step: existingRunning
-          ? "Sync already running, waiting for completion..."
-          : "Background sync in progress...",
-      }));
-      startSyncProgressTicker(
-        15,
-        existingRunning
-          ? "Sync already running, waiting for completion..."
-          : "Background sync in progress...",
-      );
-      setToast({
-        open: true,
-        type: "info",
-        msg: existingRunning
-          ? "Jira sync is already running. Data will refresh automatically when complete."
-          : "Sync started in background. Data will refresh automatically when complete.",
-      });
-      if (id && !Number.isNaN(Number(id))) {
-        const relevantTaskNotBeforeMs = syncResponse.sync_task_started_at
-          ? Date.parse(syncResponse.sync_task_started_at)
-          : Date.now();
-        startSyncStatusPoll(Number(id), relevantTaskNotBeforeMs);
-      }
-    } catch (e) {
-      clearSyncStatusPoll();
-      stopSyncProgressTicker();
-      setSyncing(false);
-      setSyncProgress({ active: false, percent: 0, step: "" });
-      setToast({ open: true, type: "error", msg: getErrorMessage(e, "Sync failed") });
-    }
-  };
-
-  const [hist, setHist] = useState<QualityHistoryItem[]>([]);
-  const [qualityLoading, setQualityLoading] = useState(false);
-  const [bulkProgress, setBulkProgress] = useState<{
-    active: boolean;
-    percent: number;
-    step: string;
-  }>({ active: false, percent: 0, step: "" });
-
+  const reloadProjectAfterSync = useCallback(async () => {
+    await loadProjectDetails(true);
+  }, [loadProjectDetails]);
+  const {
+    syncing,
+    setSyncing,
+    syncProgress,
+    setSyncProgress,
+    confirmOpen,
+    setConfirmOpen,
+    handleManualSync,
+    handlePurgeAndResync,
+    runAutoSyncIfStale,
+    fetchTasksPage,
+    stopSyncActivity,
+  } = useProjectSync({
+    projectId: id,
+    jiraKey: project?.jira_key,
+    taskPaginationRef,
+    showToast,
+    logNonFatal,
+    onTasksLoaded: handleTasksLoaded,
+    onProjectReload: reloadProjectAfterSync,
+  });
 
   const updateTaskRows = useCallback(
     (list: TaskItem[]) => {
@@ -472,148 +253,6 @@ const ProjectDetail = () => {
     setValue(newValue);
   };
 
-  const loadSprintInsights = useCallback(async (sprintId: number) => {
-    setSectionLoading((s) => ({ ...s, sprintInsights: true }));
-    // Codex P2: clear the previous sprint's insights before loading the next, so
-    // the skeleton (gated on any-missing) shows during the switch instead of
-    // mixing the old sprint's quality/capacity with the new sprint's burndown.
-    setSprintBurndown(null);
-    setSprintQuality(null);
-    setSprintCapacity(null);
-    try {
-      try {
-        setSprintBurndown(await getSprintBurndown(sprintId));
-      } catch (err) {
-        logNonFatal('background load', err);
-      }
-      try {
-        setSprintQuality(await getSprintQuality(sprintId));
-      } catch (err) {
-        logNonFatal('background load', err);
-      }
-      try {
-        setSprintCapacity(await getSprintCapacity(sprintId));
-      } catch (err) {
-        logNonFatal('background load', err);
-      }
-    } finally {
-      setSectionLoading((s) => ({ ...s, sprintInsights: false }));
-    }
-  }, [logNonFatal]);
-  const handleBoardChange = useCallback(
-    async (nextBoardId: number) => {
-      if (!id) return;
-      setBoardId(nextBoardId);
-      try {
-        const sp = await getProjectSprints(Number(id), 10, nextBoardId);
-        const sprintList = sp.sprints || [];
-        setSprints(sprintList);
-        const currentSprintStillExists =
-          typeof selectedSprint === "number" &&
-          sprintList.some((sprint) => getCanonicalSprintId(sprint) === selectedSprint);
-        const preferredSprint = currentSprintStillExists
-          ? selectedSprint
-          : getCanonicalSprintId(selectActiveSprint(sprintList)) ??
-            getCanonicalSprintId(sprintList[0]) ??
-            "";
-        setSelectedSprint(preferredSprint);
-        if (typeof preferredSprint === "number") {
-          await loadSprintInsights(preferredSprint);
-        } else {
-          setSprintBurndown(null);
-          setSprintQuality(null);
-          setSprintCapacity(null);
-        }
-      } catch (err) {
-        logNonFatal('background load', err);
-      }
-    },
-    [id, loadSprintInsights, selectedSprint, logNonFatal],  );
-
-  const handleSprintChange = useCallback(
-    async (nextSprintId: number) => {
-      setSelectedSprint(nextSprintId);
-      await loadSprintInsights(nextSprintId);
-    },
-    [loadSprintInsights],
-  );
-
-  const handleSaveThresholds = useCallback(async () => {
-    if (!id) return;
-    try {
-      setQualityLoading(true);
-      await updateProject(Number(id), {
-        quality_thresholds: {
-          min_line:
-            thresholds.min_line === "" ? undefined : thresholds.min_line,
-          min_branch:
-            thresholds.min_branch === "" ? undefined : thresholds.min_branch,
-        },
-      });
-      setToast({
-        open: true,
-        type: "success",
-        msg: "Thresholds saved",
-      });
-    } catch (e) {
-      setToast({
-        open: true,
-        type: "error",
-        msg: getErrorMessage(e, "Save failed"),
-      });
-    } finally {
-      setQualityLoading(false);
-    }
-  }, [id, thresholds.min_branch, thresholds.min_line]);
-
-  const handleBulkQualityCheck = useCallback(async () => {
-    if (!id) return;
-    try {
-      setBulkProgress({
-        active: true,
-        percent: 0,
-        step: "Fetching PRs...",
-      });
-      const prs = await listPullRequests({
-        projectId: Number(id),
-        limit: 500,
-      });
-      const list = prs.pull_requests || [];
-      for (let i = 0; i < list.length; i++) {
-        setBulkProgress({
-          active: true,
-          percent: Math.round((i / list.length) * 100),
-          step: `Checking ${i + 1}/${list.length}`,
-        });
-        try {
-          await evaluateQualityGateAndCheck({
-            prNumber: list[i].number,
-            projectId: Number(id),
-            provider: normalizeQualityGateProvider(list[i].provider),
-          });
-        } catch (err) {
-          logNonFatal('background load', err);
-        }
-      }
-      setBulkProgress({
-        active: false,
-        percent: 100,
-        step: "Done",
-      });
-      const h = await getQualityHistory({
-        projectId: Number(id),
-        limit: 20,
-      });
-      setHist(h.history || []);
-    } catch (e) {
-      setBulkProgress({ active: false, percent: 0, step: "" });
-      setToast({
-        open: true,
-        type: "error",
-        msg: getErrorMessage(e, "Bulk check failed"),
-      });
-    }
-  }, [id, logNonFatal]);
   useEffect(() => {
     logDebug("ProjectDetail: Checking cache for id:", id);
     if (id && !Number.isNaN(Number(id))) {
@@ -646,8 +285,8 @@ const ProjectDetail = () => {
       paginationMountedRef.current = true;
       return; // Skip initial load - handled by main effect
     }
-    loadTasksPage();
-  }, [loadTasksPage]);
+    void fetchTasksPage();
+  }, [fetchTasksPage]);
 
   useEffect(() => {
     logDebug(
@@ -684,18 +323,10 @@ const ProjectDetail = () => {
         // task fallback (codex P2, round 4).
         setRisks(null);
         setBurndown(null);
-        setSprintBurndown(null);
-        setSprintQuality(null);
-        setSprintCapacity(null);
+        resetForProjectSwitch();
         setBudgetHours(null);
         setValueMetrics(null);
         setTeamMembers([]);
-        // Clear the board/sprint selectors too, else the prior project's
-        // boards/sprints render (and stay selectable) under the new header.
-        setBoards([]);
-        setSprints([]);
-        setSelectedSprint('');
-        setBoardId('');
       }
       try {
         if (id) {
@@ -718,16 +349,7 @@ const ProjectDetail = () => {
           setProgress({ loading: false, percent: 100, step: "Ready" });
 
           // Load thresholds and initial history (drives the Quality tab chart).
-          void (async () => {
-            try {
-              const h = await getQualityHistory({
-                projectId: Number(id),
-                limit: 20,
-              });
-              setHist(h.history || []);
-            } catch (err) { logNonFatal('background load', err); }
-          })();
-
+          void loadQualityHistory();
           // --- Independent section loads (run in parallel) -------------------
           // Each toggles only its own loading flag so sections fill in as soon
           // as their data arrives, rather than waiting on each other.
@@ -803,49 +425,6 @@ const ProjectDetail = () => {
           // Boards -> sprints -> sprint analytics form one dependent chain, but
           // it runs as its own parallel branch so the slow sprint-analytics
           // fetch never blocks the unrelated sections above.
-          const loadSprintsSection = (async () => {
-            try {
-              if (data?.jira_key) {
-                const b = await getBoardsForProject(data.jira_key);
-                setBoards(b.boards || []);
-                if ((b.boards || []).length) {
-                  const primaryBoard =
-                    (b.boards || []).find((board) => board.type === "scrum") || b.boards[0];
-                  const primaryBoardId = primaryBoard.id;
-                  setBoardId(primaryBoardId);
-                  boardIdRef.current = primaryBoardId;
-                }
-              }
-            } catch (err) { logNonFatal('background load', err); }
-            try {
-              const sp = await getProjectSprints(
-                Number(id),
-                10,
-                typeof boardIdRef.current === "number" ? boardIdRef.current : undefined,
-              );
-              const sprintList = sp.sprints || [];
-              setSprints(sprintList);
-              const activeSprintId =
-                getCanonicalSprintId(selectActiveSprint(sprintList)) ??
-                getCanonicalSprintId(sprintList[0]);
-              setSectionLoading((s) => ({ ...s, sprints: false }));
-              if (typeof activeSprintId === "number") {
-                setSelectedSprint(activeSprintId);
-                // loadSprintInsights manages the sprintInsights loading flag.
-                await loadSprintInsights(activeSprintId);
-              } else {
-                setSelectedSprint("");
-                setSprintBurndown(null);
-                setSprintQuality(null);
-                setSprintCapacity(null);
-                setSectionLoading((s) => ({ ...s, sprintInsights: false }));
-              }
-            } catch (e) {
-              console.error(e);
-              setSectionLoading((s) => ({ ...s, sprints: false, sprintInsights: false }));
-            }
-          })();
-
           // Wait for all sections to settle before evaluating auto-sync below,
           // but the UI has already rendered with per-section skeletons.
           await Promise.allSettled([
@@ -854,192 +433,13 @@ const ProjectDetail = () => {
             loadBurndownSection,
             loadMetricsSection,
             loadTeamSection,
-            loadSprintsSection,
+            loadSprintsSection(data?.jira_key),
           ]);
           // Auto-sync if last sync older than 12h
-          try {
-            const lastSync = data?.meta?.last_sync_at
-              ? new Date(data.meta.last_sync_at).getTime()
-              : 0;
-            const twelveHrs = 12 * 3600 * 1000;
-            if (
-              (!lastSync || Date.now() - lastSync > twelveHrs) &&
-              !autoSyncTriedRef.current &&
-              !autoSyncDisabledRef.current
-            ) {
-              autoSyncTriedRef.current = true;
-
-              const runAutoSync = async () => {
-                try {
-                  const integ = await getIntegrationsStatus();
-                  const ok = integ?.jira?.configured && integ?.jira?.has_token;
-                  if (!ok) {
-                    setToast({
-                      open: true,
-                      type: "warning",
-                      msg: "Auto-sync skipped: Jira not configured or token missing",
-                    });
-                    return;
-                  }
-
-                  setToast({
-                    open: true,
-                    type: "info",
-                    msg: "Auto-sync started (last sync stale)",
-                  });
-                  setSyncing(true);
-                  setSyncProgress({
-                    active: true,
-                    percent: 5,
-                    step: "Syncing with Jira...",
-                  });
-                  if (syncTimerRef.current) clearInterval(syncTimerRef.current);
-                  syncTimerRef.current = setInterval(() => {
-                    setSyncProgress((p) => ({
-                      ...p,
-                      percent: p.percent < 90 ? p.percent + 2 : 90,
-                    }));
-                  }, 300);
-
-                  try {
-                    await syncJiraProject(data.jira_key, { timeout: 10000 });
-                  } catch (e) {
-                    if (!timedOut(e)) throw e;
-                  }
-
-                  setSyncProgress((p) => ({
-                    ...p,
-                    step: "Applying updates...",
-                  }));
-                  // Use paginated API for polling after auto-sync
-                  let taskTotal = 0;
-                  try {
-                    const { page, pageSize } = taskPaginationRef.current;
-                    const response = await listTasksByProjectPaginated(Number(id), {
-                      skip: page * pageSize,
-                      limit: pageSize,
-                    });
-                    taskTotal = response.meta.total;
-                    if (taskTotal > 0) {
-                      setRows(response.data);
-                      setTaskRowCount(taskTotal);
-                      lastRowsRef.current = response.data;
-                    }
-                  } catch (e) {
-                    if (timedOut(e)) {
-                      let attempts = 0;
-                      const maxAttempts = 30;
-                      await new Promise<void>((resolve) => {
-                        let pollInFlight = false;
-                        let pollReqCtrl: AbortController | null = null;
-                        const iv = setInterval(async () => {
-                          if (pollInFlight) {
-                            return;
-                          }
-                          pollInFlight = true;
-                          attempts++;
-                          if (pollReqCtrl) {
-                            pollReqCtrl.abort();
-                          }
-                          pollReqCtrl = new AbortController();
-                          try {
-                            const { page, pageSize } = taskPaginationRef.current;
-                            const response = await listTasksByProjectPaginated(Number(id), {
-                              skip: page * pageSize,
-                              limit: pageSize,
-                            }, {
-                              signal: pollReqCtrl.signal,
-                              timeout: 8000,
-                            });
-                            taskTotal = response.meta.total;
-                            if (taskTotal > 0) {
-                              setRows(response.data);
-                              setTaskRowCount(taskTotal);
-                              lastRowsRef.current = response.data;
-                            }
-                          } catch (err) { logNonFatal('background load', err); }
-                          finally {
-                            pollInFlight = false;
-                          }
-                          if (taskTotal > 0 || attempts >= maxAttempts) {
-                            clearInterval(iv);
-                            if (pollReqCtrl) {
-                              pollReqCtrl.abort();
-                            }
-                            resolve();
-                          }
-                        }, 2000);
-                      });
-                    } else {
-                      throw e;
-                    }
-                  }
-
-                  if (taskTotal > 0) {
-                    await loadProjectDetails(true);
-                    setToast({
-                      open: true,
-                      type: "success",
-                      msg: "Auto-sync completed",
-                    });
-                  } else {
-                    setToast({
-                      open: true,
-                      type: "warning",
-                      msg: "Auto-sync returned no tasks; previous data kept.",
-                    });
-                    autoSyncDisabledRef.current = true;
-                  }
-                  if (syncTimerRef.current) clearInterval(syncTimerRef.current);
-                  syncTimerRef.current = null;
-                  setSyncProgress({
-                    active: false,
-                    percent: 100,
-                    step: "Sync complete",
-                  });
-                  setSyncing(false);
-                } catch (e) {
-                  if (syncTimerRef.current) clearInterval(syncTimerRef.current);
-                  syncTimerRef.current = null;
-                  setSyncing(false);
-                  setSyncProgress({ active: false, percent: 0, step: "" });
-                  setToast({
-                    open: true,
-                    type: "error",
-                    msg: `Auto-sync failed: ${getErrorMessage(e, "Unknown error")}`,
-                  });
-                  try {
-                    wsRef.current?.close();
-                  } catch (err) { logNonFatal('background load', err); }
-                  clearIntegrationStatusCache();
-                  autoSyncDisabledRef.current = true;
-                } finally {
-                  if (autoSyncTimeoutRef.current !== null) {
-                    autoSyncTimeoutRef.current = null;
-                  }
-                }
-              };
-
-              if (autoSyncTimeoutRef.current !== null) {
-                clearTimeout(autoSyncTimeoutRef.current);
-              }
-              autoSyncTimeoutRef.current = window.setTimeout(() => {
-                runAutoSync().catch((err) =>
-                  console.error("Auto-sync background error", err),
-                );
-              }, 0);
-            }
-          } catch {
-            if (syncTimerRef.current) clearInterval(syncTimerRef.current);
-            syncTimerRef.current = null;
-            setSyncing(false);
-            setSyncProgress({ active: false, percent: 0, step: "" });
-            try {
-              wsRef.current?.close();
-            } catch (err) { logNonFatal('background load', err); }
-            clearIntegrationStatusCache();
-            autoSyncDisabledRef.current = true;
-          }
+          const lastSync = data?.meta?.last_sync_at
+            ? new Date(data.meta.last_sync_at).getTime()
+            : 0;
+          runAutoSyncIfStale(lastSync, data.jira_key, Number(id));
         }
       } catch (e) {
         if (isDevelopment) {
@@ -1055,108 +455,11 @@ const ProjectDetail = () => {
       }
     })();
     return () => {
-      // ensure intervals are cleaned up on unmount/navigation
-      if (syncTimerRef.current) clearInterval(syncTimerRef.current);
-      syncTimerRef.current = null;
-      clearSyncStatusPoll();
-      if (autoSyncTimeoutRef.current !== null) {
-        clearTimeout(autoSyncTimeoutRef.current);
-        autoSyncTimeoutRef.current = null;
-      }
-      if (purgePollRef.current) clearInterval(purgePollRef.current);
-      purgePollRef.current = null;
-      if (purgeReqCtrlRef.current) purgeReqCtrlRef.current.abort();
-      purgeReqCtrlRef.current = null;
+      // stop every sync-domain timer owned by useProjectSync (ticker,
+      // status poll, auto-sync timeout, purge poll) on unmount/navigation
+      stopSyncActivity();
     };
-  }, [clearSyncStatusPoll, id, loadProjectDetails, loadSprintInsights, loadTasksPage, logNonFatal]);
-  // WebSocket: listen for backend sync completion and refresh tasks (only if Jira configured and auto-sync not disabled)
-  useEffect(() => {
-    let closed = false;
-    (async () => {
-      try {
-        if (autoSyncDisabledRef.current) return; // don't open WS if auto-sync disabled
-        const integ = await getIntegrationsStatus();
-        const ok = integ?.jira?.configured && integ?.jira?.has_token;
-        if (!ok) return; // don't open WS if Jira not configured
-        const ws = await openWebSocket();
-        if (!ws) return; // no session or ticket issue - do not open a socket
-        if (closed) {
-          // effect cleanup ran while the ticket was being fetched - do not leak the socket
-          try {
-            ws.close();
-          } catch {
-            /* already closed */
-          }
-          return;
-        }
-        wsRef.current = ws;
-        ws.onmessage = async (ev) => {
-          try {
-            const msg = JSON.parse(ev.data || "{}");
-            if (
-              msg?.type === "jira_sync_complete" &&
-              typeof id === "string" &&
-              Number(id) === Number(msg?.project_id)
-            ) {
-              clearSyncStatusPoll();
-              if (syncTimerRef.current) {
-                clearInterval(syncTimerRef.current);
-                syncTimerRef.current = null;
-              }
-              setSyncProgress({ active: false, percent: 100, step: "Sync complete" });
-              setSyncing(false);
-              // Reload current page with paginated API after sync
-              await loadTasksPage();
-              await loadProjectDetails(true);
-              setToast({
-                open: true,
-                type: "success",
-                msg: "Background sync completed",
-              });
-            } else if (
-              msg?.type === "jira_sync_failed" &&
-              typeof id === "string" &&
-              Number(id) === Number(msg?.project_id)
-            ) {
-              clearSyncStatusPoll();
-              if (syncTimerRef.current) {
-                clearInterval(syncTimerRef.current);
-                syncTimerRef.current = null;
-              }
-              setSyncing(false);
-              setSyncProgress({ active: false, percent: 0, step: "" });
-              autoSyncDisabledRef.current = true;
-              const detail = typeof msg?.detail === "string" ? msg.detail : "";
-              let message = "Jira sync failed";
-              if (msg?.reason === "auth") {
-                message = "Jira sync failed: access denied";
-              } else if (msg?.reason === "unexpected") {
-                message = "Jira sync failed: unexpected Jira response";
-              } else if (msg?.reason === "empty") {
-                message = "Jira sync failed: no issues returned";
-              }
-              setToast({
-                open: true,
-                type: "error",
-                msg: detail ? `${message}: ${detail}` : message,
-              });
-            }
-          } catch (err) { logNonFatal('background load', err); }
-        };
-        ws.onclose = () => {
-          if (!closed) wsRef.current = null;
-        };
-      } catch (err) { logNonFatal('background load', err); }
-    })();
-    return () => {
-      closed = true;
-      clearSyncStatusPoll();
-      try {
-        wsRef.current?.close();
-      } catch (err) { logNonFatal('background load', err); }
-      wsRef.current = null;
-    };
-  }, [clearSyncStatusPoll, id, loadProjectDetails, loadTasksPage, logNonFatal]);
+  }, [id, loadProjectDetails, logNonFatal, loadQualityHistory, loadSprintsSection, resetForProjectSwitch, runAutoSyncIfStale, setSyncProgress, setSyncing, stopSyncActivity]);
   const taskColumns: GridColDef<TaskItem>[] = useMemo(() => ([
     { field: "key", headerName: "Key", width: 120 },
     { field: "summary", headerName: "Summary", width: 300, flex: 1 },
@@ -1458,98 +761,7 @@ const ProjectDetail = () => {
             <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
             <Button
               color="error"
-              onClick={async () => {
-                setConfirmOpen(false);
-                try {
-                  if (!project?.id) return;
-                  setToast({
-                    open: true,
-                    type: "info",
-                    msg: "Purging project data...",
-                  });
-                  await purgeProject(project.id);
-                  setToast({
-                    open: true,
-                    type: "success",
-                    msg: "Purged. Resyncing...",
-                  });
-                  // Check Jira integration/token before resync
-                  try {
-                    const integ = await getIntegrationsStatus();
-                    if (!(integ?.jira?.configured && integ?.jira?.has_token)) {
-                      setToast({
-                        open: true,
-                        type: "warning",
-                        msg: "Resync skipped: Jira not configured or token missing",
-                      });
-                      return;
-                    }
-                  } catch (err) { logNonFatal('background load', err); }
-                  setSyncing(true);
-                  await syncJiraProject(project.jira_key);
-                  // Poll tasks until available or timeout - use paginated API
-                  let attempts = 0;
-                  let taskTotal = 0;
-                  const maxAttempts = 30; // ~60s if interval 2s
-                  let purgePollInFlight = false;
-                  if (purgePollRef.current) clearInterval(purgePollRef.current);
-                  purgePollRef.current = setInterval(async () => {
-                    if (purgePollInFlight) {
-                      return;
-                    }
-                    purgePollInFlight = true;
-                    attempts++;
-                    // abort previous in-flight request before issuing a new poll
-                    if (purgeReqCtrlRef.current)
-                      purgeReqCtrlRef.current.abort();
-                    purgeReqCtrlRef.current = new AbortController();
-                    try {
-                      const response = await listTasksByProjectPaginated(Number(id), {
-                        skip: taskPaginationModel.page * taskPaginationModel.pageSize,
-                        limit: taskPaginationModel.pageSize,
-                      }, {
-                        signal: purgeReqCtrlRef.current.signal,
-                        timeout: 8000,
-                      });
-                      taskTotal = response.meta.total;
-                      if (taskTotal > 0) {
-                        setRows(response.data);
-                        setTaskRowCount(taskTotal);
-                        lastRowsRef.current = response.data;
-                      }
-                    } catch (err) { logNonFatal('background load', err); }
-                    finally {
-                      purgePollInFlight = false;
-                    }
-                    if (taskTotal > 0 || attempts >= maxAttempts) {
-                      if (purgePollRef.current) {
-                        clearInterval(purgePollRef.current);
-                        purgePollRef.current = null;
-                      }
-                      if (purgeReqCtrlRef.current) {
-                        purgeReqCtrlRef.current.abort();
-                        purgeReqCtrlRef.current = null;
-                      }
-                      setSyncing(false);
-                      setToast({
-                        open: true,
-                        type: taskTotal > 0 ? "success" : "error",
-                        msg:
-                          taskTotal > 0
-                            ? "Resync completed"
-                            : "Timeout while waiting for data",
-                      });
-                    }
-                  }, 2000);
-                } catch (e) {
-                  setSyncing(false);
-                  setToast({
-                    open: true,
-                    type: "error",
-                    msg: `Purge/Resync failed: ${getErrorMessage(e, "Unknown error")}`,
-                  });
-                }
-              }}
+              onClick={() => void handlePurgeAndResync(project)}
             >
               Delete and Resync
             </Button>

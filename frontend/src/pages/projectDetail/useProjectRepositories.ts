@@ -279,11 +279,6 @@ export function useProjectRepositories({ projectId, showToast }: RepoManagerOpti
   }, []);
 
   useEffect(() => {
-    if (!id) return;
-    void reloadRepositories(id);
-  }, [id, reloadRepositories]);
-
-  useEffect(() => {
     if (!repoDialogOpen) return;
     let cancelled = false;
     (async () => {
