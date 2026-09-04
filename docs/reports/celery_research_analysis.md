@@ -1,5 +1,12 @@
 # Research Analysis: Using Celery Workers for Confluence Data Loading
 
+> [!WARNING]
+> Historical snapshot: this document is preserved as-is for context and
+> its links may point to files that no longer exist. It is excluded from
+> the docs link-integrity check (scripts/check_docs_links.py). Do not
+> update it going forward; write new docs in docs/ instead.
+
+
 ## Executive Summary
 
 Based on comprehensive research, implementing Celery workers for Confluence data loading would provide significant benefits for handling long-running sync operations, though it requires careful architectural changes. The current SSE implementation has inherent limitations for extended operations, while Celery offers robust task management, retry mechanisms, and better scalability at the cost of increased complexity.

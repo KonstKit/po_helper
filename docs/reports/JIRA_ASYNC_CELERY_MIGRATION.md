@@ -1,5 +1,12 @@
 # Jira Sync Migration: Celery + Async httpx
 
+> [!WARNING]
+> Historical snapshot: this document is preserved as-is for context and
+> its links may point to files that no longer exist. It is excluded from
+> the docs link-integrity check (scripts/check_docs_links.py). Do not
+> update it going forward; write new docs in docs/ instead.
+
+
 **Date:** 2025-10-04
 **Status:** ✅ COMPLETE
 **Priority:** CRITICAL (resolves health check blocking)

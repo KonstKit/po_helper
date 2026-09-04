@@ -1,5 +1,12 @@
 # Traceability Flow Builder - Phase 2 Complete ✅
 
+> [!WARNING]
+> Historical snapshot: this document is preserved as-is for context and
+> its links may point to files that no longer exist. It is excluded from
+> the docs link-integrity check (scripts/check_docs_links.py). Do not
+> update it going forward; write new docs in docs/ instead.
+
+
 ## Overview
 Phase 2 добавляет редактируемые свойства, валидацию правил, систему шаблонов и новые типы нод. Теперь пользователи могут полностью настраивать правила через UI.
 

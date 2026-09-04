@@ -27,12 +27,19 @@ def request_with_retry(
     max_retries: Optional[int] = None,
     backoff_base: Optional[float] = None,
     backoff_max: Optional[float] = None,
+    retry_on_429: bool = False,
+    respect_retry_after: bool = False,
+    retry_status_codes: Optional[frozenset] = None,
 ) -> requests.Response:
     """Run `do_request` with retry/backoff on 5xx and transport errors.
 
     `do_request` performs the actual HTTP call (method/session/auth are the
     caller's concern); this wrapper owns only the retry policy, keeping the
     per-service copies in sync by construction.
+
+    retry_on_429 additionally retries rate-limit responses;
+    respect_retry_after honors a Retry-After header on 429s before falling
+    back to exponential backoff (TestRail rate limiting).
     """
     attempts = (
         settings.INTEGRATION_HTTP_MAX_RETRIES if max_retries is None else max(0, max_retries)
@@ -40,12 +47,32 @@ def request_with_retry(
     base = settings.INTEGRATION_HTTP_BACKOFF_SECONDS if backoff_base is None else backoff_base
     cap = settings.INTEGRATION_HTTP_BACKOFF_MAX_SECONDS if backoff_max is None else backoff_max
 
+    statuses = retry_status_codes or frozenset(range(500, 600))
+
+    def _retryable(status: int) -> bool:
+        return status in statuses or (retry_on_429 and status == 429)
+
+    def _delay(resp, attempt: int) -> float:
+        if respect_retry_after and resp is not None and _retryable(resp.status_code):
+            retry_after = resp.headers.get("Retry-After")
+            if retry_after:
+                try:
+                    parsed = float(retry_after)
+                except ValueError:
+                    parsed = None
+                    logger.debug("Non-numeric Retry-After header ignored: %r", retry_after)
+                if parsed is not None and 0.0 <= parsed < float("inf"):
+                    return parsed
+                if parsed is not None:
+                    logger.debug("Unusable Retry-After header ignored: %r", retry_after)
+        return min(base * (2**attempt), cap)
+
     last_exc: Optional[Exception] = None
     for attempt in range(attempts):
         try:
             resp = do_request()
-            if resp.status_code >= 500 and attempt < attempts - 1:
-                delay = min(base * (2**attempt), cap)
+            if _retryable(resp.status_code) and attempt < attempts - 1:
+                delay = _delay(resp, attempt)
                 logger.warning(
                     "%s request failed (%s) retry %d/%d in %.1fs: %s",
                     label,

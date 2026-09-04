@@ -1,5 +1,12 @@
 # PO Helper - Comprehensive Code Quality Analysis & Refactoring Report
 
+> [!WARNING]
+> Historical snapshot: this document is preserved as-is for context and
+> its links may point to files that no longer exist. It is excluded from
+> the docs link-integrity check (scripts/check_docs_links.py). Do not
+> update it going forward; write new docs in docs/ instead.
+
+
 **Generated**: 2025-12-09
 **Project**: PO Helper - Project Management & Traceability Platform
 **Codebase Size**: ~15,000+ lines (Backend: Python/FastAPI, Frontend: React/TypeScript)

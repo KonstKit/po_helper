@@ -1,5 +1,12 @@
 # Traceability Flow Builder - Phase 1 Complete ✅
 
+> [!WARNING]
+> Historical snapshot: this document is preserved as-is for context and
+> its links may point to files that no longer exist. It is excluded from
+> the docs link-integrity check (scripts/check_docs_links.py). Do not
+> update it going forward; write new docs in docs/ instead.
+
+
 ## Overview
 Phase 1 of the Visual Flow Builder has been successfully implemented, providing the foundation for creating traceability rules using a drag-and-drop interface.
 
