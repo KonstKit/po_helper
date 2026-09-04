@@ -1,5 +1,12 @@
 # Refactoring Session Summary - 2025-12-09
 
+> [!WARNING]
+> Historical snapshot: this document is preserved as-is for context and
+> its links may point to files that no longer exist. It is excluded from
+> the docs link-integrity check (scripts/check_docs_links.py). Do not
+> update it going forward; write new docs in docs/ instead.
+
+
 ## Overview
 
 Today's session focused on implementing the critical refactoring issues identified in the comprehensive code quality analysis. Substantial progress was made on decomposing large monolithic code into focused, testable services.

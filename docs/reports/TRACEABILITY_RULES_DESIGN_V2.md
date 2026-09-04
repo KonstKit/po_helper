@@ -1,5 +1,12 @@
 # Traceability Rules Engine - Design Document v2.0
 
+> [!WARNING]
+> Historical snapshot: this document is preserved as-is for context and
+> its links may point to files that no longer exist. It is excluded from
+> the docs link-integrity check (scripts/check_docs_links.py). Do not
+> update it going forward; write new docs in docs/ instead.
+
+
 **Updated:** 2025-10-05
 **Based on:** Industry research (Jama, Polarion, IBM DOORS) + Atlassian best practices
 

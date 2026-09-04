@@ -1,5 +1,12 @@
 # PO Helper — Единый отчёт о необходимых правках
 
+> [!WARNING]
+> Historical snapshot: this document is preserved as-is for context and
+> its links may point to files that no longer exist. It is excluded from
+> the docs link-integrity check (scripts/check_docs_links.py). Do not
+> update it going forward; write new docs in docs/ instead.
+
+
 **Дата:** 2026-04-12
 **Среда:** Docker (nginx:3001 → backend:8000, PostgreSQL, Redis)
 **Проект:** WaBank (WAB), 645 задач, 58 участников

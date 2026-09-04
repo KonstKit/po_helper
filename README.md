@@ -301,7 +301,7 @@ Full API documentation is available at `/docs` when the server is running.
 
 ## рџ“ќ License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License (a LICENSE file is not bundled in the repository).
 
 ## рџ† Support
 
@@ -322,21 +322,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [ ] Custom dashboard widgets
 - [ ] Advanced forecasting models
 - [ ] Streaming ETL pipelines
-
-## рџ“Љ Screenshots
-
-### Dashboard
-![Dashboard](docs/images/dashboard.png)
-
-### Project Analytics
-![Analytics](docs/images/analytics.png)
-
-### Risk Management
-![Risks](docs/images/risks.png)
-
----
-
-**Built with вќ¤пёЏ for Product Owners who want to make data-driven decisions**
 
 ## Documentation
 - [Deployment Guide](docs/DEPLOYMENT.md)

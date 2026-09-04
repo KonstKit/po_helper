@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from typing import Any, Dict, List, Optional
 
 import requests
+
+from app.utils.http_retry import request_with_retry
 from requests.auth import HTTPBasicAuth
 
 from app.core.config import settings
@@ -147,68 +148,36 @@ class TestRailClient:
         self, method: str, endpoint: str, params: Optional[Dict[str, Any]]
     ) -> Any:
         url = endpoint if endpoint.startswith("http") else f"{self.api_base}/{endpoint.lstrip('/')}"
-        attempts = self.max_retries + 1
-        last_exc: Optional[Exception] = None
-
-        for attempt in range(attempts):
-            try:
-                resp = self._session.request(
-                    method,
-                    url,
-                    auth=self.auth,
-                    params=params,
-                    timeout=self.timeout_seconds,
-                )
-                if resp.status_code in (429, 500, 502, 503, 504) and attempt < attempts - 1:
-                    delay = self._retry_delay(resp, attempt)
-                    logger.warning(
-                        "TestRail request failed (%s) retry %d/%d in %.1fs: %s",
-                        resp.status_code,
-                        attempt + 1,
-                        attempts - 1,
-                        delay,
-                        url,
-                    )
-                    time.sleep(delay)
-                    continue
-                if resp.status_code >= 400:
-                    snippet = resp.text[:200] if resp.text else ""
-                    raise TestRailAPIError(
-                        f"TestRail error {resp.status_code}: {snippet or 'unknown'}",
-                        status_code=resp.status_code,
-                    )
-                try:
-                    return resp.json()
-                except ValueError as exc:
-                    raise TestRailAPIError("TestRail returned non-JSON response") from exc
-            except (requests.Timeout, requests.ConnectionError) as exc:
-                last_exc = exc
-                if attempt >= attempts - 1:
-                    raise
-                delay = min(self.backoff_base_seconds * (2**attempt), self.backoff_max_seconds)
-                logger.warning(
-                    "TestRail request error (%s) retry %d/%d in %.1fs: %s",
-                    exc.__class__.__name__,
-                    attempt + 1,
-                    attempts - 1,
-                    delay,
-                    url,
-                )
-                time.sleep(delay)
-
-        if last_exc:
-            raise last_exc
-        raise TestRailAPIError("Unexpected TestRail request retry loop exit")
-
-    def _retry_delay(self, response: requests.Response, attempt: int) -> float:
-        if self.retry_after_header:
-            retry_after = response.headers.get("Retry-After")
-            if retry_after:
-                try:
-                    return float(retry_after)
-                except ValueError:
-                    pass
-        return min(self.backoff_base_seconds * (2**attempt), self.backoff_max_seconds)
+        # Shared retry policy: transport errors, 5xx and 429 (with
+        # Retry-After honoring) live in app.utils.http_retry so every
+        # integration client retries identically.
+        resp = request_with_retry(
+            lambda: self._session.request(
+                method,
+                url,
+                auth=self.auth,
+                params=params,
+                timeout=self.timeout_seconds,
+            ),
+            url=url,
+            label="TestRail",
+            max_retries=self.max_retries,
+            backoff_base=self.backoff_base_seconds,
+            backoff_max=self.backoff_max_seconds,
+            retry_on_429=True,
+            respect_retry_after=self.retry_after_header,
+            retry_status_codes=frozenset({429, 500, 502, 503, 504}),
+        )
+        if resp.status_code >= 400:
+            snippet = resp.text[:200] if resp.text else ""
+            raise TestRailAPIError(
+                f"TestRail error {resp.status_code}: {snippet or 'unknown'}",
+                status_code=resp.status_code,
+            )
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise TestRailAPIError("TestRail returned non-JSON response") from exc
 
     def _extract_list(self, payload: Any, list_key: Optional[str]) -> List[Dict[str, Any]]:
         if list_key and isinstance(payload, dict):
