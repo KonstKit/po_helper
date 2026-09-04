@@ -356,6 +356,54 @@ describe("useProjectSync lifecycle", () => {
   });
 
 
+
+it("does not start a stale auto-sync when the project switches during the integration lookup", async () => {
+  let resolveInteg: (v: unknown) => void = () => {};
+  mocks.getIntegrationsStatus.mockImplementation(
+    () =>
+      new Promise((r) => {
+        resolveInteg = r;
+      }),
+  );
+  const hook = render();
+  await act(async () => {
+    hook.result.current.runAutoSyncIfStale(0, "KEY", 1);
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  // the deferred run is now awaiting the integration status
+  hook.result.current.stopSyncActivity();
+  await act(async () => {
+    resolveInteg(jiraConfigured);
+    await vi.advanceTimersByTimeAsync(50);
+  });
+  expect(mocks.syncJiraProject).not.toHaveBeenCalled();
+  expect(showToast).not.toHaveBeenCalledWith(
+    expect.objectContaining({ msg: "Auto-sync started (last sync stale)" }),
+  );
+});
+
+it("does not publish stale tasks when the project switches during the initial fetch", async () => {
+  let resolveTasks: (v: unknown) => void = () => {};
+  mocks.listTasksByProjectPaginated.mockImplementation(
+    () =>
+      new Promise((r) => {
+        resolveTasks = r;
+      }),
+  );
+  const hook = render();
+  await act(async () => {
+    hook.result.current.runAutoSyncIfStale(0, "KEY", 1);
+    await vi.advanceTimersByTimeAsync(50);
+  });
+  expect(mocks.syncJiraProject).toHaveBeenCalled();
+  hook.result.current.stopSyncActivity();
+  await act(async () => {
+    resolveTasks({ data: [{ id: 1 }], meta: { total: 1 } });
+    await vi.advanceTimersByTimeAsync(50);
+  });
+  expect(onTasksLoaded).not.toHaveBeenCalled();
+});
+
 it("stops the auto-sync timeout fallback poll on unmount", async () => {
   mocks.listTasksByProjectPaginated.mockRejectedValue(
     new Error("timeout of 8000ms exceeded"),

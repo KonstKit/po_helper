@@ -363,6 +363,9 @@ const runAutoSyncIfStale = useCallback(
     const runAutoSync = async () => {
       try {
         const integ = await getIntegrationsStatus();
+        if (isStaleRun()) {
+          return;
+        }
         const ok = integ?.jira?.configured && integ?.jira?.has_token;
         if (!ok) {
           showToast({
@@ -414,7 +417,7 @@ const runAutoSyncIfStale = useCallback(
             limit: pageSize,
           });
           taskTotal = response.meta.total;
-          if (0 < taskTotal) {
+          if (0 < taskTotal && !isStaleRun()) {
             onTasksLoaded(response.data, taskTotal);
           }
         } catch (e) {
@@ -487,6 +490,9 @@ const runAutoSyncIfStale = useCallback(
         }
         if (0 < taskTotal) {
           await onProjectReload();
+          if (isStaleRun()) {
+            return;
+          }
           showToast({
             open: true,
             type: "success",
@@ -512,6 +518,11 @@ const runAutoSyncIfStale = useCallback(
         });
         setSyncing(false);
       } catch (e) {
+        if (isStaleRun()) {
+          // project switched/unmounted mid-run; stopSyncActivity already
+          // cleaned the timers - bail out without user-visible noise
+          return;
+        }
         if (syncTimerRef.current) clearInterval(syncTimerRef.current);
         syncTimerRef.current = null;
         setSyncing(false);
