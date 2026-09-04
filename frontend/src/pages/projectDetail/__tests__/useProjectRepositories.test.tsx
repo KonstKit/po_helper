@@ -61,10 +61,9 @@ describe('useProjectRepositories', () => {
 
     const hook = render('1');
     await act(async () => { hook.rerender({ projectId: '2' }); });
-    // React 18 StrictMode в renderHook double-invokes effects, поэтому
-    // проверяем только наличие запросов per-PID
-    expect(calls).toContain(1);
-    expect(calls).toContain(2);
+    // exactly one request per project transition (no duplicate effects)
+    expect(calls.filter((c) => c === 1)).toHaveLength(1);
+    expect(calls.filter((c) => c === 2)).toHaveLength(1);
 
     // B (project 2) data must land after the switch
     await waitFor(() =>
