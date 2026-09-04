@@ -11,8 +11,8 @@ can read the history.
 
 | Group | Rule | Files | Commit | Classification |
 |---|---|---|---|---|
-| 1 | `atlassian-api-token` | `analysis_output/runs/*.csv` (17 findings) | `3d169f5` (2026-01-23) | **False positive** |
-| 2 | `generic-api-key` | `backend/test_gitlab_sync.py` (1 finding) | `c31e420` (initial commit, 2025-12-14) | **Real-looking credential — rotate** |
+| 1 | `atlassian-api-token` | `analysis_output/runs/*.csv` (17 findings) | `3d169f5` (2026-01-23; purged rewrite: `d558c0e`) | **False positive** |
+| 2 | `generic-api-key` | `backend/test_gitlab_sync.py` (1 finding) | `c31e420` (initial commit, 2025-12-14; purged 2026-09-04, rewritten to `75c8152`) | **Resolved: rotated + purged** |
 
 ## Group 1 — false positives (17)
 
@@ -33,9 +33,9 @@ Remediation: a path-based allowlist for `analysis_output/` in the
 repo-root `.gitleaks.toml` (committed alongside this report) — no
 rotation needed.
 
-## Group 2 — real-looking GitLab token (1) — ACTION REQUIRED
+## Group 2 — real-looking GitLab token (1) — RESOLVED
 
-`backend/test_gitlab_sync.py`, initial commit `c31e420`:
+`backend/test_gitlab_sync.py`, initial commit `c31e420` (pre-purge content shown; the value below was replaced with `***REMOVED***` in the purged history):
 
 ```python
 GITLAB_TOKEN = "wSiGrq8…(redacted, full value in history)"  # Common token
@@ -48,22 +48,18 @@ GITLAB_TOKEN = "wSiGrq8…(redacted, full value in history)"  # Common token
   read like a **real shared token**, not a dummy.
 - The file no longer exists on `main` — only in history.
 
-### Required actions
+### Resolution (2026-09-04)
 
-1. **Rotate the token now** (GitLab: revoke the token whose value is
-   visible at the commit link above / via git history, issue a new one,
-   update consumers). The value is deliberately redacted in this report
-   so the tip does not republish it. Rotation makes the
-   historical copy inert — the single most important step, and it is
-   outside git. Only the maintainer can do this.
-2. Optional, after rotation: purge the history (`git filter-repo
-   --replace-text` with the token, or BFG) and force-push. Destructive
-   for every clone; coordinate first. After a purge, remove the token
-   entry from `.gitleaks.toml` so any recurrence is re-flagged.
-3. The finding is baselined in `.gitleaks.toml` by commit + path (the
-   value is not copied anywhere on the tip), so the nightly scan
-   reflects reality instead of failing forever. Any leak of the token
-   in any other file or commit still fails the scan.
+1. **Token rotated** on the GitLab side by the maintainer — the
+   historical value is inert.
+2. **History purged** the same day: `git filter-repo --replace-text`
+   replaced the value with `***REMOVED***` across all 204 commits and
+   the rewritten `main` was force-pushed (verified: zero occurrences
+   of the value anywhere in the new history). Merged remote branches
+   were deleted so no stale ref kept the old objects reachable.
+3. The `.gitleaks.toml` entry for this finding was **removed** —
+   nothing to baseline anymore; any recurrence of the value would be
+   flagged by the scanner again.
 
 ## Why not rewrite history right away
 

@@ -1,37 +1,31 @@
 # Gitleaks configuration for po_helper.
 #
-# Extends the built-in rule set and baselines the 18 historical findings
-# analyzed in docs/security/gitleaks-findings-2026-08.md:
+# Extends the built-in rule set and baselines the 17 historical false
+# positives analyzed in docs/security/gitleaks-findings-2026-08.md:
+# the atlassian-api-token rule matches the 24-char function name
+# listConfluencePagesLocal inside generated static-analysis CSV exports
+# (analysis_output/runs/*.csv, original commit 3d169f5, rewritten to
+# d558c0e by the 2026-09-04 history purge).
 #
-# 1. 17 x atlassian-api-token in analysis_output/runs/*.csv (commit
-#    3d169f5) - false positives: the 24-char function name
-#    listConfluencePagesLocal in generated static-analysis exports
-#    matches the token shape. The directory was later removed from the
-#    tip but remains in history.
-#
-# 2. 1 x generic-api-key in backend/test_gitlab_sync.py (initial commit
-#    c31e420) - a real-looking GitLab token that still exists in
-#    history. It must be ROTATED on the GitLab side; after an optional
-#    history purge this entry can be removed so any recurrence is
-#    re-flagged.
+# History note: the GitLab token from the initial commit (backend/
+# test_gitlab_sync.py) was ROTATED on 2026-09-04 and the value was
+# purged from history in the same pass (git filter-repo), so no entry
+# is needed for it anymore.
 #
 # Syntax note: the singular [allowlist] table with condition = "AND"
-# is the only allowlist form supported by gitleaks 8.24.3 (the version
-# pinned by gitleaks-action@v2 in CI); the newer plural [[allowlists]]
-# form is intentionally avoided. The allowlist only suppresses findings
-# whose commit AND exact historical path both match, so any new leak -
-# including reuse of the rotated token anywhere else - still fails the
-# scan.
+# (the version pinned by gitleaks-action@v2 in CI); the newer plural
+# [[allowlists]] form is intentionally avoided. The allowlist only
+# suppresses findings whose commit AND exact historical path both
+# match, so any new leak still fails the scan.
 
 [extend]
 useDefault = true
 
 [allowlist]
-description = "Baseline of 18 historical findings - see docs/security/gitleaks-findings-2026-08.md"
+description = "Baseline of 17 historical CSV false positives - see docs/security/gitleaks-findings-2026-08.md"
 condition = "AND"
 commits = [
-  "3d169f5007ef076f11856796a361c9e2a6236cb0",
-  "c31e420843396d0f6df6cc42577d02a4de28e627",
+  "d558c0edf80315d820d09ca22ff9913ab772fbe5",
 ]
 paths = [
   "^analysis_output/runs/20260121-154214_b562249/methods\\.csv$",
@@ -51,5 +45,4 @@ paths = [
   "^analysis_output/runs/20260121-160255_b562249/methods\\.csv$",
   "^analysis_output/runs/20260121-160255_b562249/unused_prod\\.csv$",
   "^analysis_output/runs/20260121-160255_b562249/unused_with_tests\\.csv$",
-  "^backend/test_gitlab_sync\\.py$",
 ]
