@@ -45,7 +45,7 @@ describe("useSprintInsights", () => {
   );
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     loadingUpdates.length = 0;
     mocks.getSprintBurndown.mockResolvedValue({ points: [] });
     mocks.getSprintQuality.mockResolvedValue({ score: 1 });

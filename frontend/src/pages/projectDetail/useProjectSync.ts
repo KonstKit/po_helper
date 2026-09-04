@@ -465,6 +465,17 @@ const runAutoSyncIfStale = useCallback(
           });
           autoSyncDisabledRef.current = true;
         }
+        // Terminal cleanup for both outcomes (pre-refactor behavior):
+        // without the WebSocket completion event the ticker would run
+        // forever and keep the sync controls disabled.
+        if (syncTimerRef.current) clearInterval(syncTimerRef.current);
+        syncTimerRef.current = null;
+        setSyncProgress({
+          active: false,
+          percent: 100,
+          step: "Sync complete",
+        });
+        setSyncing(false);
       } catch (e) {
         if (syncTimerRef.current) clearInterval(syncTimerRef.current);
         syncTimerRef.current = null;
