@@ -83,6 +83,11 @@ export function useProjectSync({
   const autoSyncTimeoutRef = useRef<number | null>(null);
   const purgePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const purgeReqCtrlRef = useRef<AbortController | null>(null);
+  const autoSyncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoSyncReqCtrlRef = useRef<AbortController | null>(null);
+  // Bumped whenever sync activity is stopped (project switch / unmount) so
+  // an in-flight auto-sync run can detect that it became stale.
+  const autoSyncRunTokenRef = useRef(0);
 
   const timedOut = useCallback((e: unknown) => {
     const msg = getErrorMessage(e, "").toLowerCase();
@@ -163,6 +168,16 @@ const stopSyncActivity = useCallback(() => {
     purgeReqCtrlRef.current.abort();
     purgeReqCtrlRef.current = null;
   }
+if (autoSyncPollRef.current) {
+  clearInterval(autoSyncPollRef.current);
+  autoSyncPollRef.current = null;
+}
+if (autoSyncReqCtrlRef.current) {
+  autoSyncReqCtrlRef.current.abort();
+  autoSyncReqCtrlRef.current = null;
+}
+// Invalidate any in-flight auto-sync run.
+autoSyncRunTokenRef.current += 1;
 }, [stopSyncProgressTicker, clearSyncStatusPoll]);
 
 const startSyncStatusPoll = useCallback(
@@ -342,6 +357,8 @@ const runAutoSyncIfStale = useCallback(
       return;
     }
     autoSyncTriedRef.current = true;
+    const runToken = ++autoSyncRunTokenRef.current;
+    const isStaleRun = () => runToken !== autoSyncRunTokenRef.current;
 
     const runAutoSync = async () => {
       try {
@@ -381,6 +398,9 @@ const runAutoSyncIfStale = useCallback(
           if (!timedOut(e)) throw e;
         }
 
+        if (isStaleRun()) {
+          return;
+        }
         setSyncProgress((p) => ({
           ...p,
           step: "Applying updates...",
@@ -403,17 +423,25 @@ const runAutoSyncIfStale = useCallback(
             const maxAttempts = 30;
             await new Promise<void>((resolve) => {
               let pollInFlight = false;
-              let pollReqCtrl: AbortController | null = null;
-              const iv = setInterval(async () => {
+              autoSyncPollRef.current = setInterval(async () => {
+                  if (isStaleRun()) {
+                    // project switched or unmounted while polling
+                    if (autoSyncPollRef.current) {
+                      clearInterval(autoSyncPollRef.current);
+                      autoSyncPollRef.current = null;
+                    }
+                    resolve();
+                    return;
+                  }
                 if (pollInFlight) {
                   return;
                 }
                 pollInFlight = true;
                 attempts++;
-                if (pollReqCtrl) {
-                  pollReqCtrl.abort();
+                if (autoSyncReqCtrlRef.current) {
+                  autoSyncReqCtrlRef.current.abort();
                 }
-                pollReqCtrl = new AbortController();
+                autoSyncReqCtrlRef.current = new AbortController();
                 try {
                   const { page, pageSize } = taskPaginationRef.current;
                   const response = await listTasksByProjectPaginated(
@@ -423,12 +451,12 @@ const runAutoSyncIfStale = useCallback(
                       limit: pageSize,
                     },
                     {
-                      signal: pollReqCtrl.signal,
+                      signal: autoSyncReqCtrlRef.current.signal,
                       timeout: 8000,
                     },
                   );
                   taskTotal = response.meta.total;
-                  if (0 < taskTotal) {
+                  if (0 < taskTotal && !isStaleRun()) {
                     onTasksLoaded(response.data, taskTotal);
                   }
                 } catch (err) {
@@ -437,9 +465,13 @@ const runAutoSyncIfStale = useCallback(
                   pollInFlight = false;
                 }
                 if (0 < taskTotal || maxAttempts <= attempts) {
-                  clearInterval(iv);
-                  if (pollReqCtrl) {
-                    pollReqCtrl.abort();
+                  if (autoSyncPollRef.current) {
+                    clearInterval(autoSyncPollRef.current);
+                    autoSyncPollRef.current = null;
+                  }
+                  if (autoSyncReqCtrlRef.current) {
+                    autoSyncReqCtrlRef.current.abort();
+                    autoSyncReqCtrlRef.current = null;
                   }
                   resolve();
                 }
@@ -450,6 +482,9 @@ const runAutoSyncIfStale = useCallback(
           }
         }
 
+        if (isStaleRun()) {
+          return;
+        }
         if (0 < taskTotal) {
           await onProjectReload();
           showToast({
