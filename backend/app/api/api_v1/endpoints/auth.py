@@ -30,6 +30,7 @@ from app.core.oauth_state import (
     verify_oauth_state,
 )
 from app.core.ws_tickets import issue_ws_ticket
+from app.core.auth_cookies import clear_auth_cookie, set_auth_cookie
 from app.core.crypto import AES_GCM_PREFIX
 from app.core.mfa import (
     setup_mfa,
@@ -208,7 +209,11 @@ async def login(
 
     # Validate via response model, then return as Response for SlowAPI headers
     token_payload = Token(access_token=access_token, token_type="bearer").model_dump()
-    return JSONResponse(content=token_payload)
+    response = JSONResponse(content=token_payload)
+    # Dual mode (RFC M1): body token kept for pre-M2 clients, the browser
+    # session uses the httpOnly cookie.
+    set_auth_cookie(response, access_token)
+    return response
 
 
 class WSTicketResponse(BaseModel):
@@ -232,6 +237,13 @@ async def issue_websocket_ticket(
     ticket = issue_ws_ticket(current_user.email)
     response.headers["Cache-Control"] = "no-store"
     return WSTicketResponse(ticket=ticket, expires_in=60)
+
+
+@router.post("/logout")
+async def logout() -> JSONResponse:
+    response = JSONResponse(content={"detail": "Logged out"})
+    clear_auth_cookie(response)
+    return response
 
 
 @router.post("/scoped-token", response_model=Token)
@@ -427,7 +439,7 @@ async def google_oauth_callback(
     code: str = Query(..., description="Authorization code from Google"),
     state: str = Query(..., description="State parameter for CSRF protection"),
     db: AsyncSession = Depends(get_db),
-) -> Token:
+) -> JSONResponse:
     """
     Handle Google OAuth2 callback.
     Exchanges code for tokens and creates/links user account.
@@ -458,7 +470,14 @@ async def google_oauth_callback(
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         )
 
-        return Token(access_token=jwt_token, token_type="bearer")
+        payload = Token(access_token=jwt_token, token_type="bearer").model_dump()
+        response = JSONResponse(content=payload)
+        # Keep the state-cookie deletion: _verify_oauth_callback_state
+        # cleared the binding cookie on the injected response, but this
+        "returned response replaces it."
+        _clear_oauth_state_cookie(response)
+        set_auth_cookie(response, jwt_token)
+        return response
 
     except OAuth2Error as e:
         logger.error(f"Google OAuth2 error: {e.error} - {e.description}")
@@ -509,7 +528,7 @@ async def microsoft_oauth_callback(
     code: str = Query(..., description="Authorization code from Microsoft"),
     state: str = Query(..., description="State parameter for CSRF protection"),
     db: AsyncSession = Depends(get_db),
-) -> Token:
+) -> JSONResponse:
     """
     Handle Microsoft OAuth2 callback.
     Exchanges code for tokens and creates/links user account.
@@ -540,7 +559,14 @@ async def microsoft_oauth_callback(
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         )
 
-        return Token(access_token=jwt_token, token_type="bearer")
+        payload = Token(access_token=jwt_token, token_type="bearer").model_dump()
+        response = JSONResponse(content=payload)
+        # Keep the state-cookie deletion: _verify_oauth_callback_state
+        # cleared the binding cookie on the injected response, but this
+        "returned response replaces it."
+        _clear_oauth_state_cookie(response)
+        set_auth_cookie(response, jwt_token)
+        return response
 
     except OAuth2Error as e:
         logger.error(f"Microsoft OAuth2 error: {e.error} - {e.description}")
@@ -1045,7 +1071,7 @@ async def verify_mfa_login(
     response: Response,
     body: MFALoginVerifyRequest,
     db: AsyncSession = Depends(get_db),
-) -> Token:
+) -> JSONResponse:
     """
     Complete login by verifying MFA code.
 
@@ -1118,4 +1144,7 @@ async def verify_mfa_login(
 
     logger.info(f"MFA login completed for user {email}")
 
-    return Token(access_token=access_token, token_type="bearer")
+    payload = Token(access_token=access_token, token_type="bearer").model_dump()
+    response = JSONResponse(content=payload)
+    set_auth_cookie(response, access_token)
+    return response

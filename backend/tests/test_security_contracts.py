@@ -228,11 +228,32 @@ def test_runtime_security_rejects_placeholder_encryption_secret_in_production(mo
         app_main._validate_runtime_security_settings()
 
 
+def test_runtime_security_requires_secure_auth_cookie_in_production(monkeypatch):
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "AUTH_COOKIE_SECURE", False)
+    monkeypatch.setattr(settings, "SECRET_KEY", "shared-secret")
+    monkeypatch.setattr(settings, "ENCRYPTION_SECRET", "B4ckendEnc!Secret_2026_LocalDemo#001234")
+
+    with pytest.raises(RuntimeError, match="AUTH_COOKIE_SECURE=true is required"):
+        app_main._validate_runtime_security_settings()
+
+
+def test_runtime_security_accepts_secure_auth_cookie_in_production(monkeypatch):
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "AUTH_COOKIE_SECURE", True)
+    monkeypatch.setattr(settings, "SECRET_KEY", "shared-secret")
+    monkeypatch.setattr(settings, "ENCRYPTION_SECRET", "B4ckendEnc!Secret_2026_LocalDemo#001234")
+    monkeypatch.setattr(settings, "ALLOW_UNAUTHENTICATED_DEMO_API", False)
+
+    # Must not raise
+    app_main._validate_runtime_security_settings()
+
 def test_runtime_security_accepts_strong_encryption_secret_in_production(monkeypatch):
     monkeypatch.setattr(settings, "ENVIRONMENT", "production")
     monkeypatch.setattr(settings, "SECRET_KEY", "shared-secret")
     monkeypatch.setattr(settings, "ENCRYPTION_SECRET", "B4ckendEnc!Secret_2026_LocalDemo#001234")
     monkeypatch.setattr(settings, "ALLOW_UNAUTHENTICATED_DEMO_API", False)
+    monkeypatch.setattr(settings, "AUTH_COOKIE_SECURE", True)
 
     app_main._validate_runtime_security_settings()
 

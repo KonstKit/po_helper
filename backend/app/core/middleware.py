@@ -9,8 +9,12 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from app.core.metrics import metrics
 from app.core.query_metrics import set_query_context
 from app.core.request_context import set_request_id, reset_request_id
+from urllib.parse import urlsplit
+from starlette.datastructures import Headers
+from starlette.responses import JSONResponse
 from slowapi.middleware import SlowAPIMiddleware
 from app.core.rate_limit import limiter, RateLimitExceeded, _rate_limit_exceeded_handler
+from app.core.config import settings
 
 
 _UUID_PATTERN = re.compile(
@@ -207,3 +211,78 @@ def register_middlewares(app: FastAPI) -> None:
     # QueryContextMiddleware should run early to set context for all queries
     app.add_middleware(QueryContextMiddleware)
     app.add_middleware(ObservabilityMiddleware)
+    app.add_middleware(CookieCsrfOriginMiddleware)
+
+
+class CookieCsrfOriginMiddleware:
+    """CSRF defense for cookie-authenticated mutating requests (JWT M2).
+
+    SameSite=strict is the primary mitigation, but samesite is a
+    configurable setting, so enforce it in depth: when a mutating
+    request carries the auth cookie, an Origin/Referer must be present
+    and same-host or listed in CORS_ORIGINS. Cookie-less requests are
+    untouched (API clients use bearer tokens)."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    SAFE_METHODS = (
+        "GET",
+        "HEAD",
+        "OPTIONS",
+    )
+
+    def _reject(self) -> JSONResponse:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "detail": "Cross-site request rejected",
+            },
+        )
+
+    async def __call__(self, scope, receive, send):
+        if (
+            scope["type"] != "http"
+            or scope["method"] in self.SAFE_METHODS
+            or not settings.AUTH_COOKIE_ENABLED
+        ):
+            await self.app(scope, receive, send)
+            return
+        # Login CSRF (JWT storage M1): a cross-site form POST to the login
+        # endpoints can silently sign the victim into an attacker's account
+        # (SameSite permits cookie creation on top-level navigation), so
+        # these paths are origin-validated even without cookies.
+        path = scope.get("path", "")
+        is_login_csrf_path = path in (
+            "/api/v1/auth/login",
+            "/api/v1/auth/mfa/verify-login",
+        )
+        headers = Headers(scope=scope)
+        if not headers.get("cookie") and not is_login_csrf_path:
+            await self.app(scope, receive, send)
+            return
+        origin_header = headers.get("origin")
+        referer = headers.get("referer")
+        origin = origin_header
+        if not origin and referer:
+            parts = urlsplit(referer)
+            origin = parts.scheme + "://" + parts.netloc
+        allowed = {a.rstrip("/") for a in settings.CORS_ORIGINS}
+        host = headers.get("host")
+        if host:
+            allowed.add("http://" + host)
+            allowed.add("https://" + host)
+        # A present-but-different origin is always cross-site: reject.
+        if origin and origin.rstrip("/") not in allowed:
+            response = self._reject()
+            await response(scope, receive, send)
+            return
+        # No Origin/Referer: a non-browser API client driving the cookie
+        # manually. SameSite=strict (the default) already blocks cross-site
+        # browser sends, so the request is allowed; a weakened SameSite
+        # policy must fall back to this header check, and it fails closed.
+        if not origin and settings.AUTH_COOKIE_SAMESITE.lower() != "strict":
+            response = self._reject()
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)

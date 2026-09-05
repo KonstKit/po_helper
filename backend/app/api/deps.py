@@ -5,7 +5,7 @@ import logging
 from typing import Any, Optional
 from urllib.parse import urlparse
 
-from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,8 @@ from app.core.request_context import (
     set_token_tenant_id,
 )
 from app.core.security import decode_token, get_password_hash
+from app.core.auth_cookies import get_auth_cookie_token
+from app.core.config import settings as app_settings
 from app.models.rbac import Permissions
 from app.models import Project, Role, User
 from app.utils import handle_api_error
@@ -248,12 +250,14 @@ async def _get_or_create_demo_user(db: AsyncSession) -> User:
 
 
 async def get_current_user(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     authorization: Optional[str] = Header(default=None, convert_underscores=False),
 ) -> User:
     """Resolve the current user from the Authorization header."""
     return await _resolve_current_user(
         db,
+        request=request,
         authorization=authorization,
         allow_debug_demo_fallback=True,
     )
@@ -262,6 +266,7 @@ async def get_current_user(
 async def _resolve_current_user(
     db: AsyncSession,
     *,
+    request: Request | WebSocket,
     authorization: Optional[str],
     allow_debug_demo_fallback: bool,
 ) -> User:
@@ -269,6 +274,29 @@ async def _resolve_current_user(
         token = authorization.split(" ", 1)[1]
         with handle_api_error(operation="decode_token", status_code=status.HTTP_401_UNAUTHORIZED):
             payload = decode_token(token)
+        email = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        result = await db.execute(
+            select(User).options(selectinload(User.roles)).where(User.email == email)
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        set_token_scopes(_normalize_token_scopes(payload.get("scopes")))
+        set_token_tenant_id(_normalize_tenant_id(payload.get("tenant_id")))
+        set_actor_id(user.id)
+        return user
+
+    # Cookie fallback (JWT storage migration M2): browsers authenticate
+    # via the httpOnly session cookie; the Authorization header keeps
+    # priority for service-to-service clients that still send a bearer.
+    cookie_token = (
+        get_auth_cookie_token(request) if app_settings.AUTH_COOKIE_FALLBACK_ENABLED else None
+    )
+    if cookie_token:
+        with handle_api_error(operation="decode_token", status_code=status.HTTP_401_UNAUTHORIZED):
+            payload = decode_token(cookie_token)
         email = payload.get("sub")
         if not email:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
@@ -302,12 +330,14 @@ async def _resolve_current_user(
 
 
 async def get_current_user_strict(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     authorization: Optional[str] = Header(default=None, convert_underscores=False),
 ) -> User:
     """Resolve the current user without DEBUG/demo fallback."""
     return await _resolve_current_user(
         db,
+        request=request,
         authorization=authorization,
         allow_debug_demo_fallback=False,
     )
@@ -341,6 +371,7 @@ async def require_integration_access(
 
     return await _resolve_current_user(
         db,
+        request=request,
         authorization=authorization,
         allow_debug_demo_fallback=False,
     )

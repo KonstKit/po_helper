@@ -27,6 +27,18 @@ class Settings(BaseSettings):
     SECRET_KEY: str = Field(default=SECRET_KEY_PLACEHOLDER, min_length=32)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    # httpOnly auth cookie (JWT storage migration M1, docs/RFC_JWT_STORAGE.md).
+    # The bearer body token is still returned (dual mode) until M4; the
+    # browser session relies on the cookie from M2 on. SECURE must be true
+    # behind HTTPS in production deployments.
+    AUTH_COOKIE_ENABLED: bool = True
+    AUTH_COOKIE_NAME: str = "access_token"
+    AUTH_COOKIE_SECURE: bool = False
+    AUTH_COOKIE_SAMESITE: str = "strict"
+    # Cookie fallback in get_current_user stays OFF until the frontend
+    # logout clears the httpOnly cookie (M2). Issuance above is gated by
+    # AUTH_COOKIE_ENABLED and is harmless without the fallback.
+    AUTH_COOKIE_FALLBACK_ENABLED: bool = False
     ENVIRONMENT: str = Field(default="development", alias="ENVIRONMENT")
 
     # Database URL - reads from environment, defaults to SQLite for local dev
@@ -57,6 +69,7 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
+        "http://localhost:3001",  # Vite dev server (alternate port)
         "http://localhost:8000",
         "http://localhost:8001",
     ]

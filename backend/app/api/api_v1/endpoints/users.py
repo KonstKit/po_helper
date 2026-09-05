@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -74,20 +74,22 @@ async def update_user(
 
 @router.get("/me", response_model=UserSchema)
 async def get_current_user_endpoint(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     authorization: Optional[str] = Header(default=None, convert_underscores=False),
 ) -> User:
     """Return the profile for the authenticated user (demo fallback in dev)."""
-    return await get_current_user(db=db, authorization=authorization)
+    return await get_current_user(request=request, db=db, authorization=authorization)
 
 
 @router.patch("/me", response_model=UserSchema)
 async def update_current_user(
     user_update: UserUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     authorization: Optional[str] = Header(default=None, convert_underscores=False),
 ) -> User:
-    user = await get_current_user(db=db, authorization=authorization)
+    user = await get_current_user(request=request, db=db, authorization=authorization)
     update_data = user_update.dict(exclude_unset=True)
     update_data.pop("email", None)
     update_data.pop("is_superuser", None)
@@ -116,10 +118,11 @@ async def update_current_user(
 @router.post("/me/password")
 async def change_password(
     payload: PasswordChange,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     authorization: Optional[str] = Header(default=None, convert_underscores=False),
 ) -> dict:
-    user = await get_current_user(db=db, authorization=authorization)
+    user = await get_current_user(request=request, db=db, authorization=authorization)
     if not user.hashed_password or not verify_password(
         payload.current_password, user.hashed_password
     ):

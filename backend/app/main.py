@@ -248,6 +248,16 @@ def _validate_runtime_security_settings() -> None:
             "ALLOW_UNAUTHENTICATED_DEMO_API cannot be enabled in staging/production."
         )
 
+    if (
+        (settings.is_production or settings.is_staging)
+        and settings.AUTH_COOKIE_ENABLED
+        and not settings.AUTH_COOKIE_SECURE
+    ):
+        raise RuntimeError(
+            "AUTH_COOKIE_SECURE=true is required in staging/production: "
+            "httpOnly session cookie must not be delivered over plain HTTP.",
+        )
+
     if settings.ALLOW_UNAUTHENTICATED_DEMO_API:
         if not _is_loopback_host(settings.BACKEND_BIND_HOST):
             raise RuntimeError(

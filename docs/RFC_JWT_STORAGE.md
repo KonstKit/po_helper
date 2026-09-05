@@ -1,6 +1,13 @@
 # RFC: JWT storage — from localStorage to httpOnly cookie
 
-Status: draft (wave E4 of docs/SHOULD_FIX_ROADMAP.md; implementation
+Status: M1 implemented (httpOnly cookie issuance, dual mode; see the
+Resolution log at the bottom). M2 (cookie-based browser session) is
+DEFERRED: the implementation surfaced that analytics event
+attribution cannot be safely bound to a cookie identity without
+server-validated sessions (M3) — multiple cross-tab attribution
+races were reproduced in review. M3 and M4 remain pending approval.
+Original draft:
+(wave E4 of docs/SHOULD_FIX_ROADMAP.md; implementation
 pending approval). Scope: backend auth issuance, frontend axios layer,
 e2e flows.
 
@@ -54,3 +61,29 @@ The access token lives in `localStorage` (`services/api/client.ts`,
 
 - Changing token cryptography (HS256 stays; see roadmap B for key KDF).
 - SSO/OAuth provider flows beyond issuing the cookie at the end.
+
+
+---
+
+## Resolution log
+
+- 2026-09-05 - M1 implemented: /auth/login, /auth/mfa/verify-login and
+  the OAuth callbacks attach the access JWT as an httpOnly,
+  SameSite=strict cookie (dual mode: the body token is still returned).
+  get_current_user accepts the cookie as a fallback after the
+  Authorization header. New POST /auth/logout clears the cookie.
+  Settings: AUTH_COOKIE_* (incl. AUTH_COOKIE_FALLBACK_ENABLED, which
+  ships OFF: the unchanged frontend logout does not clear the httpOnly
+  cookie yet — flip it on together with the M2 frontend). Deployment
+  note: set AUTH_COOKIE_SECURE=true behind HTTPS. Login-origin CSRF
+  guard added to the middleware stack: /auth/login and
+  /auth/mfa/verify-login validate Origin/Referer when present, even
+  cookie-less (login CSRF). OAuth callbacks now clear the state cookie
+  on the returned response.
+- 2026-09-05 - M2 DEFERRED: the cookie-based browser session requires
+  analytics event attribution to be bound to a server-validated
+  identity; client-side binding reproduced multiple cross-tab
+  attribution races in review (documented in PR #18 discussion).
+  Revisit together with M3 (token_sessions + revocation), which gives
+  the server-authoritative identity needed to attribute events safely.
+
