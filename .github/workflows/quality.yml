@@ -40,6 +40,8 @@ jobs:
         run: python3 -m pip_audit -r backend/requirements.txt --strict --progress-spinner off
       - name: Import layering gate
         run: python3 scripts/check_imports.py --root backend/app/services
+      - name: Docs link integrity gate
+        run: python3 scripts/check_docs_links.py
       - name: Pytest
         run: PYTHONPATH=backend pytest backend/tests -q
 
@@ -87,7 +89,34 @@ jobs:
         run: npm ci
       - name: Dependency audit
         working-directory: frontend
-        run: npm audit --omit=dev --audit-level=high
+        shell: bash
+        run: |
+          set -uo pipefail
+          attempts=0
+          max_attempts=4
+          while true; do
+            attempts=$((attempts + 1))
+            log="$(mktemp)"
+            set +e
+            npm audit --omit=dev --audit-level=high 2>&1 | tee "$log"
+            status=$?
+            set -e
+            if [ "$status" -eq 0 ]; then
+              echo "npm audit passed (attempt $attempts)."
+              exit 0
+            fi
+            if grep -q "audit endpoint returned an error" "$log"; then
+              if [ "$attempts" -ge "$max_attempts" ]; then
+                echo "npm audit endpoint unreachable after $max_attempts attempts." >&2
+                exit "$status"
+              fi
+              echo "npm audit endpoint unavailable (attempt $attempts/$max_attempts), retrying..."
+              sleep $((attempts * 20))
+              continue
+            fi
+            # genuine audit failure: vulnerabilities found or a real error
+            exit "$status"
+          done
       - name: Typecheck
         working-directory: frontend
         run: npm run typecheck
