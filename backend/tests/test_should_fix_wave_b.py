@@ -20,6 +20,10 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.api.deps import _resolve_current_user
+
+
+class _StubRequest:
+    cookies = {}
 from app.core.config import settings
 from app.core.crypto import AES_GCM_PREFIX, decrypt_str, encrypt_str
 from app.core.database import AsyncSessionLocal
@@ -60,7 +64,7 @@ async def test_debug_alone_does_not_grant_demo_admin(db_session, monkeypatch):
     monkeypatch.setattr(settings, "ALLOW_DEBUG_DEMO_USER", False)
 
     with pytest.raises(HTTPException) as exc_info:
-        await _resolve_current_user(db_session, authorization=None, allow_debug_demo_fallback=True)
+        await _resolve_current_user(db_session, request=_StubRequest(), authorization=None, allow_debug_demo_fallback=True)
     assert exc_info.value.status_code == 401
 
 
@@ -70,7 +74,7 @@ async def test_debug_demo_user_requires_explicit_flag(db_session, monkeypatch):
     monkeypatch.setattr(settings, "ALLOW_DEBUG_DEMO_USER", True)
 
     user = await _resolve_current_user(
-        db_session, authorization=None, allow_debug_demo_fallback=True
+        db_session, request=_StubRequest(), authorization=None, allow_debug_demo_fallback=True
     )
     assert user.email == "demo@example.com"
 

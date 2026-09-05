@@ -33,6 +33,7 @@ async def _resolve_ws_user(ws: WebSocket) -> User | None:
             try:
                 return await _resolve_current_user(
                     db,
+                    request=ws,
                     authorization=header,
                     allow_debug_demo_fallback=False,
                 )
