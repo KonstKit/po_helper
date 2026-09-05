@@ -253,10 +253,9 @@ class CookieCsrfOriginMiddleware:
         # (SameSite permits cookie creation on top-level navigation), so
         # these paths are origin-validated even without cookies.
         path = scope.get("path", "")
-        prefix = "/" + settings.API_V1_STR.strip("/")
         is_login_csrf_path = path in (
-            prefix + "/auth/login",
-            prefix + "/auth/mfa/verify-login",
+            settings.API_V1_STR + "/auth/login",
+            settings.API_V1_STR + "/auth/mfa/verify-login",
         )
         headers = Headers(scope=scope)
         if not headers.get("cookie") and not is_login_csrf_path:
