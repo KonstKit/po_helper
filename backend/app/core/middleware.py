@@ -12,6 +12,7 @@ from app.core.request_context import set_request_id, reset_request_id
 from urllib.parse import urlsplit
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
+from starlette.routing import get_route_path
 from slowapi.middleware import SlowAPIMiddleware
 from app.core.rate_limit import limiter, RateLimitExceeded, _rate_limit_exceeded_handler
 from app.core.config import settings
@@ -252,7 +253,7 @@ class CookieCsrfOriginMiddleware:
         # endpoints can silently sign the victim into an attacker's account
         # (SameSite permits cookie creation on top-level navigation), so
         # these paths are origin-validated even without cookies.
-        path = scope.get("path", "")
+        path = get_route_path(scope)
         is_login_csrf_path = path in (
             settings.API_V1_STR + "/auth/login",
             settings.API_V1_STR + "/auth/mfa/verify-login",
