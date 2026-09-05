@@ -253,9 +253,10 @@ class CookieCsrfOriginMiddleware:
         # (SameSite permits cookie creation on top-level navigation), so
         # these paths are origin-validated even without cookies.
         path = scope.get("path", "")
+        prefix = "/" + settings.API_V1_STR.strip("/")
         is_login_csrf_path = path in (
-            "/api/v1/auth/login",
-            "/api/v1/auth/mfa/verify-login",
+            prefix + "/auth/login",
+            prefix + "/auth/mfa/verify-login",
         )
         headers = Headers(scope=scope)
         if not headers.get("cookie") and not is_login_csrf_path:
@@ -281,7 +282,14 @@ class CookieCsrfOriginMiddleware:
         # manually. SameSite=strict (the default) already blocks cross-site
         # browser sends, so the request is allowed; a weakened SameSite
         # policy must fall back to this header check, and it fails closed.
-        if not origin and settings.AUTH_COOKIE_SAMESITE.lower() != "strict":
+        # Login endpoints are exempt here: a cookie-less login has no CSRF
+        # vector beyond the hostile-origin check above, and breaking
+        # non-browser clients would be worse.
+        if (
+            not origin
+            and settings.AUTH_COOKIE_SAMESITE.lower() != "strict"
+            and not is_login_csrf_path
+        ):
             response = self._reject()
             await response(scope, receive, send)
             return
