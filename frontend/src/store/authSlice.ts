@@ -24,11 +24,18 @@ interface AuthState {
 export const probeSession = createAsyncThunk(
   'auth/probeSession',
   async (_, { rejectWithValue }) => {
+    // Bind this probe to the shared auth generation: if any tab
+    // completes an auth transition while it is in flight, the result
+    // is stale and must be discarded.
+    const startedGeneration = analytics.readAuthGeneration();
     try {
       // SESSION_PROBE marks the request: the axios response interceptor
       // suppresses the auth-error broadcast for it, so a stale probe 401
       // can never log a freshly signed-in user out.
       const { data } = await api.get<User>('/v1/users/me', { headers: { "X-Session-Probe": "1" } });
+      if (analytics.readAuthGeneration() !== startedGeneration) {
+        return rejectWithValue({ status: null, stale: true });
+      }
       return data;
     } catch (e) {
       // Only a confirmed 401 (dead cookie session) may trigger the

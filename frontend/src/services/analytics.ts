@@ -95,6 +95,11 @@ class AnalyticsService {
   // login) and only when the batch owner matches it. Persisted so a
   // login completed in another tab is honored here too.
   private confirmedOwnerKey = "po_helper_analytics_confirmed_owner";
+  // Cross-tab auth generation (JWT storage M2): bumped by every
+  // cookie-changing auth request in any tab. A boot probe that started
+  // before a bump is stale and must not confirm the session.
+  private authGenerationKey = "po_helper_auth_generation";
+  private sessionAuthGeneration: number | null = null;
   private sessionConfirmedOwner: string | null = null;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private flushInFlight = false;
@@ -218,6 +223,32 @@ class AnalyticsService {
   }
 
   /** Clear the owner identity on logout. */
+  /** Bump the shared auth generation: a cookie-changing auth request
+    * (login/logout/MFA/OAuth) started in this tab. */
+  bumpAuthGeneration(): void {
+    this.sessionAuthGeneration = this.readAuthGeneration() + 1;
+    try {
+      safeLocalStorage()?.setItem(
+        this.authGenerationKey,
+        String(this.sessionAuthGeneration),
+      );
+    } catch {
+      // best-effort: without persistence the probe-staleness check
+      // degrades to same-tab only.
+    }
+  }
+
+  readAuthGeneration(): number {
+    try {
+      const persisted = Number(safeLocalStorage()?.getItem(this.authGenerationKey) ?? "0");
+      return this.sessionAuthGeneration !== null
+        ? Math.max(this.sessionAuthGeneration, persisted)
+        : persisted;
+    } catch {
+      return 0;
+    }
+  }
+
   clearSessionOwner(): void {
     this.sessionOwner = null;
   }
