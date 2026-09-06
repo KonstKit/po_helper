@@ -38,7 +38,11 @@ class Settings(BaseSettings):
     # Cookie fallback in get_current_user stays OFF until the frontend
     # logout clears the httpOnly cookie (M2). Issuance above is gated by
     # AUTH_COOKIE_ENABLED and is harmless without the fallback.
-    AUTH_COOKIE_FALLBACK_ENABLED: bool = False
+    AUTH_COOKIE_FALLBACK_ENABLED: bool = True  # M2: frontend clears the cookie on logout
+    # Refresh-token sessions (JWT storage M3): opaque rotating refresh
+    # tokens persisted server-side (token_sessions), enabling logout
+    # revocation, logout-everywhere and password-change revocation.
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     ENVIRONMENT: str = Field(default="development", alias="ENVIRONMENT")
 
     # Database URL - reads from environment, defaults to SQLite for local dev

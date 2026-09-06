@@ -29,7 +29,7 @@ const renderAt = (user: typeof adminUser | null) => {
   const store = configureStore({
     reducer: { auth: authReducer },
     preloadedState: {
-      auth: { user, token: 'test-token', isAuthenticated: user !== null, loading: false },
+      auth: { user, isAuthenticated: user !== null, sessionProbe: 'done' as const, loading: false },
     },
   });
   return render(

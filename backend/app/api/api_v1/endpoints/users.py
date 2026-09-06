@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.models import User, Role, Permissions
 from app.schemas.user import User as UserSchema, UserUpdate, PasswordChange
 from app.core.security import verify_password, get_password_hash
+from app.core.token_sessions import revoke_all_user_sessions
 from app.api.deps import get_current_user, require_permission
 from app.utils import paginate_query, get_or_404, execute_with_lock
 
@@ -128,8 +129,11 @@ async def change_password(
     ):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     user.hashed_password = get_password_hash(payload.new_password)
+    # M3: a password change revokes every live refresh session of the
+    # user (stolen sessions cannot survive a credential rotation).
+    revoked = await revoke_all_user_sessions(db, user.id)
     await db.commit()
-    return {"message": "Password updated"}
+    return {"message": "Password updated", "sessions_revoked": revoked}
 
 
 @router.post("/id/{user_id}/roles/{role_id}")

@@ -146,7 +146,7 @@ const sampleTasks = [
 ];
 
 const preloadedState = {
-  auth: { user: null, token: null, isAuthenticated: false, loading: false },
+  auth: { user: null, isAuthenticated: false, sessionProbe: 'done' as const, loading: false },
   project: {
     projects: [sampleProject],
     // Widened so tests can preload a selected project (UX review C4 global selector).

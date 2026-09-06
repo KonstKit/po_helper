@@ -35,13 +35,10 @@ export const API_BASE_URL = "/api/v1";
  * could not be obtained - callers must not open a socket in that case.
  */
 export const openWebSocket = async (): Promise<WebSocket | null> => {
-  const token = localStorage.getItem('token');
-  if (!token) return null;
   try {
     const response = await api.post<{ ticket: string }>(
       '/v1/auth/ws-ticket',
       {},
-      { headers: { Authorization: `Bearer ${token}` } },
     );
     const ticket = response.data?.ticket;
     if (!ticket) return null;
@@ -69,6 +66,9 @@ export const CACHE_TTL = 60000;
 const api = axios.create({
   baseURL: "/api",
   timeout: API_TIMEOUT_MS,
+  // JWT storage migration M2: the session lives in an httpOnly cookie;
+  // cookies ride along automatically on same-origin XHR.
+  withCredentials: true,
 });
 
 const SESSION_ERROR_SNIPPETS = [
@@ -124,17 +124,10 @@ const isCanceledError = (error: unknown): boolean => {
   return code === "ERR_CANCELED" || name === "CanceledError";
 };
 
-// Request interceptor: inject auth token
-api.interceptors.request.use((config) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-
-  if (token) {
-    config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
-  return config;
-});
+// Request interceptor: the httpOnly auth cookie rides along on same-origin
+// requests automatically (withCredentials above); no Authorization header
+// injection from localStorage anymore (JWT storage migration M2).
+api.interceptors.request.use((config) => config);
 
 // Response interceptor: handle errors and emit events for UI
 api.interceptors.response.use(
@@ -174,6 +167,18 @@ api.interceptors.response.use(
           }),
         );
       }
+    }
+
+    // Session probes (boot restore) must stay silent: their 401 simply
+    // means no cookie session and is reported through the thunk result,
+    // never through the auth-error broadcast.
+    const probeConfig = (error.config ?? {}) as { headers?: Record<string, unknown> };
+    const probeHeaders = probeConfig.headers;
+    const isSessionProbe = Boolean(
+      probeHeaders && (probeHeaders["X-Session-Probe"] ?? probeHeaders["x-session-probe"])
+    );
+    if (isSessionProbe && error.response?.status === 401) {
+      return Promise.reject(error);
     }
 
     // Handle session-related 401 Unauthorized only.

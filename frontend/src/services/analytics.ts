@@ -83,6 +83,24 @@ class AnalyticsService {
   // between the 401 cleanup and the next login.
   private previousOwnerKey = 'po_helper_analytics_previous_owner';
   private pendingBatch: AnalyticsEvent[] = [];
+  // The ORIGINAL owner marker of the in-memory pending batch (null =
+  // unattributable ownerless load). The batch keeps this identity
+  // through cleanup persistence: savePendingBatch() re-stamps the
+  // ORIGINAL owner, never the newly signed-in session, and flush/
+  // enqueue drop a batch whose owner does not match the current one.
+  private pendingBatchOwner: string | null = null;
+  // Cross-tab gate (JWT storage M2): the cookie is shared by every tab,
+  // while sessionOwner is per-tab memory. A batch may be transmitted
+  // only after the app has CONFIRMED the session identity (probe or
+  // login) and only when the batch owner matches it. Persisted so a
+  // login completed in another tab is honored here too.
+  private confirmedOwnerKey = "po_helper_analytics_confirmed_owner";
+  // Cross-tab auth generation (JWT storage M2): bumped by every
+  // cookie-changing auth request in any tab. A boot probe that started
+  // before a bump is stale and must not confirm the session.
+  private authGenerationKey = "po_helper_auth_generation";
+  private sessionAuthGeneration: number | null = null;
+  private sessionConfirmedOwner: string | null = null;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private flushInFlight = false;
   // Set when resetForLogout() runs while a flush is in progress. The catch
@@ -99,16 +117,22 @@ class AnalyticsService {
   // it belonged to. Without this fallback the next user on the same tab
   // would see no owner marker and inherit the previous user's queue.
   private cachedOwnerMarker: string | null = null;
+  // JWT storage migration M2: the httpOnly cookie hides the token from
+  // JS, so the owner identity is set explicitly by the auth layer
+  // (loginSuccess / probeSession) instead of being decoded from a JWT.
+  private sessionOwner: string | null = null;
+
 
   constructor() {
     this.sessionId = this.generateSessionId();
     this.loadEvents();
     this.loadPendingBatch();
-    // Only resume the timer on startup when we already have a token. Without
+    // Startup resume is driven by probeSession: once the backend confirms
+    // the cookie session, setSessionOwner() arms the pending flush.
     // it, an immediate flush would 401 and drop the persisted batch — losing
     // events that should survive across browser restart / re-auth. The next
     // tracked event after login will re-arm the timer via enqueueForBackend.
-    if (this.pendingBatch.length > 0 && this.hasAuthToken()) {
+    if (this.pendingBatch.length > 0 && this.hasSessionOwner()) {
       this.scheduleFlush();
     }
     // Cleanup on auth invalidation is orchestrated by utils/logout
@@ -126,13 +150,8 @@ class AnalyticsService {
     }
   }
 
-  private hasAuthToken(): boolean {
-    if (typeof window === 'undefined') return false;
-    try {
-      return Boolean(safeLocalStorage()?.getItem('token'));
-    } catch {
-      return false;
-    }
+  private hasSessionOwner(): boolean {
+    return this.sessionOwner !== null;
   }
 
   /**
@@ -156,47 +175,82 @@ class AnalyticsService {
    * is dropping a backlog earlier than necessary.
    */
   private currentOwnerMarker(): string | null {
-    if (typeof window === 'undefined') return null;
-    try {
-      const token = safeLocalStorage()?.getItem('token');
-      if (!token) return null;
-      const payload = this.extractJwtPayload(token);
-      const sub = typeof payload?.sub === 'string' ? payload.sub : null;
-      if (!sub) return null;
-      const tenantId =
-        typeof payload?.tenant_id === 'string' ? payload.tenant_id : '';
-      return this.fnv1aHash(`${sub}|${tenantId}`);
-    } catch {
-      return null;
-    }
+    // With the httpOnly cookie the JWT is not readable; the auth layer
+    // feeds the identity via setSessionOwner(). The cached marker covers
+    // the auth-error cleanup race (snapshot before reset).
+    return this.sessionOwner ?? this.cachedOwnerMarker;
   }
 
-  /**
-   * Synchronously capture the owner marker derived from the live token,
-   * called by the axios interceptor immediately before it removes the
-   * token on a 401. The cached marker is consumed later by
-   * `softResetForAuthError()` (queue-stamping during cleanup) and by the
-   * fallback in `currentOwnerMarker()`'s callers, so that even when the
-   * `auth-error` listener fires after the token is gone, the persisted
-   * pending queue still carries the previous owner's stamp.
-   */
+
   snapshotOwnerForAuthError(): void {
     const marker = this.currentOwnerMarker();
     if (marker) this.cachedOwnerMarker = marker;
   }
 
-  private extractJwtPayload(token: string): Record<string, unknown> | null {
-    const parts = token.split('.');
-    if (parts.length < 2) return null;
+  /** Establish the owner identity for this browser session (M2). */
+  setSessionOwner(sub: string): void {
+    this.sessionOwner = this.fnv1aHash(sub);
+  }
+  /** Persist the CONFIRMED session identity (probe/login validated). */
+  setConfirmedSessionOwner(sub: string): void {
+    this.sessionConfirmedOwner = this.fnv1aHash(sub);
     try {
-      const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-      const pad = '='.repeat((4 - (b64.length % 4)) % 4);
-      const json = atob(b64 + pad);
-      const parsed = JSON.parse(json);
-      return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+      safeLocalStorage()?.setItem(this.confirmedOwnerKey, this.sessionConfirmedOwner);
     } catch {
-      return null;
+      // Persistence is best-effort; the in-memory value still gates this
+      // tab. Without the persisted value other tabs pause their flushes.
     }
+  }
+
+  /** Clear the confirmed identity (logout: the cookie is gone). */
+  clearConfirmedSessionOwner(): void {
+    this.sessionConfirmedOwner = null;
+    try {
+      safeLocalStorage()?.removeItem(this.confirmedOwnerKey);
+    } catch {
+      // best-effort
+    }
+  }
+
+  private readConfirmedOwner(): string | null {
+    // Shared storage is the source of truth: another tab may have
+    "completed a login and replaced the confirmed identity."
+    try {
+      return safeLocalStorage()?.getItem(this.confirmedOwnerKey) ?? null;
+    } catch {
+      return this.sessionConfirmedOwner;
+    }
+  }
+
+  /** Clear the owner identity on logout. */
+  /** Bump the shared auth generation: a cookie-changing auth request
+    * (login/logout/MFA/OAuth) started in this tab. */
+  bumpAuthGeneration(): void {
+    this.sessionAuthGeneration = this.readAuthGeneration() + 1;
+    try {
+      safeLocalStorage()?.setItem(
+        this.authGenerationKey,
+        String(this.sessionAuthGeneration),
+      );
+    } catch {
+      // best-effort: without persistence the probe-staleness check
+      // degrades to same-tab only.
+    }
+  }
+
+  readAuthGeneration(): number {
+    try {
+      const persisted = Number(safeLocalStorage()?.getItem(this.authGenerationKey) ?? "0");
+      return this.sessionAuthGeneration !== null
+        ? Math.max(this.sessionAuthGeneration, persisted)
+        : persisted;
+    } catch {
+      return 0;
+    }
+  }
+
+  clearSessionOwner(): void {
+    this.sessionOwner = null;
   }
 
   private fnv1aHash(input: string): string {
@@ -258,7 +312,7 @@ class AnalyticsService {
    * because the flush timer is only re-armed by `enqueueForBackend()`.
    */
   resumePendingFlushIfAny(): void {
-    if (this.pendingBatch.length > 0 && this.hasAuthToken()) {
+    if (this.pendingBatch.length > 0 && this.hasSessionOwner()) {
       this.scheduleFlush();
     }
   }
@@ -266,7 +320,7 @@ class AnalyticsService {
   /**
    * Drop UI analytics state inherited from a previous user when a new
    * login establishes a different owner on the same tab. Call after a
-   * fresh token has been written to localStorage (Login flow,
+   * a new session owner has been established (Login flow,
    * loginSuccess reducer). The owner-marker logic on the backend
    * transport queue already covers `pendingBatch`; this method covers
    * the localStorage-only UI state (onboarding completion, TTV
@@ -389,6 +443,7 @@ class AnalyticsService {
     // means "this session is over"; the next user must not inherit any
     // unsent events or first-view markers.
     this.clear();
+    this.pendingBatchOwner = null;
     this.sessionId = this.generateSessionId();
   }
 
@@ -465,10 +520,12 @@ class AnalyticsService {
         safeLocalStorage()?.removeItem(this.pendingBatchKey);
         safeLocalStorage()?.removeItem(this.pendingOwnerKey);
         this.pendingBatch = [];
+        this.pendingBatchOwner = null;
         return;
       }
       const parsed = JSON.parse(stored);
       this.pendingBatch = Array.isArray(parsed) ? parsed : [];
+      this.pendingBatchOwner = owner ?? null;
     } catch (e) {
       console.error('Failed to load pending analytics batch:', e);
       this.pendingBatch = [];
@@ -491,9 +548,13 @@ class AnalyticsService {
       // error cleanup would have no owner stamp and the next user on
       // the tab would inherit it via the (owner && currentOwner) guard
       // short-circuiting to "allow".
-      const owner = this.currentOwnerMarker() ?? this.cachedOwnerMarker;
-      if (owner) {
-        safeLocalStorage()?.setItem(this.pendingOwnerKey, owner);
+      // Re-stamp the batch with its ORIGINAL owner identity, never the
+      // newly signed-in session: an unattributable batch stays ownerless
+      // so flush/enqueue reject it (JWT storage M2).
+      if (this.pendingBatchOwner) {
+        safeLocalStorage()?.setItem(this.pendingOwnerKey, this.pendingBatchOwner);
+      } else {
+        safeLocalStorage()?.removeItem(this.pendingOwnerKey);
       }
     } catch (e) {
       console.error('Failed to persist pending analytics batch:', e);
@@ -524,7 +585,7 @@ class AnalyticsService {
   }
 
   private seedBaselinesIfMissing(): void {
-    if (!this.hasAuthToken()) return;
+    if (!this.hasSessionOwner()) return;
     try {
       const now = Date.now();
       const readPreserved = (key: string): number | undefined => {
@@ -868,7 +929,7 @@ class AnalyticsService {
     // (in `track`) still keeps them for client-side dashboards. This both
     // avoids 401 retry loops and prevents cross-attribution to the next
     // user who logs in on the same browser.
-    if (!this.hasAuthToken()) {
+    if (!this.hasSessionOwner()) {
       return;
     }
 
@@ -879,11 +940,22 @@ class AnalyticsService {
     // to the new user.
     const owner = safeLocalStorage()?.getItem(this.pendingOwnerKey);
     const currentOwner = this.currentOwnerMarker();
-    if (owner && currentOwner && owner !== currentOwner) {
+    if (owner === null) {
+      // Ownerless persisted batch (cold-start 401 cleanup): it cannot be
+      // attributed, so appending would stamp it with the NEW owner.
+      try {
+        safeLocalStorage()?.removeItem(this.pendingBatchKey);
+        this.pendingBatch = [];
+        this.pendingBatchOwner = null;
+      } catch (err) {
+        console.error('Failed to clear ownerless pending batch', err);
+      }
+    } else if (owner && currentOwner && owner !== currentOwner) {
       console.warn(
         'Discarding pending analytics batch on enqueue: owner mismatch (different account)',
       );
       this.pendingBatch = [];
+      this.pendingBatchOwner = null;
       try {
         safeLocalStorage()?.removeItem(this.pendingBatchKey);
         safeLocalStorage()?.removeItem(this.pendingOwnerKey);
@@ -892,6 +964,9 @@ class AnalyticsService {
       }
     }
 
+    // New events adopt the current session owner only if the batch had
+    // no original owner; an owned batch keeps its original identity.
+    this.pendingBatchOwner = this.pendingBatchOwner ?? this.currentOwnerMarker();
     this.pendingBatch.push(event);
     this.savePendingBatch();
 
@@ -927,7 +1002,41 @@ class AnalyticsService {
     // re-arm a timer here: the next enqueueForBackend after login will
     // restart the cycle. (If we re-armed, we'd burn CPU polling on the
     // login screen.)
-    if (!this.hasAuthToken()) {
+        // Cross-tab + boot gating (JWT storage M2): the cookie is shared by
+    // every tab while this owner identity is per-tab memory. Transmit
+    // only after the app confirmed a session identity (probe or login)
+    // and only batches whose original owner matches it.
+    const confirmed = this.readConfirmedOwner();
+    if (confirmed === null) {
+      // Paused: the boot probe has not confirmed the session yet.
+      return;
+    }
+    let persistedOwner: string | null = null;
+    try {
+      persistedOwner = safeLocalStorage()?.getItem(this.pendingOwnerKey) ?? null;
+    } catch {
+      persistedOwner = null;
+    }
+    if (!persistedOwner) {
+      // Reject an ownerless persisted queue before transmission: it
+      // cannot be attributed to the confirmed session.
+      safeLocalStorage()?.removeItem(this.pendingBatchKey);
+      safeLocalStorage()?.removeItem(this.pendingOwnerKey);
+      this.pendingBatch = [];
+      this.pendingBatchOwner = null;
+      return;
+    }
+    if (persistedOwner !== confirmed || this.pendingBatchOwner !== confirmed) {
+      // The batch belongs to a different account (another tab logged in),
+      // or the in-memory queue was retained across an identity change:
+      // drop it instead of transmitting it under the new cookie.
+      safeLocalStorage()?.removeItem(this.pendingBatchKey);
+      safeLocalStorage()?.removeItem(this.pendingOwnerKey);
+      this.pendingBatch = [];
+      this.pendingBatchOwner = null;
+      return;
+    }
+    if (!this.hasSessionOwner()) {
       if (this.flushTimer !== null) {
         clearTimeout(this.flushTimer);
         this.flushTimer = null;
@@ -944,6 +1053,7 @@ class AnalyticsService {
         'Dropping pending analytics batch on flush: owner mismatch (different account)',
       );
       this.pendingBatch = [];
+      this.pendingBatchOwner = null;
       this.savePendingBatch();
       if (this.flushTimer !== null) {
         clearTimeout(this.flushTimer);

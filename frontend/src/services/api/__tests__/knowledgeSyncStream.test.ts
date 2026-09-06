@@ -64,7 +64,6 @@ describe('startConfluenceSyncStream', () => {
       )
     );
     globalThis.fetch = fetchMock;
-    localStorage.setItem('token', 'jwt-token');
 
     const handle = startConfluenceSyncStream(
       { space: 'ENG', limit: 25 },
@@ -82,8 +81,8 @@ describe('startConfluenceSyncStream', () => {
       method: 'GET',
       headers: expect.objectContaining({
         Accept: 'text/event-stream',
-        Authorization: 'Bearer jwt-token',
       }),
+      credentials: 'include',
     });
     expect(events).toEqual([
       expect.objectContaining({ type: 'progress', percent: 42, message: 'Syncing' }),
@@ -92,9 +91,9 @@ describe('startConfluenceSyncStream', () => {
     handle.close();
   });
 
-  it('falls back to EventSource only in explicit demo mode without a bearer token', () => {
+  it('falls back to EventSource when the fetch is unauthorized in explicit demo mode', async () => {
     const events: ConfluenceSyncStreamEvent[] = [];
-    globalThis.fetch = vi.fn();
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response('unauthorized', { status: 401 }));
     globalThis.EventSource = MockEventSource as unknown as typeof EventSource;
     demoEnv.VITE_ALLOW_UNAUTHENTICATED_DEMO_API = 'true';
 
@@ -106,9 +105,9 @@ describe('startConfluenceSyncStream', () => {
       }
     );
 
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(handle.mode).toBe('eventsource');
     expect(MockEventSource.instances).toHaveLength(1);
-    expect(globalThis.fetch).not.toHaveBeenCalled();
 
     MockEventSource.instances[0].onmessage?.({
       data: JSON.stringify({ type: 'complete', synced: 3, created: 1, updated: 2 }),

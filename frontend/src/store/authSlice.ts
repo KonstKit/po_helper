@@ -1,5 +1,6 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { analytics } from '../services/analytics';
+import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { analytics } from "../services/analytics";
+import api from "../services/api/client";
 
 interface User {
   id: number;
@@ -12,15 +13,44 @@ interface User {
 
 interface AuthState {
   user: User | null;
-  token: string | null;
   isAuthenticated: boolean;
+  /** 'probing' until the boot /users/me check resolves. */
+  sessionProbe: 'probing' | 'done';
   loading: boolean;
 }
 
+// Boot-time session restore: the httpOnly cookie cannot be read from JS, so
+// the app asks the backend whether the session is alive (JWT storage M2).
+export const probeSession = createAsyncThunk(
+  'auth/probeSession',
+  async (_, { rejectWithValue }) => {
+    // Bind this probe to the shared auth generation: if any tab
+    // completes an auth transition while it is in flight, the result
+    // is stale and must be discarded.
+    const startedGeneration = analytics.readAuthGeneration();
+    try {
+      // SESSION_PROBE marks the request: the axios response interceptor
+      // suppresses the auth-error broadcast for it, so a stale probe 401
+      // can never log a freshly signed-in user out.
+      const { data } = await api.get<User>('/v1/users/me', { headers: { "X-Session-Probe": "1" } });
+      if (analytics.readAuthGeneration() !== startedGeneration) {
+        return rejectWithValue({ status: null, stale: true });
+      }
+      return data;
+    } catch (e) {
+      // Only a confirmed 401 (dead cookie session) may trigger the
+      // auth-error cleanup downstream; network/5xx failures must not
+      // log out a possibly-valid session.
+      const status = (e as { response?: { status?: number } })?.response?.status;
+      return rejectWithValue({ status: status ?? null });
+    }
+  },
+);
+
 const initialState: AuthState = {
   user: null,
-  token: localStorage.getItem('token'),
-  isAuthenticated: !!localStorage.getItem('token'),
+  isAuthenticated: false,
+  sessionProbe: 'probing',
   loading: false,
 };
 
@@ -34,21 +64,17 @@ const authSlice = createSlice({
     loginStart: (state) => {
       state.loading = true;
     },
-    loginSuccess: (state, action: PayloadAction<{ user: User; token: string }>) => {
+    loginSuccess: (state, action: PayloadAction<{ user: User }>) => {
       state.user = action.payload.user;
-      state.token = action.payload.token;
       state.isAuthenticated = true;
+      state.sessionProbe = 'done';
       state.loading = false;
-      localStorage.setItem('token', action.payload.token);
-      // Detect cross-user signin on the same tab. If the previous session
-      // ended via auth-error (softResetForAuthError persisted its owner
-      // marker), compare it against the new token's owner; if different,
-      // wipe inherited UI analytics state. Same-user re-auth is a no-op.
+      // The owner identity now comes from the authenticated user (the
+      // httpOnly cookie hides the JWT from JS). Set it before the
+      // inherited-state check below.
+      analytics.setSessionOwner(action.payload.user.email);
+      analytics.setConfirmedSessionOwner(action.payload.user.email);
       analytics.dropInheritedStateIfOwnerChanged();
-      // Same-user re-auth and cold-start-with-queue paths leave a
-      // persisted pending batch but no active flush timer; arm it now
-      // so events do not sit indefinitely waiting for the next tracked
-      // interaction.
       analytics.resumePendingFlushIfAny();
     },
     loginFailure: (state) => {
@@ -56,10 +82,55 @@ const authSlice = createSlice({
     },
     logout: (state) => {
       state.user = null;
-      state.token = null;
       state.isAuthenticated = false;
+      state.sessionProbe = 'done';
+      // Legacy cleanup: the localStorage token is gone since M2.
       localStorage.removeItem('token');
+      analytics.clearSessionOwner();
+      analytics.clearConfirmedSessionOwner();
     },
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(probeSession.fulfilled, (state, action) => {
+        // Stale-probe guard: a probe that settles after login/logout must
+        // not overwrite the newer auth decision.
+        if (state.sessionProbe !== "probing") return;
+        state.user = action.payload;
+        state.isAuthenticated = true;
+        state.sessionProbe = 'done';
+        analytics.setSessionOwner(action.payload.email);
+        // Confirm the session identity for the cross-tab analytics gate.
+        analytics.setConfirmedSessionOwner(action.payload.email);
+        // Cold start with a persisted pending batch: the constructor skips
+        // the resume while no owner is known; now the probe confirmed one.
+        analytics.resumePendingFlushIfAny();
+      })
+      .addCase(probeSession.rejected, (state, action) => {
+        if (state.sessionProbe !== "probing") return;
+        state.isAuthenticated = false;
+        state.sessionProbe = 'done';
+        const payload = action.payload as { status?: number | null } | undefined;
+        if (payload?.status !== 401) return;
+        // Do not run cleanup while an OAuth callback is pending: wiping
+        // sessionStorage and navigating would discard the callback
+        // parameters before the Login flow consumes them.
+        const onOAuthCallback =
+          typeof window !== 'undefined' &&
+          (new URLSearchParams(window.location.search).has('code') ||
+            sessionStorage.getItem('oauth_provider') !== null);
+        if (onOAuthCallback) return;
+        // The cookie session is dead: route through the standard cleanup
+        // (analytics soft reset + user-data storage clear) so a previous
+        // user's cached state cannot leak into the next login.
+        // Deferred to a microtask: the reducer must stay synchronous and
+        // the auth-error listener performs its own Redux dispatches.
+        if (typeof window !== 'undefined') {
+          queueMicrotask(() => {
+            window.dispatchEvent(new CustomEvent('auth-error'));
+          });
+        }
+      });
   },
 });
 

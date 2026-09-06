@@ -55,20 +55,6 @@ const FLUSH_BATCH_THRESHOLD = 20;
 const PENDING_BATCH_KEY = 'po_helper_analytics_pending';
 const PENDING_OWNER_KEY = 'po_helper_analytics_pending_owner';
 
-/**
- * Build an unsigned JWT whose payload carries `sub` (+ optional tenant_id).
- * The service decodes the payload (base64url) without verifying the
- * signature, so a dummy header/signature is fine. btoa is provided by jsdom.
- */
-function makeToken(sub: string, tenantId?: string): string {
-  const payload: Record<string, string> = { sub };
-  if (tenantId !== undefined) payload.tenant_id = tenantId;
-  const b64url = (s: string) =>
-    btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-  const header = b64url(JSON.stringify({ alg: 'none', typ: 'JWT' }));
-  const body = b64url(JSON.stringify(payload));
-  return `${header}.${body}.sig`;
-}
 
 /** A rejection shaped like the axios errors the service inspects. */
 function httpError(status: number): Error & { response: { status: number } } {
@@ -167,9 +153,10 @@ describe('AnalyticsService transport-queue lifecycle', () => {
   it('#18 bounds the pending backlog under repeated 404 and retains events for replay', async () => {
     // Signed-in user (valid JWT) but backend keeps returning 404 — the
     // lazy-provisioning window where the User row does not exist yet.
-    localStorage.setItem('token', makeToken('user-lazy', 'tenant-1'));
     seedTtvBaselines();
     const analytics = await freshAnalytics();
+    analytics.setConfirmedSessionOwner('user-lazy');
+    analytics.setSessionOwner('user-lazy');
 
     // Every flush during the window 404s.
     trackEventsBatchMock.mockRejectedValue(httpError(404));
@@ -222,9 +209,10 @@ describe('AnalyticsService transport-queue lifecycle', () => {
 
   it('#18b keeps the queue intact when a 404 batch is still below the cap', async () => {
     // A short provisioning blip well under the cap must lose nothing.
-    localStorage.setItem('token', makeToken('user-lazy', 'tenant-1'));
     seedTtvBaselines();
     const analytics = await freshAnalytics();
+    analytics.setConfirmedSessionOwner('user-lazy');
+    analytics.setSessionOwner('user-lazy');
 
     trackEventsBatchMock.mockRejectedValue(httpError(404));
 
@@ -245,9 +233,10 @@ describe('AnalyticsService transport-queue lifecycle', () => {
   it('#19 drops the pending queue on flush when a different owner has signed in', async () => {
     // User A enqueues events while the server is unreachable (network error
     // keeps them queued), so a backlog is persisted under owner A.
-    localStorage.setItem('token', makeToken('user-A', 'tenant-A'));
     seedTtvBaselines();
     const analytics = await freshAnalytics();
+    analytics.setConfirmedSessionOwner('user-A');
+    analytics.setSessionOwner('user-A');
 
     trackEventsBatchMock.mockRejectedValue(new Error('network down'));
     for (let i = 0; i < 3; i++) {
@@ -260,9 +249,10 @@ describe('AnalyticsService transport-queue lifecycle', () => {
     expect(ownerA).toBeTruthy();
     expect(persistedBatchLength()).toBe(3);
 
-    // A DIFFERENT user signs in on the same tab (token swapped). The owner
-    // marker derived from the new JWT no longer matches the persisted one.
-    localStorage.setItem('token', makeToken('user-B', 'tenant-B'));
+    // A DIFFERENT user signs in on the same tab: the owner identity is
+    // switched explicitly (JWT storage M2: setSessionOwner).
+    analytics.setConfirmedSessionOwner('user-B');
+    analytics.setSessionOwner('user-B');
 
     // The next flush detects the owner mismatch and DROPS the pre-login queue
     // rather than replaying user A's events under user B.
@@ -280,9 +270,10 @@ describe('AnalyticsService transport-queue lifecycle', () => {
 
   it('#19b drops the inherited queue on the next enqueue under a different owner', async () => {
     // Same setup: a backlog persisted under owner A.
-    localStorage.setItem('token', makeToken('user-A', 'tenant-A'));
     seedTtvBaselines();
     const analytics = await freshAnalytics();
+    analytics.setConfirmedSessionOwner('user-A');
+    analytics.setSessionOwner('user-A');
 
     trackEventsBatchMock.mockRejectedValue(new Error('network down'));
     for (let i = 0; i < 3; i++) {
@@ -297,7 +288,9 @@ describe('AnalyticsService transport-queue lifecycle', () => {
     // User B signs in, then tracks a NEW event. enqueueForBackend() must
     // discard the stale owner-A backlog BEFORE appending B's event, so the
     // persisted queue only ever contains B's own event(s).
-    localStorage.setItem('token', makeToken('user-B', 'tenant-B'));
+    // User B signs in and takes over the session owner identity.
+    analytics.setConfirmedSessionOwner('user-B');
+    analytics.setSessionOwner('user-B');
     trackEventsBatchMock.mockReset();
     trackEventsBatchMock.mockRejectedValue(new Error('still down')); // keep B's event queued for inspection
 
@@ -311,12 +304,100 @@ describe('AnalyticsService transport-queue lifecycle', () => {
     expect(ownerB).not.toBe(ownerA);
   });
 
+  it('#19e rejects an ownerless persisted batch on flush after login', async () => {
+    // Cold-start 401 cleanup preserves the batch but strips its owner
+    // marker: it cannot be attributed, so flushing after login must drop
+    // it instead of transmitting user A's events under user B.
+    localStorage.setItem(
+      PENDING_BATCH_KEY,
+      JSON.stringify([{ eventName: 'orphan_event', eventData: { i: 1 }, timestamp: Date.now() }]),
+    );
+    localStorage.removeItem(PENDING_OWNER_KEY);
+    const analytics = await freshAnalytics();
+    analytics.setConfirmedSessionOwner('user-B');
+    analytics.setSessionOwner('user-B');
+    trackEventsBatchMock.mockResolvedValue({ accepted: 0, receivedAt: Date.now() });
+
+    await analytics.flushBatch();
+
+    expect(trackEventsBatchMock).not.toHaveBeenCalled();
+    expect(persistedBatchLength()).toBe(0);
+  });
+
+  it("#19h cleanup persistence retains the batch original owner, so a re-login cannot transmit it", async () => {
+    // Cold-load user A"s OWNED queue (batch + owner marker), then the
+    // probe establishes user B in the same tab. The auth-error cleanup
+    // re-persists the batch: it must keep A"s original owner identity,
+    // never re-stamp it with B, so B"s flush drops it.
+    const markerA = "owner-a-hash";
+    localStorage.setItem(
+      PENDING_BATCH_KEY,
+      JSON.stringify([{ eventName: "a_event", eventData: {}, timestamp: Date.now() }]),
+    );
+    localStorage.setItem(PENDING_OWNER_KEY, markerA);
+    const analytics = await freshAnalytics();
+    analytics.setConfirmedSessionOwner("user-B");
+    analytics.setSessionOwner("user-B");
+
+    analytics.persistPendingBatchToStorage();
+    expect(localStorage.getItem(PENDING_OWNER_KEY)).toBe(markerA);
+
+    // B"s flush must drop the batch (owner mismatch) instead of sending.
+    trackEventsBatchMock.mockResolvedValue({ accepted: 0, receivedAt: Date.now() });
+    await analytics.flushBatch();
+    expect(trackEventsBatchMock).not.toHaveBeenCalled();
+    expect(persistedBatchLength()).toBe(0);
+  });
+
+  it("#19g cleanup persistence does not stamp an ownerless batch with the new owner", async () => {
+    localStorage.setItem(
+      PENDING_BATCH_KEY,
+      JSON.stringify([{ eventName: 'orphan_event', eventData: { i: 1 }, timestamp: Date.now() }]),
+    );
+    localStorage.removeItem(PENDING_OWNER_KEY);
+    const analytics = await freshAnalytics();
+    analytics.setConfirmedSessionOwner('user-B');
+    analytics.setSessionOwner('user-B');
+    // auth-error cleanup re-persists the in-memory batch (App.tsx).
+    analytics.persistPendingBatchToStorage();
+
+    // The persisted queue must remain ownerless; user B signs in and the
+    // flush rejects it instead of transmitting user A's events.
+    expect(localStorage.getItem(PENDING_OWNER_KEY)).toBeNull();
+    trackEventsBatchMock.mockResolvedValue({ accepted: 0, receivedAt: Date.now() });
+    await analytics.flushBatch();
+    expect(trackEventsBatchMock).not.toHaveBeenCalled();
+    expect(persistedBatchLength()).toBe(0);
+  });
+
+  it('#19f drops an ownerless persisted batch on enqueue after login', async () => {
+    localStorage.setItem(
+      PENDING_BATCH_KEY,
+      JSON.stringify([{ eventName: 'orphan_event', eventData: { i: 1 }, timestamp: Date.now() }]),
+    );
+    localStorage.removeItem(PENDING_OWNER_KEY);
+    const analytics = await freshAnalytics();
+    analytics.setConfirmedSessionOwner('user-B');
+    analytics.setSessionOwner('user-B');
+
+    analytics.track('b_event', { x: 1 });
+    await analytics.flushBatch();
+
+    const sent = trackEventsBatchMock.mock.calls[0]?.[0] as unknown[] | undefined;
+    const names = (sent ?? []).map((e) => (e as { eventName?: string }).eventName ?? '?');
+    // The ownerless orphan batch was dropped; only user-B events remain.
+    expect(names).not.toContain('orphan_event');
+    expect(names).toContain('b_event');
+    console.log('DBG sent types:', (sent ?? []).map((e) => (e as { type: string }).type).join(','));
+  });
+
   it('#19c resetForLogout drops the pending queue entirely (explicit logout)', async () => {
     // Explicit logout is the hard-wipe path: even the same user must not have
     // unsent events replayed after an intentional sign-out.
-    localStorage.setItem('token', makeToken('user-A', 'tenant-A'));
     seedTtvBaselines();
     const analytics = await freshAnalytics();
+    analytics.setConfirmedSessionOwner('user-A');
+    analytics.setSessionOwner('user-A');
 
     trackEventsBatchMock.mockRejectedValue(new Error('network down'));
     for (let i = 0; i < 4; i++) {

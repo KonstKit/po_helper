@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 import hmac
 import logging
 from typing import Any, Optional, List
@@ -30,7 +30,20 @@ from app.core.oauth_state import (
     verify_oauth_state,
 )
 from app.core.ws_tickets import issue_ws_ticket
-from app.core.auth_cookies import clear_auth_cookie, set_auth_cookie
+from app.core.auth_cookies import (
+    clear_auth_cookie,
+    get_refresh_cookie_token,
+    set_auth_cookie,
+    set_refresh_cookie,
+)
+from app.core.token_sessions import (
+    create_token_session,
+    get_active_session_by_token,
+    get_session_by_token_any_state,
+    new_refresh_token,
+    revoke_all_user_sessions,
+    revoke_session,
+)
 from app.core.crypto import AES_GCM_PREFIX
 from app.core.mfa import (
     setup_mfa,
@@ -44,6 +57,7 @@ from app.core.mfa import (
 from app.core.mfa import _is_kdf_backup_code
 from app.core.request_context import get_token_scopes, get_token_tenant_id
 from app.models import User, Role, Project
+from app.models.token_session import TokenSession
 from app.models.rbac import Permissions
 from app.schemas.user import (
     ScopedTokenRequest,
@@ -158,6 +172,22 @@ def _effective_permissions(user: User) -> set[str]:
     return permissions
 
 
+async def _issue_refresh_session(
+    db: AsyncSession,
+    user: User,
+    request: Request,
+) -> str:
+    """Create a server-side session and return the plaintext refresh token."""
+    refresh_token, _ = new_refresh_token()
+    await create_token_session(
+        db,
+        user_id=user.id,
+        refresh_token=refresh_token,
+        user_agent=request.headers.get("user-agent"),
+    )
+    return refresh_token
+
+
 @router.post("/login")
 @limiter.limit(settings.RATE_LIMIT_AUTH)
 async def login(
@@ -207,8 +237,13 @@ async def login(
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
 
+    # M3: server-side refresh session (rotation + revocation).
+    refresh_token = await _issue_refresh_session(db, user, request)
+    await db.commit()  # token_sessions row must survive the request
+
     # Validate via response model, then return as Response for SlowAPI headers
     token_payload = Token(access_token=access_token, token_type="bearer").model_dump()
+    token_payload["refresh_token"] = refresh_token
     response = JSONResponse(content=token_payload)
     # Dual mode (RFC M1): body token kept for pre-M2 clients, the browser
     # session uses the httpOnly cookie.
@@ -240,10 +275,170 @@ async def issue_websocket_ticket(
 
 
 @router.post("/logout")
-async def logout() -> JSONResponse:
+async def logout(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
     response = JSONResponse(content={"detail": "Logged out"})
     clear_auth_cookie(response)
+    # M3: revoke the presented refresh session, if the client sent one.
+    body_token = None
+    try:
+        body = await request.json()
+    except Exception:
+        logger.debug("logout: no JSON body (cookie-only logout)")
+        body = None
+    if isinstance(body, dict):
+        candidate = body.get("refresh_token")
+        if isinstance(candidate, str):
+            body_token = candidate
+    if body_token:
+        session = await get_active_session_by_token(db, body_token)
+        if session:
+            await revoke_session(db, session)
+            await db.commit()
     return response
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+@router.post("/refresh")
+@limiter.limit(settings.RATE_LIMIT_AUTH)
+async def refresh(
+    request: Request,
+    body: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """Rotate a refresh token: revoke the presented session and issue a
+    new access token + a fresh refresh token session (M3).
+    Reuse of a rotated/revoked token revokes the whole family
+    (token reuse = potential theft)."""
+    from app.core.token_sessions import (
+        create_token_session,
+        get_active_session_by_token,
+        new_refresh_token,
+    )
+
+    presented = body.refresh_token or get_refresh_cookie_token(request)
+    if not presented:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token required",
+        )
+    session = await get_active_session_by_token(db, presented)
+    if session is None:
+        # Reuse of a rotated/revoked token is a theft signal: find the
+        # family owner by hash (any state) and revoke every live session
+        # of that user before rejecting. A merely EXPIRED token (never
+        # revoked) is a benign sign-out: reject without family revocation.
+        known = await get_session_by_token_any_state(db, presented)
+        if known is not None and known.revoked_at is not None:
+            await revoke_all_user_sessions(db, known.user_id)
+            await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+
+    user_result = await db.execute(select(User).where(User.id == session.user_id))
+    user = user_result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Inactive user",
+        )
+
+    # Atomic claim: conditional UPDATE wins exactly once even under
+    # concurrent rotations of the same token.
+    claimed = await db.execute(
+        update(TokenSession)
+        .where(
+            TokenSession.id == session.id,
+            TokenSession.revoked_at.is_(None),
+        )
+        .values(revoked_at=datetime.now(timezone.utc))
+    )
+    if claimed.rowcount == 0:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+    session.last_used_at = datetime.now(timezone.utc)
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.email},
+        expires_delta=access_token_expires,
+    )
+    refresh_token, _ = new_refresh_token()
+    await create_token_session(
+        db,
+        user_id=user.id,
+        refresh_token=refresh_token,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+
+    payload = Token(access_token=access_token, token_type="bearer").model_dump()
+    payload["refresh_token"] = refresh_token
+    response = JSONResponse(content=payload)
+    set_refresh_cookie(response, refresh_token)
+    set_auth_cookie(response, access_token)
+    return response
+
+
+@router.get("/sessions")
+async def list_sessions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> JSONResponse:
+    """List the caller's live (unrevoked, unexpired) sessions (M3)."""
+    from datetime import datetime, timezone
+    from app.models.token_session import TokenSession
+
+    cutoff = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(TokenSession).where(
+            TokenSession.user_id == current_user.id,
+            TokenSession.revoked_at.is_(None),
+            cutoff < TokenSession.expires_at,
+        )
+    )
+    sessions = [
+        {
+            "id": s.id,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+            "expires_at": s.expires_at.isoformat() if s.expires_at else None,
+            "last_used_at": s.last_used_at.isoformat() if s.last_used_at else None,
+            "user_agent": s.user_agent,
+        }
+        for s in result.scalars()
+    ]
+    return JSONResponse(content={"sessions": sessions, "count": len(sessions)})
+
+
+@router.delete("/sessions/{session_id}")
+async def revoke_session_endpoint(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> JSONResponse:
+    """Revoke one of the caller's sessions (logout everywhere, per device)."""
+    from app.models.token_session import TokenSession
+
+    result = await db.execute(
+        select(TokenSession).where(
+            TokenSession.id == session_id,
+            TokenSession.user_id == current_user.id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    await revoke_session(db, session)
+    await db.commit()
+    return JSONResponse(content={"detail": "Session revoked"})
 
 
 @router.post("/scoped-token", response_model=Token)
@@ -470,12 +665,15 @@ async def google_oauth_callback(
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         )
 
+        # M3: server-side refresh session for the OAuth login.
+        refresh_token = await _issue_refresh_session(db, user, request)
+        await db.commit()  # token_sessions row must survive the request
         payload = Token(access_token=jwt_token, token_type="bearer").model_dump()
+        payload["refresh_token"] = refresh_token
         response = JSONResponse(content=payload)
-        # Keep the state-cookie deletion: _verify_oauth_callback_state
-        # cleared the binding cookie on the injected response, but this
-        "returned response replaces it."
+        # Keep the state-cookie deletion (single-use binding cookie).
         _clear_oauth_state_cookie(response)
+        set_refresh_cookie(response, refresh_token)
         set_auth_cookie(response, jwt_token)
         return response
 
@@ -559,12 +757,15 @@ async def microsoft_oauth_callback(
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         )
 
+        # M3: server-side refresh session for the OAuth login.
+        refresh_token = await _issue_refresh_session(db, user, request)
+        await db.commit()  # token_sessions row must survive the request
         payload = Token(access_token=jwt_token, token_type="bearer").model_dump()
+        payload["refresh_token"] = refresh_token
         response = JSONResponse(content=payload)
-        # Keep the state-cookie deletion: _verify_oauth_callback_state
-        # cleared the binding cookie on the injected response, but this
-        "returned response replaces it."
+        # Keep the state-cookie deletion (single-use binding cookie).
         _clear_oauth_state_cookie(response)
+        set_refresh_cookie(response, refresh_token)
         set_auth_cookie(response, jwt_token)
         return response
 
@@ -1144,7 +1345,13 @@ async def verify_mfa_login(
 
     logger.info(f"MFA login completed for user {email}")
 
+    # M3: server-side refresh session for the MFA login.
+    refresh_token = await _issue_refresh_session(db, user, request)
+    await db.commit()  # token_sessions row must survive the request
+
     payload = Token(access_token=access_token, token_type="bearer").model_dump()
+    payload["refresh_token"] = refresh_token
     response = JSONResponse(content=payload)
+    set_refresh_cookie(response, refresh_token)
     set_auth_cookie(response, access_token)
     return response

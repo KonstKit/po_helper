@@ -33,6 +33,8 @@ import {
   OAuth2Providers,
 } from '../services/api';
 import { getErrorMessage } from '../utils/errorUtils';
+import { analytics } from '../services/analytics';
+import { waitForCookieClear } from '../utils/logout';
 
 type OAuthProvider = 'google' | 'microsoft';
 
@@ -104,23 +106,25 @@ const Login = () => {
       setOauthLoading(provider);
 
       try {
-        let tokenResponse;
         if (provider === 'google') {
-          tokenResponse = await googleOAuthCallback(code, state);
+          analytics.bumpAuthGeneration();
+analytics.bumpAuthGeneration();
+          await googleOAuthCallback(code, state);
         } else if (provider === 'microsoft') {
-          tokenResponse = await microsoftOAuthCallback(code, state);
+          analytics.bumpAuthGeneration();
+analytics.bumpAuthGeneration();
+          await microsoftOAuthCallback(code, state);
         } else {
           throw new Error('Unknown OAuth provider');
         }
 
-        const { access_token } = tokenResponse;
-        localStorage.setItem('token', access_token);
-
+        // The backend set the httpOnly auth cookie on the callback
+        // response (JWT storage migration M2); nothing stored locally.
         const profile = await getCurrentUser();
-        dispatch(loginSuccess({ user: profile, token: access_token }));
+        dispatch(loginSuccess({ user: profile }));
         navigate('/');
       } catch (err: unknown) {
-        localStorage.removeItem('token');
+        localStorage.removeItem('token'); // legacy key hygiene
         dispatch(loginFailure());
         setError(getErrorMessage(err, 'OAuth login failed'));
       } finally {
@@ -167,6 +171,11 @@ const Login = () => {
     dispatch(loginStart());
 
     try {
+      // Serialize against an in-flight logout cookie-clear (M2).
+      const pendingClear = waitForCookieClear();
+      if (pendingClear) await pendingClear;
+      analytics.bumpAuthGeneration();
+analytics.bumpAuthGeneration();
       const response = await loginWithPassword({ username: email, password });
 
       // Check if MFA is required
@@ -177,20 +186,17 @@ const Login = () => {
         return;
       }
 
-      const { access_token } = response;
-
-      // Persist token immediately for subsequent requests
-      localStorage.setItem('token', access_token);
+      // The login response set the httpOnly auth cookie (dual mode keeps
+      // the body token for pre-M2 clients, but we do not store it).
       const profile = await getCurrentUser();
 
       dispatch(loginSuccess({
         user: profile,
-        token: access_token,
       }));
 
       navigate('/');
     } catch (err: unknown) {
-      localStorage.removeItem('token');
+      localStorage.removeItem('token'); // legacy key hygiene
       dispatch(loginFailure());
       setError(getErrorMessage(err, 'Login failed'));
     }
@@ -207,15 +213,14 @@ const Login = () => {
     setMfaLoading(true);
 
     try {
-      const response = await verifyMFALogin(mfaCode, mfaTempToken);
-      const { access_token } = response;
-
-      localStorage.setItem('token', access_token);
+      analytics.bumpAuthGeneration();
+analytics.bumpAuthGeneration();
+      await verifyMFALogin(mfaCode, mfaTempToken);
+      // The verify response set the httpOnly auth cookie (M2).
       const profile = await getCurrentUser();
 
       dispatch(loginSuccess({
         user: profile,
-        token: access_token,
       }));
 
       setMfaRequired(false);
