@@ -33,6 +33,7 @@ import {
   OAuth2Providers,
 } from '../services/api';
 import { getErrorMessage } from '../utils/errorUtils';
+import { analytics } from '../services/analytics';
 import { waitForCookieClear } from '../utils/logout';
 
 type OAuthProvider = 'google' | 'microsoft';
@@ -106,8 +107,10 @@ const Login = () => {
 
       try {
         if (provider === 'google') {
+          analytics.bumpAuthGeneration();
           await googleOAuthCallback(code, state);
         } else if (provider === 'microsoft') {
+          analytics.bumpAuthGeneration();
           await microsoftOAuthCallback(code, state);
         } else {
           throw new Error('Unknown OAuth provider');
@@ -169,6 +172,7 @@ const Login = () => {
       // Serialize against an in-flight logout cookie-clear (M2).
       const pendingClear = waitForCookieClear();
       if (pendingClear) await pendingClear;
+      analytics.bumpAuthGeneration();
       const response = await loginWithPassword({ username: email, password });
 
       // Check if MFA is required
@@ -206,6 +210,7 @@ const Login = () => {
     setMfaLoading(true);
 
     try {
+      analytics.bumpAuthGeneration();
       await verifyMFALogin(mfaCode, mfaTempToken);
       // The verify response set the httpOnly auth cookie (M2).
       const profile = await getCurrentUser();

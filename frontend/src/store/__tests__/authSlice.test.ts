@@ -7,6 +7,8 @@ vi.mock("../../services/api/client", () => ({
 
 vi.mock("../../services/analytics", () => ({
   analytics: {
+    readAuthGeneration: vi.fn(() => 0),
+    bumpAuthGeneration: vi.fn(),
     setSessionOwner: vi.fn(),
     setConfirmedSessionOwner: vi.fn(),
     clearSessionOwner: vi.fn(),

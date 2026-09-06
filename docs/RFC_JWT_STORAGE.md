@@ -80,7 +80,13 @@ The access token lives in `localStorage` (`services/api/client.ts`,
   /auth/mfa/verify-login validate Origin/Referer when present, even
   cookie-less (login CSRF). OAuth callbacks now clear the state cookie
   on the returned response.
-- 2026-09-05 - M2 DEFERRED: the cookie-based browser session requires
+- 2026-09-06 - M2 implemented on top of M3 (branch feat/jwt-m1-m2,
+  pending batch review): the browser session uses the httpOnly cookie
+  (withCredentials, no localStorage token), the boot probe restores the
+  session via /v1/users/me, logout calls /auth/logout, the analytics
+  owner identity is fed from the confirmed session, and flush gating
+  validates the batch owner against the confirmed identity.
+- 2026-09-05 - M2 DEFERRED (superseded by the 2026-09-06 entry): the cookie-based browser session requires
   analytics event attribution to be bound to a server-validated
   identity; client-side binding reproduced multiple cross-tab
   attribution races in review (documented in PR #18 discussion).

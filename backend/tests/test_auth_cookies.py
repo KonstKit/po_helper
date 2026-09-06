@@ -53,13 +53,13 @@ async def test_users_me_via_cookie_without_bearer(client, monkeypatch):
     assert me.json()["email"] == "cookie-user@example.com"
 
 
-async def test_cookie_fallback_is_off_by_default(client):
+async def test_cookie_fallback_enabled_for_m2_session(client):
     await _register_and_login(client)
-    # M1 ships the fallback OFF: the M2 frontend is not deployed, and the
-    'unchanged logout never clears the httpOnly cookie.'
-    assert settings.AUTH_COOKIE_FALLBACK_ENABLED is False
+    # M2 shipped: the browser session uses the httpOnly cookie, so the
+    # fallback is on by default (the frontend logout calls /auth/logout).
+    assert settings.AUTH_COOKIE_FALLBACK_ENABLED is True
     me = await client.get('/api/v1/users/me')
-    assert me.status_code == 401, me.text
+    assert me.status_code == 200, me.text
 
 async def test_logout_clears_cookie_and_session(client):
     await _register_and_login(client)
