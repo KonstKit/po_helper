@@ -3,7 +3,7 @@ import secrets
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -42,7 +42,7 @@ async def create_token_session(
         expires_at=refresh_token_expiry(),
     )
     if user_agent:
-        session.user_agent = user_agent
+        session.user_agent = user_agent[:512]
     db.add(session)
     await db.flush()
     return session
@@ -57,7 +57,7 @@ async def get_active_session_by_token(db: AsyncSession, refresh_token: str) -> T
             TokenSession.refresh_token_hash == token_hash,
             TokenSession.revoked_at.is_(None),
             cutoff < TokenSession.expires_at,
-        )
+        ).with_for_update()
     )
     return result.scalar_one_or_none()
 
@@ -83,17 +83,13 @@ async def revoke_session(db: AsyncSession, session: TokenSession) -> None:
 
 async def revoke_all_user_sessions(db: AsyncSession, user_id: int) -> int:
     """Revoke every live session of a user (password change, logout everywhere)."""
+    now = datetime.now(timezone.utc)
     result = await db.execute(
-        select(TokenSession).where(
+        update(TokenSession)
+        .where(
             TokenSession.user_id == user_id,
             TokenSession.revoked_at.is_(None),
         )
+        .values(revoked_at=now)
     )
-    now = datetime.now(timezone.utc)
-    count = 0
-    for session in result.scalars():
-        session.revoked_at = now
-        count += 1
-    if count:
-        await db.flush()
-    return count
+    return result.rowcount
