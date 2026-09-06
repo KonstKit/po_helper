@@ -22,6 +22,7 @@ import {
   InputAdornment,
 } from '@mui/material';
 import TabPanel from '../components/TabPanel';
+import SessionsPanel from "./SessionsPanel";
 import { Save as SaveIcon, Science as TestIcon, AutoAwesome as AutoAwesomeIcon } from '@mui/icons-material';
 import { getJiraSettings, putJiraSettings, getConfluenceSettings, putConfluenceSettings, testJiraConnection, testConfluenceConnection, testGithubConnection, testGitlabConnection, testTestrailConnection, getGithubSettings, putGithubSettings, getGitlabSettings, putGitlabSettings, getTestrailSettings, putTestrailSettings } from '../services/api';
 import { analytics } from '../services/analytics';
@@ -389,6 +390,7 @@ const saveJiraSettings = async () => {
           <Tab label="Jira Integration" />
           <Tab label="Optional Integrations" />
           <Tab label="Confluence Spaces" />
+          <Tab label="Security" />
         </Tabs>
 
         <TabPanel value={tabValue} index={2}>
@@ -856,7 +858,11 @@ const saveJiraSettings = async () => {
             </Grid>
           </Grid>
         </TabPanel>
-      </Card>
+
+
+        <TabPanel value={tabValue} index={5}>
+          <SessionsPanel />
+        </TabPanel>      </Card>
     </Box>
   );
 };
