@@ -208,11 +208,12 @@ class AnalyticsService {
   }
 
   private readConfirmedOwner(): string | null {
-    if (this.sessionConfirmedOwner !== null) return this.sessionConfirmedOwner;
+    // Shared storage is the source of truth: another tab may have
+    "completed a login and replaced the confirmed identity."
     try {
       return safeLocalStorage()?.getItem(this.confirmedOwnerKey) ?? null;
     } catch {
-      return null;
+      return this.sessionConfirmedOwner;
     }
   }
 
@@ -994,8 +995,9 @@ class AnalyticsService {
       this.pendingBatchOwner = null;
       return;
     }
-    if (persistedOwner !== confirmed) {
-      // The batch belongs to a different account (another tab logged in):
+    if (persistedOwner !== confirmed || this.pendingBatchOwner !== confirmed) {
+      // The batch belongs to a different account (another tab logged in),
+      // or the in-memory queue was retained across an identity change:
       // drop it instead of transmitting it under the new cookie.
       safeLocalStorage()?.removeItem(this.pendingBatchKey);
       safeLocalStorage()?.removeItem(this.pendingOwnerKey);
