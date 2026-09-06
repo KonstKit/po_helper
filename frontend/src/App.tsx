@@ -8,6 +8,7 @@ import { storage } from './utils/storage';
 import { isDevelopment } from './utils/env';
 import { analytics } from './services/analytics';
 import { performAuthErrorCleanup } from './utils/logout';
+import { probeSession } from './store/authSlice';
 import { generateSmartDefaults, saveSmartDefaults } from './utils/smartDefaults';
 import Layout from './components/Layout';
 import BackendStatusAlert from './components/BackendStatusAlert';
@@ -57,6 +58,7 @@ function App() {
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
   const isAuthenticated = useSelector((state: RootState) => state.auth.isAuthenticated);
+  const sessionProbe = useSelector((state: RootState) => state.auth.sessionProbe);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
   useEffect(() => {
@@ -88,6 +90,12 @@ function App() {
     && !localStorage.getItem('onboarding_completed')
     && !onboardingDismissed;
 
+  // JWT storage migration M2: restore the session from the httpOnly
+  // cookie on boot. The probe runs before anything gated on
+  // isAuthenticated, and rendering waits for it (the splash below).
+  useEffect(() => {
+    dispatch(probeSession());
+  }, [dispatch]);
   useEffect(() => {
     // Forced 401 from the axios interceptor. Route through the dedicated
     // auth-error cleanup so localStorage (cache, dashboard prefs, smart
@@ -141,6 +149,16 @@ function App() {
     setOnboardingDismissed(true);
   };
 
+  // Boot gating (JWT storage migration M2): while the session probe is
+  // in flight nothing else mounts — a protected-route refresh must not
+  // redirect to /login before the cookie session is confirmed.
+  if (sessionProbe === "probing") {
+    return (
+      <ToastProvider>
+        <LazyFallback />
+      </ToastProvider>
+    );
+  }
   return (
     <ToastProvider>
       <BackendStatusAlert />

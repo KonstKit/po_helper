@@ -21,6 +21,7 @@ import { NavigateFunction } from 'react-router-dom';
 import { logout as logoutAction } from '../store/authSlice';
 import { storage } from './storage';
 import { analytics } from '../services/analytics';
+import api from '../services/api/client';
 
 /**
  * Keys to preserve across logout (non-sensitive, user-preference data)
@@ -139,12 +140,43 @@ function clearSessionStorage(): void {
  * @param navigate React Router navigate function
  * @param redirectPath Optional path to redirect after logout (default: '/login')
  */
-export function performLogout(
+let cookieClearPromise: Promise<void> | null = null;
+
+/** Resolves when any in-flight backend cookie-clear settles (or null). */
+export function waitForCookieClear(): Promise<void> | null {
+  return cookieClearPromise;
+}
+
+export async function performLogout(
   dispatch: Dispatch,
   navigate: NavigateFunction,
-  redirectPath: string = '/login'
-): void {
+  redirectPath: string = '/login',
+): Promise<void> {
   try {
+    // Step 0 (JWT storage migration M2): ask the backend to clear the
+    // httpOnly auth cookie. Awaited (bounded by the axios timeout) so a
+    // subsequent login is serialized after the cookie clear; on failure
+    // we proceed anyway - the cookie expires with the JWT TTL, and M3
+    // adds real server-side revocation.
+    const existing = cookieClearPromise;
+    if (existing) {
+      // Idempotent: concurrent logouts reuse one in-flight clear so the
+      // shared handle is never overwritten and a later clear can never
+      // delete a cookie that a subsequent login just created.
+      await existing;
+    } else {
+      const clear = api
+        .post("/v1/auth/logout", undefined, { timeout: 5000 })
+        .then(() => undefined)
+        .catch((error) => {
+          console.warn("[Logout] backend cookie clear failed; continuing local cleanup", error);
+        });
+      cookieClearPromise = clear;
+      await clear;
+      if (cookieClearPromise === clear) {
+        cookieClearPromise = null;
+      }
+    }
     // Step 1: Clear cache storage
     storage.clearAll();
 
@@ -221,6 +253,11 @@ export function performAuthErrorCleanup(
       // detect cross-user signin and wipe the keys above. Same-user re-auth
       // consumes and clears it via dropInheritedStateIfOwnerChanged().
       'po_helper_analytics_previous_owner',
+      // (JWT storage M2) The pending analytics batch keeps its ORIGINAL
+      // owner marker through cleanup: an ownerless queue cannot be
+      // attributed, so analytics flush must reject it instead of
+      // transmitting a previous user's events under a new login.
+      'po_helper_analytics_pending_owner',
     ]);
     clearSessionStorage();
     // Re-persist the singleton's authoritative in-memory pendingBatch.

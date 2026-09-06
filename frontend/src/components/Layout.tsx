@@ -223,7 +223,7 @@ export default function Layout() {
 
   const handleLogout = () => {
     handleMenuClose();
-    performLogout(dispatch, navigate);
+    void performLogout(dispatch, navigate);
   };
 
   const drawer = (

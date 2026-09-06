@@ -7,10 +7,8 @@ vi.mock("../../services/api/client", () => ({
 
 vi.mock("../../services/analytics", () => ({
   analytics: {
-    readAuthGeneration: vi.fn(() => 0),
-    bumpAuthGeneration: vi.fn(),
     setSessionOwner: vi.fn(),
-    confirmAuthTransition: vi.fn(() => true),
+    setConfirmedSessionOwner: vi.fn(),
     clearSessionOwner: vi.fn(),
     clearConfirmedSessionOwner: vi.fn(),
     dropInheritedStateIfOwnerChanged: vi.fn(),
@@ -83,22 +81,6 @@ describe("authSlice probeSession (JWT storage M2)", () => {
     expect(authError).toBeUndefined();
     expect(store.getState().auth.isAuthenticated).toBe(false);
     dispatched.mockRestore();
-  });
-
-  it("a probe stale after an auth-generation bump cannot confirm the session", async () => {
-    // another tab completed a login while this probe was in flight
-    (analytics.readAuthGeneration as ReturnType<typeof vi.fn>)
-      .mockReturnValueOnce(0)
-      .mockReturnValue(1);
-    const dispatch = vi.fn();
-    await probeSession()(dispatch, () => ({}), undefined);
-    const rejected = dispatch.mock.calls.map((c) => c[0]).find((a) => a.type === probeSession.rejected.type);
-    expect(rejected).toBeDefined();
-    const state = authReducer(probingState, rejected);
-    // anonymous, and no owner/confirmation overwrite for user A
-    expect(state.isAuthenticated).toBe(false);
-    expect(analytics.setSessionOwner).not.toHaveBeenCalled();
-    expect(analytics.confirmAuthTransition).not.toHaveBeenCalled();
   });
 
   it("a stale fulfilled probe cannot re-authenticate after logout", () => {

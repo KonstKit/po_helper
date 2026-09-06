@@ -282,58 +282,60 @@ export const startConfluenceSyncStream = (
   if (opts.start !== undefined) params.set('start', String(opts.start));
 
   const url = buildApiV1StreamingUrl('/confluence/sync-sse', params);
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-
-  if (token) {
-    const controller = new AbortController();
-
-    void (async () => {
+  const attachDemoEventSource = () => {
+    const eventSource = new EventSource(url);
+    eventSource.onmessage = (event) => {
       try {
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            Accept: 'text/event-stream',
-            Authorization: `Bearer ${token}`,
-          },
-          signal: controller.signal,
-        });
-        await consumeEventStream(response, handlers.onEvent);
-      } catch (error) {
-        if (controller.signal.aborted) {
-          return;
-        }
-        handlers.onError(error instanceof Error ? error : new Error('Confluence sync failed.'));
+        const parsed = JSON.parse(event.data) as ConfluenceSyncStreamEvent;
+        handlers.onEvent(parsed);
+      } catch {
+        handlers.onError(new Error('Received invalid sync stream payload.'));
       }
-    })();
-
-    return {
-      mode: 'fetch',
-      close: () => controller.abort(),
     };
-  }
+    eventSource.onerror = () => {
+      eventSource.close();
+      handlers.onError(new Error('SSE connection failed.'));
+    };
+    return {
+      mode: 'eventsource',
+      close: () => eventSource.close(),
+    };
+  };
 
-  if (!isUnauthenticatedDemoStreamEnabled()) {
-    throw new Error('Authentication is required for Confluence sync.');
-  }
+  // JWT storage migration M2: the httpOnly cookie authenticates the
+  // same-origin fetch automatically; no bearer header. Unauthenticated
+  // demo deployments keep the EventSource path.
+  const controller = new AbortController();
+  let handle: ConfluenceSyncStreamHandle = {
+    mode: 'fetch',
+    close: () => controller.abort(),
+  };
 
-  const eventSource = new EventSource(url);
-  eventSource.onmessage = (event) => {
+  void (async () => {
     try {
-      const parsed = JSON.parse(event.data) as ConfluenceSyncStreamEvent;
-      handlers.onEvent(parsed);
-    } catch {
-      handlers.onError(new Error('Received invalid sync stream payload.'));
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'text/event-stream',
+        },
+        credentials: 'include',
+        signal: controller.signal,
+      });
+      if ((response.status === 401 || response.status === 403) && isUnauthenticatedDemoStreamEnabled()) {
+        controller.abort();
+        Object.assign(handle, attachDemoEventSource());
+        return;
+      }
+      await consumeEventStream(response, handlers.onEvent);
+    } catch (error) {
+      if (controller.signal.aborted) {
+        return;
+      }
+      handlers.onError(error instanceof Error ? error : new Error('Confluence sync failed.'));
     }
-  };
-  eventSource.onerror = () => {
-    eventSource.close();
-    handlers.onError(new Error('SSE connection failed.'));
-  };
+  })();
 
-  return {
-    mode: 'eventsource',
-    close: () => eventSource.close(),
-  };
+  return handle;
 };
 
 // =============================================================================
