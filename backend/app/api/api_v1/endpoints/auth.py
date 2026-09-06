@@ -1,3 +1,5 @@
+import hashlib
+
 from datetime import timedelta
 import hmac
 import logging
@@ -231,6 +233,7 @@ async def login(
 
     # M3: server-side refresh session (rotation + revocation).
     refresh_token = await _issue_refresh_session(db, user, request)
+    await db.commit()  # token_sessions row must survive the request
 
     # Validate via response model, then return as Response for SlowAPI headers
     token_payload = Token(access_token=access_token, token_type="bearer").model_dump()
@@ -315,7 +318,22 @@ async def refresh(
 
     session = await get_active_session_by_token(db, body.refresh_token)
     if session is None:
-        # Reuse of a rotated/revoked token: revoke everything for the user.
+        # Reuse of a rotated/revoked/expired token is a theft signal:
+        # find the family owner by hash (any state) and revoke every live
+        # session of that user before rejecting.
+        from app.core.token_sessions import revoke_all_user_sessions
+        from app.models.token_session import TokenSession
+
+        token_hash = hashlib.sha256(body.refresh_token.encode()).hexdigest()
+        any_session = await db.execute(
+            select(TokenSession).where(
+                TokenSession.refresh_token_hash == token_hash,
+            )
+        )
+        known = any_session.scalar_one_or_none()
+        if known:
+            await revoke_all_user_sessions(db, known.user_id)
+            await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
@@ -631,6 +649,7 @@ async def google_oauth_callback(
 
         # M3: server-side refresh session for the OAuth login.
         refresh_token = await _issue_refresh_session(db, user, request)
+        await db.commit()  # token_sessions row must survive the request
         payload = Token(access_token=jwt_token, token_type="bearer").model_dump()
         payload["refresh_token"] = refresh_token
         response = JSONResponse(content=payload)
@@ -721,6 +740,7 @@ async def microsoft_oauth_callback(
 
         # M3: server-side refresh session for the OAuth login.
         refresh_token = await _issue_refresh_session(db, user, request)
+        await db.commit()  # token_sessions row must survive the request
         payload = Token(access_token=jwt_token, token_type="bearer").model_dump()
         payload["refresh_token"] = refresh_token
         response = JSONResponse(content=payload)
@@ -1304,6 +1324,10 @@ async def verify_mfa_login(
     )
 
     logger.info(f"MFA login completed for user {email}")
+
+    # M3: server-side refresh session for the MFA login.
+    refresh_token = await _issue_refresh_session(db, user, request)
+    await db.commit()  # token_sessions row must survive the request
 
     payload = Token(access_token=access_token, token_type="bearer").model_dump()
     response = JSONResponse(content=payload)
