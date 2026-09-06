@@ -1,6 +1,4 @@
-import hashlib
-
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 import hmac
 import logging
 from typing import Any, Optional, List
@@ -32,11 +30,18 @@ from app.core.oauth_state import (
     verify_oauth_state,
 )
 from app.core.ws_tickets import issue_ws_ticket
-from app.core.auth_cookies import clear_auth_cookie, set_auth_cookie
+from app.core.auth_cookies import (
+    clear_auth_cookie,
+    get_refresh_cookie_token,
+    set_auth_cookie,
+    set_refresh_cookie,
+)
 from app.core.token_sessions import (
     create_token_session,
     get_active_session_by_token,
+    get_session_by_token_any_state,
     new_refresh_token,
+    revoke_all_user_sessions,
     revoke_session,
 )
 from app.core.crypto import AES_GCM_PREFIX
@@ -52,6 +57,7 @@ from app.core.mfa import (
 from app.core.mfa import _is_kdf_backup_code
 from app.core.request_context import get_token_scopes, get_token_tenant_id
 from app.models import User, Role, Project
+from app.models.token_session import TokenSession
 from app.models.rbac import Permissions
 from app.schemas.user import (
     ScopedTokenRequest,
@@ -313,25 +319,22 @@ async def refresh(
         create_token_session,
         get_active_session_by_token,
         new_refresh_token,
-        revoke_session,
     )
 
-    session = await get_active_session_by_token(db, body.refresh_token)
-    if session is None:
-        # Reuse of a rotated/revoked/expired token is a theft signal:
-        # find the family owner by hash (any state) and revoke every live
-        # session of that user before rejecting.
-        from app.core.token_sessions import revoke_all_user_sessions
-        from app.models.token_session import TokenSession
-
-        token_hash = hashlib.sha256(body.refresh_token.encode()).hexdigest()
-        any_session = await db.execute(
-            select(TokenSession).where(
-                TokenSession.refresh_token_hash == token_hash,
-            )
+    presented = body.refresh_token or get_refresh_cookie_token(request)
+    if not presented:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token required",
         )
-        known = any_session.scalar_one_or_none()
-        if known:
+    session = await get_active_session_by_token(db, presented)
+    if session is None:
+        # Reuse of a rotated/revoked token is a theft signal: find the
+        # family owner by hash (any state) and revoke every live session
+        # of that user before rejecting. A merely EXPIRED token (never
+        # revoked) is a benign sign-out: reject without family revocation.
+        known = await get_session_by_token_any_state(db, presented)
+        if known is not None and known.revoked_at is not None:
             await revoke_all_user_sessions(db, known.user_id)
             await db.commit()
         raise HTTPException(
@@ -347,8 +350,22 @@ async def refresh(
             detail="Inactive user",
         )
 
-    # Rotate: revoke the presented session, then issue a new pair.
-    await revoke_session(db, session)
+    # Atomic claim: conditional UPDATE wins exactly once even under
+    # concurrent rotations of the same token.
+    claimed = await db.execute(
+        update(TokenSession)
+        .where(
+            TokenSession.id == session.id,
+            TokenSession.revoked_at.is_(None),
+        )
+        .values(revoked_at=datetime.now(timezone.utc))
+    )
+    if claimed.rowcount == 0:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+    session.last_used_at = datetime.now(timezone.utc)
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.email},
@@ -366,6 +383,7 @@ async def refresh(
     payload = Token(access_token=access_token, token_type="bearer").model_dump()
     payload["refresh_token"] = refresh_token
     response = JSONResponse(content=payload)
+    set_refresh_cookie(response, refresh_token)
     set_auth_cookie(response, access_token)
     return response
 
@@ -390,9 +408,9 @@ async def list_sessions(
     sessions = [
         {
             "id": s.id,
-            "created_at": s.created_at,
-            "expires_at": s.expires_at,
-            "last_used_at": s.last_used_at,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+            "expires_at": s.expires_at.isoformat() if s.expires_at else None,
+            "last_used_at": s.last_used_at.isoformat() if s.last_used_at else None,
             "user_agent": s.user_agent,
         }
         for s in result.scalars()
@@ -655,6 +673,7 @@ async def google_oauth_callback(
         response = JSONResponse(content=payload)
         # Keep the state-cookie deletion (single-use binding cookie).
         _clear_oauth_state_cookie(response)
+        set_refresh_cookie(response, refresh_token)
         set_auth_cookie(response, jwt_token)
         return response
 
@@ -746,6 +765,7 @@ async def microsoft_oauth_callback(
         response = JSONResponse(content=payload)
         # Keep the state-cookie deletion (single-use binding cookie).
         _clear_oauth_state_cookie(response)
+        set_refresh_cookie(response, refresh_token)
         set_auth_cookie(response, jwt_token)
         return response
 
@@ -1330,6 +1350,8 @@ async def verify_mfa_login(
     await db.commit()  # token_sessions row must survive the request
 
     payload = Token(access_token=access_token, token_type="bearer").model_dump()
+    payload["refresh_token"] = refresh_token
     response = JSONResponse(content=payload)
+    set_refresh_cookie(response, refresh_token)
     set_auth_cookie(response, access_token)
     return response

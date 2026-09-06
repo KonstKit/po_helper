@@ -51,3 +51,42 @@ def get_auth_cookie_token(request: "Request | WebSocket") -> str | None:
     if not settings.AUTH_COOKIE_ENABLED:
         return None
     return request.cookies.get(settings.AUTH_COOKIE_NAME)
+
+
+REFRESH_COOKIE_NAME = "refresh_token"
+REFRESH_COOKIE_PATH = "/api/v1/auth/refresh"
+
+
+def set_refresh_cookie(response: Response, token: str) -> None:
+    """Attach the refresh token as an httpOnly cookie scoped to refresh."""
+    if not settings.AUTH_COOKIE_ENABLED:
+        return
+    response.set_cookie(
+        key=REFRESH_COOKIE_NAME,
+        value=token,
+        max_age=int(settings.REFRESH_TOKEN_EXPIRE_DAYS) * 86400,
+        path=REFRESH_COOKIE_PATH,
+        httponly=True,
+        secure=settings.AUTH_COOKIE_SECURE,
+        samesite=cast("Literal['lax', 'strict', 'none']", settings.AUTH_COOKIE_SAMESITE),
+    )
+
+
+def clear_refresh_cookie(response: Response) -> None:
+    """Remove the refresh cookie (logout)."""
+    if not settings.AUTH_COOKIE_ENABLED:
+        return
+    response.delete_cookie(
+        key=REFRESH_COOKIE_NAME,
+        path=REFRESH_COOKIE_PATH,
+        httponly=True,
+        secure=settings.AUTH_COOKIE_SECURE,
+        samesite=cast("Literal['lax', 'strict', 'none']", settings.AUTH_COOKIE_SAMESITE),
+    )
+
+
+def get_refresh_cookie_token(request) -> str | None:
+    """Read the refresh token from the request cookie jar."""
+    if not settings.AUTH_COOKIE_ENABLED:
+        return None
+    return request.cookies.get(REFRESH_COOKIE_NAME)

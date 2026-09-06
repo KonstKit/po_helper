@@ -62,6 +62,18 @@ async def get_active_session_by_token(db: AsyncSession, refresh_token: str) -> T
     return result.scalar_one_or_none()
 
 
+async def get_session_by_token_any_state(
+    db: AsyncSession, refresh_token: str
+) -> TokenSession | None:
+    """Look a token up regardless of revocation/expiry (reuse triage)."""
+    result = await db.execute(
+        select(TokenSession).where(
+            TokenSession.refresh_token_hash == _hash_refresh_token(refresh_token)
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 async def revoke_session(db: AsyncSession, session: TokenSession) -> None:
     """Revoke one session (idempotent)."""
     if session.revoked_at is None:
