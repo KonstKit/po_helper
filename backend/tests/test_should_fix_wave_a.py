@@ -95,3 +95,33 @@ async def test_fk_indexes_exist(db_session):
     existing = {row[0] for row in result}
     missing = expected - existing
     assert not missing, f"missing FK indexes: {missing} (create_all must reflect migration 037)"
+
+
+@pytest.mark.asyncio
+async def test_mfa_pending_token_rejected_as_session(client):
+    """The mfa_pending gate token must not resolve to a full session:
+    presenting it as a bearer on a regular endpoint has to fail, or a
+    stolen temp_token would bypass the second factor entirely."""
+    from datetime import timedelta
+
+    from app.core.security import create_access_token
+
+    email = "mfa-pending-user@example.com"
+    response = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": email,
+            "username": "mfapending",
+            "full_name": "MFA Pending",
+            "password": "StrongPassword123!",
+        },
+    )
+    assert response.status_code == 200, response.text
+    pending = create_access_token(
+        data={"sub": email, "type": "mfa_pending"},
+        expires_delta=timedelta(minutes=5),
+    )
+    me = await client.get(
+        "/api/v1/users/me", headers={"Authorization": "Bearer " + pending}
+    )
+    assert me.status_code == 401, me.text

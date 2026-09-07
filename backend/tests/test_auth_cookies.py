@@ -158,3 +158,59 @@ async def test_bearer_header_still_works_dual_mode(client):
     await _clear_client_cookies(client)
     me = await client.get("/api/v1/users/me", headers={"Authorization": "Bearer " + body_token})
     assert me.status_code == 200, me.text
+
+
+async def test_login_sets_refresh_cookie(client):
+    """M2/M3: login also issues the httpOnly refresh cookie scoped to /refresh."""
+    response = await _register_and_login(client)
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "refresh_token=" in set_cookie
+    assert "httponly" in set_cookie.lower()
+    assert "path=/api/v1/auth" in set_cookie.lower()
+
+
+async def test_refresh_with_cookie_only_no_body(client):
+    """The browser holds only the httpOnly refresh cookie and sends no body."""
+    await _register_and_login(client)
+    refresh_cookie = client.cookies.get("refresh_token")
+    assert refresh_cookie, "login must set the refresh cookie"
+    response = await client.post(
+        "/api/v1/auth/refresh",
+        headers={"Origin": "http://test"},
+    )
+    assert response.status_code == 200, response.text
+    # rotation: the presented token was claimed, replay must be rejected
+    replay = await client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": refresh_cookie},
+        headers={"Origin": "http://test"},
+    )
+    assert replay.status_code == 401, replay.text
+
+
+async def test_logout_with_cookie_only_revokes_refresh_session(client):
+    """Logout without a body must still revoke the cookie-presented session."""
+    await _register_and_login(client)
+    refresh_cookie = client.cookies.get("refresh_token")
+    assert refresh_cookie
+    response = await client.post(
+        "/api/v1/auth/logout", headers={"Origin": "http://test"}
+    )
+    assert response.status_code == 200, response.text
+    replay = await client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": refresh_cookie},
+        headers={"Origin": "http://test"},
+    )
+    assert replay.status_code == 401, replay.text
+
+
+async def test_logout_clears_refresh_cookie(client):
+    await _register_and_login(client)
+    response = await client.post(
+        "/api/v1/auth/logout", headers={"Origin": "http://test"}
+    )
+    assert response.status_code == 200, response.text
+    cleared = response.headers.get("set-cookie", "").lower()
+    assert "refresh_token=" in cleared
+    assert "max-age=0" in cleared or "expires= thu, 01 jan 1970" in cleared

@@ -274,6 +274,13 @@ async def _resolve_current_user(
         token = authorization.split(" ", 1)[1]
         with handle_api_error(operation="decode_token", status_code=status.HTTP_401_UNAUTHORIZED):
             payload = decode_token(token)
+        if payload.get("type") == "mfa_pending":
+            # The MFA gate token only unlocks /auth/mfa/verify-login; it
+            # must not resolve to a full session anywhere else.
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="MFA verification required",
+            )
         email = payload.get("sub")
         if not email:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
@@ -297,6 +304,13 @@ async def _resolve_current_user(
     if cookie_token:
         with handle_api_error(operation="decode_token", status_code=status.HTTP_401_UNAUTHORIZED):
             payload = decode_token(cookie_token)
+        if payload.get("type") == "mfa_pending":
+            # The MFA gate token only unlocks /auth/mfa/verify-login; it
+            # must not resolve to a full session anywhere else.
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="MFA verification required",
+            )
         email = payload.get("sub")
         if not email:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")

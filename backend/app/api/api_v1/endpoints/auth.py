@@ -306,14 +306,16 @@ async def logout(
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    # Optional body: browsers authenticate by the httpOnly refresh
+    # cookie alone and send no body at all (M2).
+    refresh_token: str = ""
 
 
 @router.post("/refresh")
 @limiter.limit(settings.RATE_LIMIT_AUTH)
 async def refresh(
     request: Request,
-    body: RefreshRequest,
+    body: RefreshRequest | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
     """Rotate a refresh token: revoke the presented session and issue a
@@ -326,7 +328,7 @@ async def refresh(
         new_refresh_token,
     )
 
-    presented = body.refresh_token or get_refresh_cookie_token(request)
+    presented = (body.refresh_token if body else "") or get_refresh_cookie_token(request)
     if not presented:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
