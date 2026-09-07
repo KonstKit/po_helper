@@ -277,17 +277,32 @@ export default function Layout() {
                         <ListItem disablePadding>
                           <ListItemButton
                             onClick={() => {
+                              // A parent entry is a real destination: clicking
+                              // it must navigate, not merely toggle the
+                              // submenu. Collapse stays available on the
+                              // chevron (stopPropagation below).
+                              navigate(item.path);
                               if (item.children) {
-                                toggleItem(item.text);
-                              } else {
-                                navigate(item.path);
+                                setExpandedItems((prev) => ({ ...prev, [item.text]: true }));
                               }
                             }}
                             sx={{ pl: 4 }}
                           >
                             <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
-                            <ListItemText primary={item.text} />
-                            {item.children && (expandedItems[item.text] ? <ExpandLess /> : <ExpandMore />)}
+                            <ListItemText primary="item.text" />
+                            {item.children && (
+                              <Box
+                                component="span"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleItem(item.text);
+                                }}
+                                sx={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}
+                                aria-label={expandedItems[item.text] ? 'Collapse submenu' : 'Expand submenu'}
+                              >
+                                {expandedItems[item.text] ? <ExpandLess /> : <ExpandMore />}
+                              </Box>
+                            )}
                           </ListItemButton>
                         </ListItem>
                         {item.children && (
