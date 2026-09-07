@@ -34,6 +34,7 @@ async def create_token_session(
     user_id: int,
     refresh_token: str,
     user_agent: str | None = None,
+    last_used_at: datetime | None = None,
 ) -> TokenSession:
     """Persist a new server-side session for the issued refresh token."""
     session = TokenSession(
@@ -43,6 +44,8 @@ async def create_token_session(
     )
     if user_agent:
         session.user_agent = user_agent[:512]
+    if last_used_at is not None:
+        session.last_used_at = last_used_at
     db.add(session)
     await db.flush()
     return session

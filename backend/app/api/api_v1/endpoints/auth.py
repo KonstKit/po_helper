@@ -203,6 +203,8 @@ def _session_response(access_token: str, refresh_token: str) -> JSONResponse:
     else:
         content = {"token_type": "bearer"}
     response = JSONResponse(content=content)
+    # Session credentials must never be cached (OAuth callbacks are GETs).
+    response.headers["Cache-Control"] = "no-store"
     set_refresh_cookie(response, refresh_token)
     set_auth_cookie(response, access_token)
     return response
@@ -324,7 +326,7 @@ class RefreshRequest(BaseModel):
 
 
 @router.post("/refresh")
-@limiter.limit(settings.RATE_LIMIT_AUTH)
+@limiter.limit(settings.RATE_LIMIT_REFRESH)
 async def refresh(
     request: Request,
     body: RefreshRequest | None = None,
@@ -396,6 +398,7 @@ async def refresh(
         user_id=user.id,
         refresh_token=refresh_token,
         user_agent=request.headers.get("user-agent"),
+        last_used_at=datetime.now(timezone.utc),
     )
     await db.commit()
 
@@ -653,7 +656,7 @@ async def google_oauth_callback(
     Handle Google OAuth2 callback.
     Exchanges code for tokens and creates/links user account.
     """
-    redirect_override = _verify_oauth_callback_state(request, response, state, "google")
+    redirect_override = _verify_oauth_callback_state(request, state, "google")
     try:
         client = (
             type(google_oauth)(redirect_uri=redirect_override)
@@ -682,9 +685,13 @@ async def google_oauth_callback(
         # M3: server-side refresh session for the OAuth login.
         refresh_token = await _issue_refresh_session(db, user, request)
         await db.commit()  # token_sessions row must survive the request
-        # Keep the state-cookie deletion (single-use binding cookie).
-        _clear_oauth_state_cookie(response)
-        return _session_response(jwt_token, refresh_token)
+        resp = _session_response(jwt_token, refresh_token)
+        # Single-use: consume the binding cookie on the response we RETURN.
+        # Headers set on the injected parameter are dropped when an endpoint
+        # returns its own Response object (FastAPI merges them only for
+        # non-Response return values), so clearing `response` is a no-op.
+        _clear_oauth_state_cookie(resp)
+        return resp
 
     except OAuth2Error as e:
         logger.error(f"Google OAuth2 error: {e.error} - {e.description}")
@@ -740,7 +747,7 @@ async def microsoft_oauth_callback(
     Handle Microsoft OAuth2 callback.
     Exchanges code for tokens and creates/links user account.
     """
-    redirect_override = _verify_oauth_callback_state(request, response, state, "microsoft")
+    redirect_override = _verify_oauth_callback_state(request, state, "microsoft")
     try:
         client = (
             type(microsoft_oauth)(redirect_uri=redirect_override)
@@ -769,9 +776,13 @@ async def microsoft_oauth_callback(
         # M3: server-side refresh session for the OAuth login.
         refresh_token = await _issue_refresh_session(db, user, request)
         await db.commit()  # token_sessions row must survive the request
-        # Keep the state-cookie deletion (single-use binding cookie).
-        _clear_oauth_state_cookie(response)
-        return _session_response(jwt_token, refresh_token)
+        resp = _session_response(jwt_token, refresh_token)
+        # Single-use: consume the binding cookie on the response we RETURN.
+        # Headers set on the injected parameter are dropped when an endpoint
+        # returns its own Response object (FastAPI merges them only for
+        # non-Response return values), so clearing `response` is a no-op.
+        _clear_oauth_state_cookie(resp)
+        return resp
 
     except OAuth2Error as e:
         logger.error(f"Microsoft OAuth2 error: {e.error} - {e.description}")
@@ -809,9 +820,7 @@ def _clear_oauth_state_cookie(response: Response) -> None:
     response.delete_cookie(OAUTH_STATE_COOKIE, path="/")
 
 
-def _verify_oauth_callback_state(
-    request: Request, response: Response, state: str, provider: str
-) -> Optional[str]:
+def _verify_oauth_callback_state(request: Request, state: str, provider: str) -> Optional[str]:
     """Reject forged, expired, or cross-browser OAuth callbacks.
 
     Returns the redirect_uri the flow started with (None = client default),
@@ -834,8 +843,8 @@ def _verify_oauth_callback_state(
             detail="OAuth2 state validation failed",
         )
 
-    # Single-use: consume the binding cookie once the flow completes.
-    _clear_oauth_state_cookie(response)
+    # Single-use: the CALLBACKS must clear the state cookie on the response
+    # they return; clearing the injected parameter here would be dropped.
     return payload.get("redirect_uri")
 
 

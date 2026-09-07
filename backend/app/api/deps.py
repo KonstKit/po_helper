@@ -289,6 +289,9 @@ async def _resolve_current_user(
         )
         user = result.scalar_one_or_none()
         if not user:
+            # 404 (not 401) is deliberate: the analytics /track contract treats
+            # 404 as "lazy provisioning pending" and replays queued events;
+            # see test_track_returns_404_for_jwt_without_user_row.
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
         set_token_scopes(_normalize_token_scopes(payload.get("scopes")))
         set_token_tenant_id(_normalize_tenant_id(payload.get("tenant_id")))
@@ -319,6 +322,9 @@ async def _resolve_current_user(
         )
         user = result.scalar_one_or_none()
         if not user:
+            # 404 (not 401) is deliberate: the analytics /track contract treats
+            # 404 as "lazy provisioning pending" and replays queued events;
+            # see test_track_returns_404_for_jwt_without_user_row.
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
         set_token_scopes(_normalize_token_scopes(payload.get("scopes")))
         set_token_tenant_id(_normalize_tenant_id(payload.get("tenant_id")))

@@ -7,7 +7,7 @@
  * - Response interceptor for error handling and auth refresh
  * - Exponential backoff retry helper for transient failures
  */
-import axios from "axios";
+import axios, { type InternalAxiosRequestConfig } from "axios";
 import { API_TIMEOUT_MS } from '../../constants/app';
 import { logError } from '../../utils/errorUtils';
 
@@ -77,7 +77,6 @@ const SESSION_ERROR_SNIPPETS = [
   "invalid token",
   "token expired",
   "session expired",
-  "user not found",
   "invalid or expired temporary token",
 ];
 
@@ -124,6 +123,46 @@ const isCanceledError = (error: unknown): boolean => {
   return code === "ERR_CANCELED" || name === "CanceledError";
 };
 
+// ---------------------------------------------------------------------------
+// Silent session refresh (JWT storage M4): the browser holds only httpOnly
+// cookies, so when an access cookie expires the interceptor rotates it via
+// /auth/refresh and replays the original request once. Concurrent 401s share
+// a single in-flight rotation; the refresh call itself never recurses.
+// ---------------------------------------------------------------------------
+const REFRESH_PATH = "/v1/auth/refresh";
+const refreshClient = axios.create({
+  baseURL: "/api",
+  timeout: API_TIMEOUT_MS,
+  withCredentials: true,
+});
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+const refreshSession = (): Promise<boolean> => {
+  if (!refreshInFlight) {
+    refreshInFlight = refreshClient
+      .post(REFRESH_PATH)
+      .then(() => true)
+      .catch(() => false)
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+};
+
+type ReplayingConfig = InternalAxiosRequestConfig & {
+  _sessionReplayed?: boolean;
+};
+
+const isReplay = (config: unknown): boolean =>
+  Boolean((config as ReplayingConfig | undefined)?._sessionReplayed);
+
+const isRefreshCall = (config: unknown): boolean => {
+  const url = (config as { url?: string } | undefined)?.url ?? "";
+  return url.endsWith(REFRESH_PATH);
+};
+
 // Request interceptor: the httpOnly auth cookie rides along on same-origin
 // requests automatically (withCredentials above); no Authorization header
 // injection from localStorage anymore (JWT storage migration M2).
@@ -132,7 +171,7 @@ api.interceptors.request.use((config) => config);
 // Response interceptor: handle errors and emit events for UI
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     // Ignore intentionally canceled requests (AbortController/navigation).
     // They are expected control flow and not backend availability issues.
     if (isCanceledError(error)) {
@@ -179,6 +218,25 @@ api.interceptors.response.use(
     );
     if (isSessionProbe && error.response?.status === 401) {
       return Promise.reject(error);
+    }
+
+    // Session-related 401: attempt one silent refresh (shared single-flight)
+    // and replay the original request once. On failure fall through to the
+    // auth-error broadcast below. Skipped for the refresh call itself, the
+    // boot probe, and replays (no loops).
+    if (
+      error.response?.status === 401 &&
+      shouldInvalidateSession(error) &&
+      !isSessionProbe &&
+      !isRefreshCall(error.config) &&
+      !isReplay(error.config)
+    ) {
+      const refreshed = await refreshSession();
+      if (refreshed && error.config) {
+        const config = error.config as ReplayingConfig;
+        config._sessionReplayed = true;
+        return api.request(config);
+      }
     }
 
     // Handle session-related 401 Unauthorized only.

@@ -151,8 +151,6 @@ const Login = () => {
         authData = await startMicrosoftOAuth();
       }
 
-      // Store state for CSRF protection
-      sessionStorage.setItem('oauth_state', authData.state);
 
       // Redirect to OAuth provider
       window.location.href = authData.authorization_url;
