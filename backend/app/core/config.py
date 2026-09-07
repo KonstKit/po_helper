@@ -37,6 +37,17 @@ class Settings(BaseSettings):
     AUTH_COOKIE_NAME: str = "access_token"
     AUTH_COOKIE_SECURE: bool = False
     AUTH_COOKIE_SAMESITE: str = "strict"
+
+    @field_validator("AUTH_COOKIE_SAMESITE", mode="before")
+    @classmethod
+    def _normalize_auth_cookie_samesite(cls, value):
+        # Fail at startup instead of 500-ing every login at runtime
+        # (Starlette rejects unknown values only when a cookie is set).
+        normalized = str(value).strip().lower()
+        if normalized not in {"lax", "strict", "none"}:
+            raise ValueError("AUTH_COOKIE_SAMESITE must be one of: lax, strict, none")
+        return normalized
+
     # Cookie fallback in get_current_user stays OFF until the frontend
     # logout clears the httpOnly cookie (M2). Issuance above is gated by
     # AUTH_COOKIE_ENABLED and is harmless without the fallback.
@@ -185,6 +196,9 @@ class Settings(BaseSettings):
     # Rate limiting (B3): wired into the limiter decorators.
     RATE_LIMIT_DEFAULT: str = "100/minute"
     RATE_LIMIT_AUTH: str = "5/minute"
+    # Refresh is routine per-session traffic (no credential guessing),
+    # and with a short access TTL every active tab hits it regularly.
+    RATE_LIMIT_REFRESH: str = "30/minute"
     RATE_LIMIT_SYNC: str = "10/hour"
 
     # OAuth2 SSO Configuration

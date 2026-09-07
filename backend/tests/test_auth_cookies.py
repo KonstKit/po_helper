@@ -47,8 +47,7 @@ async def test_users_me_via_cookie_without_bearer(client, monkeypatch):
     response = await _register_and_login(client)
     body_token = response.json()["access_token"]
     assert client.cookies.get(settings.AUTH_COOKIE_NAME), "login must set the cookie"
-    headers = {"Authorization": "Bearer " + body_token}
-    me = await client.get("/api/v1/users/me", headers={k: v for k, v in headers.items() if False})
+    me = await client.get("/api/v1/users/me")
     assert me.status_code == 200, me.text
     assert me.json()["email"] == "cookie-user@example.com"
 
@@ -135,7 +134,7 @@ async def test_bearer_post_without_origin_still_works(client):
 
 async def test_login_csrf_rejects_cross_site_origin_without_cookies(client):
     # Login CSRF (M1): a cross-site form POST must not silently sign the
-    'victim into an attacker account, even cookie-less.'
+    # victim into an attacker account, even cookie-less.
     response = await client.post(
         '/api/v1/auth/login',
         data={'username': 'cookie-user@example.com', 'password': 'StrongPassword123!'},

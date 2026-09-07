@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  Alert,
   Button,
   Paper,
   Table,
@@ -24,9 +25,13 @@ export default function SessionsPanel() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Revoke failures must not destroy the table: they surface as a
+  // dismissible alert above it while the list stays usable.
+  const [revokeError, setRevokeError] = useState<string | null>(null);
 
   const fetchSessions = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await api.get<{ sessions: SessionInfo[]; count: number }>('/v1/auth/sessions');
       setSessions(res.data.sessions);
@@ -38,11 +43,12 @@ export default function SessionsPanel() {
   };
 
   const revoke = async (id: number) => {
+    setRevokeError(null);
     try {
       await api.delete(`/v1/auth/sessions/${id}`);
       setSessions((prev) => prev.filter((s) => s.id !== id));
     } catch {
-      setError('Failed to revoke session');
+      setRevokeError('Failed to revoke the session. It is still active - try again.');
     }
   };
 
@@ -55,7 +61,13 @@ export default function SessionsPanel() {
   if (sessions.length === 0) return <Typography>No active sessions found.</Typography>;
 
   return (
-    <TableContainer component={Paper}>
+    <>
+      {revokeError && (
+        <Alert severity="error" onClose={() => setRevokeError(null)} sx={{ mb: 1 }}>
+          {revokeError}
+        </Alert>
+      )}
+      <TableContainer component={Paper}>
       <Table size="small">
         <TableHead>
           <TableRow>
@@ -83,5 +95,6 @@ export default function SessionsPanel() {
         </TableBody>
       </Table>
     </TableContainer>
+    </>
   );
 }

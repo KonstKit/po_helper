@@ -79,7 +79,8 @@ export interface OAuth2AuthURL {
 }
 
 export interface OAuth2Token {
-  access_token: string;
+  /** M4: absent (cookie-only session) unless dual mode is enabled. */
+  access_token?: string;
   token_type: string;
 }
 
