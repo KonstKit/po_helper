@@ -54,7 +54,9 @@ def get_auth_cookie_token(request: "Request | WebSocket") -> str | None:
 
 
 REFRESH_COOKIE_NAME = "refresh_token"
-REFRESH_COOKIE_PATH = "/api/v1/auth/refresh"
+# /auth scope (not just /refresh) so logout receives the cookie and
+# can revoke the presented session without a JS-readable token.
+REFRESH_COOKIE_PATH = "/api/v1/auth"
 
 
 def set_refresh_cookie(response: Response, token: str) -> None:
