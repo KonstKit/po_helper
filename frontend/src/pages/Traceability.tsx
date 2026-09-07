@@ -4,37 +4,19 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
-  Divider,
   FormControl,
-  FormControlLabel,
   Grid,
   InputLabel,
-  LinearProgress,
   MenuItem,
   Paper,
   Select,
   Stack,
-  Switch,
   Tab,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Tabs,
-  TextField,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import type { SelectChangeEvent } from '@mui/material/Select';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import SyncIcon from '@mui/icons-material/Sync';
 import DownloadIcon from '@mui/icons-material/Download';
-import TravelExploreIcon from '@mui/icons-material/TravelExplore';
-import AltRouteIcon from '@mui/icons-material/AltRoute';
-import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import BubbleChartIcon from '@mui/icons-material/BubbleChart';
 import HistoryIcon from '@mui/icons-material/History';
@@ -42,24 +24,22 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
 import GridOnIcon from '@mui/icons-material/GridOn';
 import DashboardIcon from '@mui/icons-material/Dashboard';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
-import EmptyState from '../components/EmptyState';
+import { Link as RouterLink } from 'react-router-dom';
 import MatrixExportDialog from '../components/traceability/MatrixExportDialog';
 import RTMMatrixViewer from '../components/traceability/RTMMatrixViewer';
 import RTMMatrixFilters from '../components/traceability/RTMMatrixFilters';
 import MatrixConfigPanel from '../components/traceability/MatrixConfigPanel';
 import type { RTMFilters, RTMPagination, RTMMatrixResponse } from '../services/api/types';
+import CoverageSnapshot from '../components/traceability/CoverageSnapshot';
+import FlowExplorer from '../components/traceability/FlowExplorer';
+import ProjectScopePanel from '../components/traceability/ProjectScopePanel';
+import { buildRepairMessage, buildTypeRows, parseProjectId } from '../components/traceability/traceabilityUtils';
 
 import {
   Project,
   TraceabilityBackfillResult,
-  TraceabilityFlowEdge,
-  TraceabilityFlowNode,
   TraceabilityMatrixSummary,
-  TraceabilityRequirementFlow,
   getTraceabilityMatrix,
-  getTraceabilityRequirementFlow,
-  getTraceabilityTaskArtifacts,
   runTraceabilityBackfill,
 } from '../services/api';
 import { useProjects } from '../services/api/hooks';
@@ -72,66 +52,8 @@ interface BackfillState {
   lastResult?: TraceabilityBackfillResult | null;
 }
 
-type CoreLinkType = 'implements' | 'tests' | 'deploys' | 'derives_from';
-const CORE_LINK_TYPES: CoreLinkType[] = ['implements', 'tests', 'deploys', 'derives_from'];
-const CORE_LINK_TYPES_SET = new Set<string>(CORE_LINK_TYPES);
-
-const parseProjectId = (value: string): number | 'all' => {
-  if (value === 'all') {
-    return 'all';
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 'all';
-};
-
-const buildRepairMessage = (result: TraceabilityBackfillResult): string => {
-  const details: string[] = [];
-
-  if (result.sources.jira) {
-    details.push(`Jira ${result.sources.jira.created} created / ${result.sources.jira.updated} updated`);
-  }
-  if (result.sources.confluence) {
-    details.push(
-      `Confluence ${result.sources.confluence.created} created / ${result.sources.confluence.updated} updated`
-    );
-  }
-  if (result.sources.git) {
-    const repositories = result.sources.git.repositories ?? [];
-    details.push(
-      repositories.length > 0
-        ? `Git synced ${repositories.length} ${repositories.length === 1 ? 'repository' : 'repositories'}`
-        : 'Git checked with no repository changes'
-    );
-  }
-
-  const summary = `Traceability repair complete: created ${result.created}, updated ${result.updated}.`;
-  return details.length > 0 ? `${summary} ${details.join(' • ')}.` : summary;
-};
-
-interface LinkTypeBreakdown {
-  key: string;
-  totalLinks: number;
-  artifactCount: number;
-  coverageRatio: number;
-  isCore: boolean;
-}
-
-interface TypeRow {
-  type: string;
-  total: number;
-  sharePct: number;
-  linked: number;
-  unlinked: number;
-  coveragePct: number;
-  avgLinks: number | null;
-  totalLinks: number | null;
-  linkTypes: LinkTypeBreakdown[];
-  hasCoverageGap: boolean;
-  coreMissingCount: number;
-}
 
 const Traceability: React.FC = () => {
-  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState<number | 'all'>('all');
   const [projectsLoading, setProjectsLoading] = useState(false);
@@ -145,18 +67,10 @@ const Traceability: React.FC = () => {
   const [includeGit, setIncludeGit] = useState(true);
   const [backfillState, setBackfillState] = useState<BackfillState>({ running: false });
 
-  const [artifactInput, setArtifactInput] = useState('');
-  const [jiraKeyInput, setJiraKeyInput] = useState('');
-  const [flowDepth, setFlowDepth] = useState(3);
-  const [flowData, setFlowData] = useState<TraceabilityRequirementFlow | null>(null);
-  const [flowRootId, setFlowRootId] = useState<number | null>(null);
-  const [flowLoading, setFlowLoading] = useState(false);
-  const [flowError, setFlowError] = useState<string | null>(null);
 
   const handleProjectChange = (event: SelectChangeEvent<string>) => {
     setProjectId(parseProjectId(event.target.value));
   };
-  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   // Tab state: 0 = Overview, 1 = RTM Matrix
@@ -232,68 +146,7 @@ const Traceability: React.FC = () => {
     [projectId, projects]
   );
 
-    const typeRows = useMemo(() => {
-    if (!matrix) return [];
-    const keys = new Set<string>();
-    Object.keys(matrix.by_type || {}).forEach(key => keys.add(key));
-    Object.keys(matrix.per_type || {}).forEach(key => keys.add(key));
-    return Array.from(keys)
-      .map<TypeRow>(type => {
-        const stats = matrix.per_type?.[type];
-        const total = stats?.total ?? matrix.by_type?.[type] ?? 0;
-        const linked = stats?.linked ?? 0;
-        const unlinked = stats?.unlinked ?? Math.max(total - linked, 0);
-        const coveragePct = stats?.coverage_pct ?? (total > 0 ? (linked / total) * 100 : 0);
-        const avgLinks = stats?.avg_links_per_artifact ?? null;
-        const totalLinks = stats?.link_count ?? null;
-        const sharePct = matrix.total > 0 ? (total / matrix.total) * 100 : 0;
-
-        const linkTypeCounts = stats?.link_type_counts ?? {};
-        const linkTypeArtifactCounts = stats?.link_type_artifact_counts ?? {};
-        const dynamicTypes = Object.keys(linkTypeCounts).filter(linkType => !CORE_LINK_TYPES_SET.has(linkType));
-        const orderedTypes = [...CORE_LINK_TYPES, ...dynamicTypes];
-        const seen = new Set<string>();
-        const linkTypes = orderedTypes.reduce<LinkTypeBreakdown[]>((acc, linkType) => {
-          const key = String(linkType);
-          if (seen.has(key)) {
-            return acc;
-          }
-          seen.add(key);
-          const totalForType = linkTypeCounts[key] ?? 0;
-          if (!CORE_LINK_TYPES_SET.has(key) && totalForType === 0) {
-            return acc;
-          }
-          const artifactCountForType = linkTypeArtifactCounts[key] ?? 0;
-          const coverageRatio = total > 0 ? artifactCountForType / total : 0;
-          acc.push({
-            key,
-            totalLinks: totalForType,
-            artifactCount: artifactCountForType,
-            coverageRatio,
-            isCore: CORE_LINK_TYPES_SET.has(key),
-          });
-          return acc;
-        }, []);
-
-        const coreMissingCount = linkTypes.filter(item => item.isCore && item.totalLinks === 0).length;
-        const hasCoverageGap = coreMissingCount > 0;
-
-        return {
-          type,
-          total,
-          sharePct,
-          linked,
-          unlinked,
-          coveragePct,
-          avgLinks,
-          totalLinks,
-          linkTypes,
-          hasCoverageGap,
-          coreMissingCount,
-        };
-      })
-      .sort((a, b) => b.sharePct - a.sharePct);
-  }, [matrix]);
+  const typeRows = useMemo(() => buildTypeRows(matrix), [matrix]);
 
   const matrixHasData = Boolean(matrix && matrix.total > 0);
 
@@ -341,165 +194,6 @@ const Traceability: React.FC = () => {
     }
   }, [fetchMatrix, includeConfluence, includeGit, projectId]);
 
-  const nodeLookup = useMemo(() => {
-    const map = new Map<number, TraceabilityFlowNode>();
-    flowData?.nodes.forEach(node => {
-      map.set(node.id, node);
-    });
-    return map;
-  }, [flowData]);
-
-  const outgoingEdgesMap = useMemo(() => {
-    const map = new Map<number, TraceabilityFlowEdge[]>();
-    flowData?.edges.forEach(edge => {
-      const list = map.get(edge.from) ?? [];
-      list.push(edge);
-      map.set(edge.from, list);
-    });
-    return map;
-  }, [flowData]);
-
-  const groupedFlowColumns = useMemo(() => {
-    if (!flowData || flowRootId === null) return [];
-    const depthMap = new Map<number, number>();
-    const queue: number[] = [];
-    depthMap.set(flowRootId, 0);
-    queue.push(flowRootId);
-    while (queue.length) {
-      const current = queue.shift()!;
-      const depth = depthMap.get(current) ?? 0;
-      const edges = outgoingEdgesMap.get(current) ?? [];
-      edges.forEach(edge => {
-        if (!depthMap.has(edge.to)) {
-          depthMap.set(edge.to, depth + 1);
-          queue.push(edge.to);
-        }
-      });
-    }
-    flowData.nodes.forEach(node => {
-      if (!depthMap.has(node.id)) {
-        depthMap.set(node.id, 0);
-      }
-    });
-    const columns = new Map<number, TraceabilityFlowNode[]>();
-    depthMap.forEach((depth, nodeId) => {
-      const node = nodeLookup.get(nodeId);
-      if (!node) return;
-      const list = columns.get(depth) ?? [];
-      list.push(node);
-      columns.set(depth, list);
-    });
-    return Array.from(columns.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([depth, nodes]) => ({
-        depth,
-        nodes: nodes.sort((a, b) => (a.title || `Artifact ${a.id}`).localeCompare(b.title || `Artifact ${b.id}`)),
-      }));
-  }, [flowData, flowRootId, nodeLookup, outgoingEdgesMap]);
-
-  const getNodeLabel = useCallback(
-    (node?: TraceabilityFlowNode | null) => {
-      if (!node) return 'Unknown artifact';
-      return node.title || node.type || `Artifact ${node.id}`;
-    },
-    []
-  );
-
-  const loadFlowByArtifactId = useCallback(
-    async (artifactId: number) => {
-      if (!artifactId || Number.isNaN(artifactId)) {
-        setFlowError('Provide a valid artifact ID.');
-        return;
-      }
-      setFlowLoading(true);
-      setFlowError(null);
-      try {
-        const data = await getTraceabilityRequirementFlow(artifactId, { depth: flowDepth });
-        setFlowData(data);
-        setFlowRootId(artifactId);
-        setSelectedNodeId(artifactId);
-      } catch (err: unknown) {
-        logError('Failed to load requirement flow', err);
-        setFlowError(getErrorMessage(err, 'Failed to load requirement flow'));
-      } finally {
-        setFlowLoading(false);
-      }
-    },
-    [flowDepth]
-  );
-
-  const handleLoadByArtifact = useCallback(() => {
-    if (!artifactInput.trim()) {
-      setFlowError('Enter an artifact ID to explore the graph.');
-      return;
-    }
-    const parsed = Number(artifactInput);
-    loadFlowByArtifactId(parsed);
-  }, [artifactInput, loadFlowByArtifactId]);
-
-  const handleLoadByJiraKey = useCallback(async () => {
-    const key = jiraKeyInput.trim();
-    if (!key) {
-      setFlowError('Enter a Jira issue key to resolve the artifact.');
-      return;
-    }
-    setFlowLoading(true);
-    setFlowError(null);
-    try {
-      const neighbors = await getTraceabilityTaskArtifacts(key);
-      const artifactId = neighbors.task_artifact?.id;
-      if (!artifactId) {
-        setFlowError(
-          'No traceability artifact exists for that Jira key yet. Sync the project first, then run traceability repair for legacy data if needed.'
-        );
-        setFlowLoading(false);
-        return;
-      }
-      setArtifactInput(String(artifactId));
-      const data = await getTraceabilityRequirementFlow(artifactId, { depth: flowDepth });
-      setFlowData(data);
-      setFlowRootId(artifactId);
-      setSelectedNodeId(artifactId);
-    } catch (err: unknown) {
-      logError('Failed to resolve Jira key', err);
-      setFlowError(getErrorMessage(err, 'Failed to resolve Jira key'));
-    } finally {
-      setFlowLoading(false);
-    }
-  }, [flowDepth, jiraKeyInput]);
-
-  useEffect(() => {
-    if (flowRootId !== null) {
-      loadFlowByArtifactId(flowRootId);
-    }
-  }, [flowDepth, flowRootId, loadFlowByArtifactId]);
-
-  const selectedNode = useMemo(() => {
-    if (!flowData || selectedNodeId === null) return null;
-    return flowData.nodes.find(node => node.id === selectedNodeId) ?? null;
-  }, [flowData, selectedNodeId]);
-
-  const selectedOutgoing = useMemo(() => {
-    if (!flowData || selectedNodeId === null) return [];
-    return flowData.edges.filter(edge => edge.from === selectedNodeId);
-  }, [flowData, selectedNodeId]);
-
-  const selectedIncoming = useMemo(() => {
-    if (!flowData || selectedNodeId === null) return [];
-    return flowData.edges.filter(edge => edge.to === selectedNodeId);
-  }, [flowData, selectedNodeId]);
-
-  const formatConfidence = (value?: number | null) => {
-    if (value === undefined || value === null) return 'N/A';
-    const pct = Math.round(value * 100);
-    return `${pct}%`;
-  };
-
-  const coverageChipColor = (pct: number): 'success' | 'warning' | 'error' => {
-    if (pct >= 80) return 'success';
-    if (pct >= 50) return 'warning';
-    return 'error';
-  };
 
   const hasAlerts = Boolean(projectsError || matrixError || backfillState.error || backfillState.message);
   const showEmptyState = !matrixLoading && !matrixHasData;
@@ -614,556 +308,44 @@ const Traceability: React.FC = () => {
           <>
           <Grid container spacing={2} sx={{ mt: 2 }}>
         <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2, height: '100%' }}>
-            <Box>
-              <Typography variant="h6" gutterBottom>
-                Project scope
-              </Typography>
-              <FormControl size="small" fullWidth disabled={projectsLoading || projects.length === 0}>
-                <InputLabel id="traceability-project-label">Project</InputLabel>
-                <Select
-                  labelId="traceability-project-label"
-                  label="Project"
-                  value={projects.length === 0 ? 'all' : String(projectId)}
-                  onChange={handleProjectChange}
-                >
-                  <MenuItem value="all">All projects</MenuItem>
-                  {projects.map(project => (
-                    <MenuItem key={project.id} value={String(project.id)}>
-                      {project.name || project.jira_key || `Project ${project.id}`}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              {projectsLoading && <LinearProgress sx={{ mt: 2 }} />}
-            </Box>
-
-            <FormControlLabel
-              control={
-                <Switch
-                  size="small"
-                  checked={includeConfluence}
-                  onChange={event => setIncludeConfluence(event.target.checked)}
-                  disabled={backfillState.running}
-                />
-              }
-              label="Include Confluence pages"
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  size="small"
-                  checked={includeGit}
-                  onChange={event => setIncludeGit(event.target.checked)}
-                  disabled={backfillState.running}
-                />
-              }
-              label="Include Git repositories"
-            />
-
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-              <Button
-                variant="contained"
-                color="primary"
-                fullWidth
-                startIcon={backfillState.running ? <CircularProgress size={18} color="inherit" /> : <SyncIcon />}
-                onClick={handleBackfill}
-                disabled={backfillState.running || typeof projectId !== 'number'}
-              >
-                Run traceability repair
-              </Button>
-              <Button
-                variant="outlined"
-                fullWidth
-                startIcon={<RefreshIcon />}
-                onClick={handleRefresh}
-                disabled={matrixLoading}
-              >
-                Refresh
-              </Button>
-              <Button
-                variant="outlined"
-                fullWidth
-                startIcon={<DownloadIcon />}
-                onClick={() => setExportDialogOpen(true)}
-                disabled={typeof projectId !== 'number' || matrixLoading}
-              >
-                Export
-              </Button>
-            </Stack>
-
-            {selectedProject && (
-              <Typography variant="caption" color="text.secondary">
-                Jira key: {selectedProject.jira_key}
-                {selectedProjectLastSync
-                  ? ` • Last source sync: ${new Date(selectedProjectLastSync).toLocaleString()}`
-                  : ''}
-              </Typography>
-            )}
-            {typeof projectId !== 'number' && (
-              <Typography variant="caption" color="text.secondary">
-                Select a project to enable traceability repair and deeper analysis.
-              </Typography>
-            )}
-          </Paper>
+          <ProjectScopePanel
+            projects={projects}
+            projectId={projectId}
+            projectsLoading={projectsLoading}
+            includeConfluence={includeConfluence}
+            includeGit={includeGit}
+            backfillRunning={backfillState.running}
+            matrixLoading={matrixLoading}
+            selectedProject={selectedProject}
+            onProjectChange={handleProjectChange}
+            onIncludeConfluenceChange={checked => setIncludeConfluence(checked)}
+            onIncludeGitChange={checked => setIncludeGit(checked)}
+            onBackfill={handleBackfill}
+            onRefresh={handleRefresh}
+            onExport={() => setExportDialogOpen(true)}
+          />
         </Grid>
 
         <Grid item xs={12} md={8}>
-          <Paper sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Box>
-              <Box display="flex" alignItems="center" justifyContent="space-between" gap={2}>
-                <Typography variant="h6">Coverage snapshot</Typography>
-                {matrixLoading && <LinearProgress sx={{ width: 120 }} />}
-              </Box>
-              {matrixHasData && !matrixLoading && (
-                <Grid container spacing={2} sx={{ mt: 1 }} alignItems="center">
-                  <Grid item xs={12} sm={4}>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      Total artifacts
-                    </Typography>
-                    <Typography variant="h3">{matrix?.total.toLocaleString()}</Typography>
-                  </Grid>
-                  <Grid item xs={12} sm={8}>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      Linked coverage
-                    </Typography>
-                    <LinearProgress
-                      variant="determinate"
-                      value={Math.min(Math.max(coveragePct, 0), 100)}
-                      sx={{ height: 10, borderRadius: 5, mt: 1 }}
-                    />
-                    <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                      <Chip label={`${linkedCount} linked`} color="success" variant="outlined" />
-                      <Chip label={`${unlinkedCount} missing`} color={unlinkedCount > 0 ? 'warning' : 'default'} variant="outlined" />
-                      <Chip label={`${coveragePct.toFixed(1)}% coverage`} color="primary" variant="outlined" />
-                    </Stack>
-                  </Grid>
-                </Grid>
-              )}
-              {matrixLoading && !matrixHasData && (
-                <Box display="flex" justifyContent="center" alignItems="center" sx={{ minHeight: 160 }}>
-                  <CircularProgress />
-                </Box>
-              )}
-              {showEmptyState && (
-                <Box sx={{ mt: 2 }}>
-                  <EmptyState
-                    icon={<AccountTreeIcon sx={{ fontSize: 60 }} />}
-                    title={
-                      typeof projectId !== 'number'
-                        ? 'Select a Project'
-                        : showSyncSetupState
-                          ? 'Sync Source Data First'
-                          : 'Repair Traceability Artifacts'
-                    }
-                    description={
-                      <Box>
-                        <Typography variant="body1" paragraph>
-                          {typeof projectId !== 'number'
-                            ? 'Choose a single project to inspect sync signals and repair traceability artifacts.'
-                            : showSyncSetupState
-                              ? 'This project does not show any recent Jira or Confluence ingest signal yet.'
-                              : 'Source data exists for this project, but traceability artifacts are still missing or incomplete.'}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {typeof projectId !== 'number'
-                            ? 'Project-scoped sync and repair actions are only available after you narrow the scope.'
-                            : showSyncSetupState
-                              ? 'Start with source sync so tasks and pages are imported automatically. Repair is only needed for legacy data or incomplete ingestion runs.'
-                              : 'Run repair to reconcile Jira tasks, Confluence pages, and optional Git data into the artifact graph, then refresh coverage.'}
-                        </Typography>
-                      </Box>
-                    }
-                    primaryAction={{
-                      label:
-                        typeof projectId !== 'number'
-                          ? 'Open Projects'
-                          : showSyncSetupState
-                            ? 'Open Project Sync'
-                            : 'Run Traceability Repair',
-                      onClick:
-                        typeof projectId !== 'number'
-                          ? () => navigate('/projects')
-                          : showSyncSetupState
-                            ? () =>
-                                navigate(selectedProject ? `/projects/${selectedProject.id}` : '/projects')
-                            : handleBackfill,
-                    }}
-                    secondaryAction={
-                      typeof projectId !== 'number'
-                        ? undefined
-                        : showSyncSetupState
-                          ? {
-                              label: 'Open Knowledge Sync',
-                              onClick: () => navigate('/knowledge'),
-                              variant: 'outlined',
-                            }
-                          : {
-                              label: 'Refresh Snapshot',
-                              onClick: handleRefresh,
-                              variant: 'outlined',
-                            }
-                    }
-                    benefits={[
-                      'Jira and Confluence ingestion can populate artifacts automatically',
-                      'Confluence → Jira ticket references',
-                      'Git commits → Pull requests → Tests',
-                      'Repair reconciles legacy or failed traceability runs',
-                    ]}
-                    setupSteps={[
-                      'Run project or knowledge sync if source data is missing',
-                      'Run traceability repair when artifacts need reconciliation',
-                      'Refresh the matrix and flow explorer after ingestion completes',
-                    ]}
-                  />
-                </Box>
-              )}
-            </Box>
-
-            <Box>
-              <Typography variant="subtitle1" gutterBottom>
-                Artifact distribution
-              </Typography>
-              <TableContainer sx={{ maxHeight: 320 }}>
-                <Table size="small" stickyHeader>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Type</TableCell>
-                      <TableCell align="right">Artifacts</TableCell>
-                      <TableCell align="right">Linked</TableCell>
-                      <TableCell align="right">Unlinked</TableCell>
-                      <TableCell align="right">Coverage</TableCell>
-                      <TableCell>Link coverage</TableCell>
-                      <TableCell align="right">Avg links</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {typeRows.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={7} align="center">
-                          <Typography variant="body2" color="text.secondary">
-                            No artifacts yet. Start with source sync, then use traceability repair only if this project predates automatic artifact ingestion.
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {typeRows.map(row => (
-                      <TableRow
-                        key={row.type}
-                        hover
-                        sx={row.hasCoverageGap ? { backgroundColor: 'rgba(255, 193, 7, 0.08)' } : undefined}
-                      >
-                        <TableCell>
-                          <Stack direction="row" spacing={0.5} alignItems="center">
-                            {row.hasCoverageGap && (
-                              <Tooltip
-                                title={`${row.coreMissingCount} core link type${row.coreMissingCount > 1 ? 's' : ''} missing`}
-                              >
-                                <WarningAmberIcon fontSize="small" color="warning" />
-                              </Tooltip>
-                            )}
-                            <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
-                              {row.type.replace(/_/g, ' ')}
-                            </Typography>
-                          </Stack>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Stack spacing={0.5} alignItems="flex-end">
-                            <Typography variant="body2">{row.total.toLocaleString()}</Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {row.sharePct.toFixed(1)}%
-                            </Typography>
-                          </Stack>
-                        </TableCell>
-                        <TableCell align="right">{row.linked.toLocaleString()}</TableCell>
-                        <TableCell align="right">
-                          <Typography color={row.unlinked > 0 ? 'warning.main' : 'text.secondary'}>
-                            {row.unlinked.toLocaleString()}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Tooltip title={`Total links: ${row.totalLinks ?? 0}`} placement="top">
-                            <Chip
-                              size="small"
-                              label={`${row.coveragePct.toFixed(1)}%`}
-                              color={coverageChipColor(row.coveragePct)}
-                              variant="outlined"
-                            />
-                          </Tooltip>
-                        </TableCell>
-                        <TableCell>
-                          {row.linkTypes.length === 0 ? (
-                            <Typography variant="caption" color="text.secondary">
-                              No outgoing links
-                            </Typography>
-                          ) : (
-                            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                              {row.linkTypes.map(linkType => {
-                                const coveragePercent = Math.round(linkType.coverageRatio * 100);
-                                const missing = linkType.totalLinks === 0;
-                                const partiallyCovered = !missing && linkType.isCore && coveragePercent < 75;
-                                let chipColor: 'default' | 'primary' | 'secondary' | 'success' | 'error' | 'info' | 'warning' = 'default';
-                                if (missing) {
-                                  chipColor = 'warning';
-                                } else if (linkType.isCore && coveragePercent >= 90) {
-                                  chipColor = 'success';
-                                } else if (partiallyCovered) {
-                                  chipColor = 'info';
-                                }
-                                const label = `${linkType.key.replace(/_/g, ' ')}: ${linkType.totalLinks}`;
-                                const tooltip = `${linkType.totalLinks} ${linkType.totalLinks === 1 ? 'link' : 'links'} - ${linkType.artifactCount}/${row.total} artifacts`;
-                                return (
-                                  <Tooltip key={`${row.type}-${linkType.key}`} title={tooltip}>
-                                    <Chip size="small" label={label} color={chipColor} variant="outlined" />
-                                  </Tooltip>
-                                );
-                              })}
-                            </Stack>
-                          )}
-                        </TableCell>
-                        <TableCell align="right">
-                          {row.avgLinks !== null ? row.avgLinks.toFixed(2) : 'N/A'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Box>
-          </Paper>
+          <CoverageSnapshot
+            projectId={projectId}
+            matrix={matrix}
+            matrixLoading={matrixLoading}
+            matrixHasData={matrixHasData}
+            coveragePct={coveragePct}
+            linkedCount={linkedCount}
+            unlinkedCount={unlinkedCount}
+            typeRows={typeRows}
+            showEmptyState={showEmptyState}
+            showSyncSetupState={showSyncSetupState}
+            selectedProject={selectedProject}
+            onRefresh={handleRefresh}
+            onBackfill={handleBackfill}
+          />
         </Grid>
       </Grid>
 
-      <Box sx={{ mt: 3 }}>
-        <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Box display="flex" alignItems="center" justifyContent="space-between">
-            <Typography variant="h6">Flow explorer</Typography>
-            {flowLoading && <LinearProgress sx={{ width: 180 }} />}
-          </Box>
-          <Typography variant="body2" color="text.secondary">
-            Drill into a specific requirement or Jira issue to visualize downstream links. You can enter an artifact ID directly or resolve it via a Jira issue key after source sync or traceability repair.
-          </Typography>
-
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'flex-end' }}>
-            <TextField
-              fullWidth
-              label="Artifact ID"
-              size="small"
-              value={artifactInput}
-              onChange={event => setArtifactInput(event.target.value)}
-              placeholder="e.g. 101"
-              disabled={flowLoading}
-            />
-            <Button
-              variant="contained"
-              startIcon={<TravelExploreIcon />}
-              onClick={handleLoadByArtifact}
-              disabled={flowLoading}
-            >
-              Load by ID
-            </Button>
-          </Stack>
-
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'flex-end' }}>
-            <TextField
-              fullWidth
-              label="Jira issue key"
-              size="small"
-              value={jiraKeyInput}
-              onChange={event => setJiraKeyInput(event.target.value)}
-              placeholder="e.g. TEAM-123"
-              disabled={flowLoading}
-            />
-            <Button
-              variant="outlined"
-              onClick={handleLoadByJiraKey}
-              disabled={flowLoading}
-            >
-              Resolve & load
-            </Button>
-          </Stack>
-
-          <Stack direction="row" spacing={2} alignItems="center">
-            <TextField
-              label="Depth"
-              type="number"
-              size="small"
-              value={flowDepth}
-              onChange={event => {
-                const value = Number(event.target.value);
-                if (Number.isNaN(value)) return;
-                const clamped = Math.min(Math.max(Math.floor(value), 1), 8);
-                setFlowDepth(clamped);
-              }}
-              inputProps={{ min: 1, max: 8 }}
-              sx={{ width: 120 }}
-              disabled={flowLoading}
-            />
-            {flowRootId !== null && (
-              <Typography variant="caption" color="text.secondary">
-                Currently exploring artifact {flowRootId}
-              </Typography>
-            )}
-          </Stack>
-
-          {flowError && <Alert severity="error">{flowError}</Alert>}
-
-          {!flowData && !flowLoading && (
-            <Typography variant="body2" color="text.secondary">
-              Select an artifact to render the flow graph.
-            </Typography>
-          )}
-
-          {flowData && groupedFlowColumns.length > 0 && (
-            <>
-              <Divider />
-              <Grid container spacing={2}>
-                {groupedFlowColumns.map(column => {
-                  const columnSpan = Math.max(Math.floor(12 / Math.max(groupedFlowColumns.length, 1)), 3);
-                  return (
-                    <Grid item xs={12} md={columnSpan} key={column.depth}>
-                      <Stack spacing={1.5}>
-                        <Typography variant="subtitle2" color="text.secondary">
-                          Depth {column.depth}
-                        </Typography>
-                        {column.nodes.map(node => {
-                          const outgoing = outgoingEdgesMap.get(node.id) ?? [];
-                          const isSelected = selectedNodeId === node.id;
-                          return (
-                            <Paper
-                              key={node.id}
-                              variant={isSelected ? 'outlined' : 'elevation'}
-                              onClick={() => setSelectedNodeId(node.id)}
-                              sx={{
-                                p: 1.5,
-                                borderColor: isSelected ? 'primary.main' : undefined,
-                                cursor: 'pointer',
-                                transition: 'border-color 0.2s ease',
-                              }}
-                            >
-                              <Stack spacing={0.5}>
-                                <Typography variant="subtitle2">{getNodeLabel(node)}</Typography>
-                                <Stack direction="row" spacing={1}>
-                                  {node.type && <Chip size="small" label={node.type} variant="outlined" />}
-                                  {node.status && <Chip size="small" label={node.status} color="info" variant="outlined" />}
-                                </Stack>
-                                {outgoing.length > 0 ? (
-                                  <Stack direction="row" spacing={0.5} flexWrap="wrap">
-                                    {outgoing.slice(0, 3).map(edge => (
-                                      <Chip
-                                        key={`${node.id}-${edge.to}-${edge.type}`}
-                                        size="small"
-                                        variant="outlined"
-                                        label={`${edge.type} > ${getNodeLabel(nodeLookup.get(edge.to))}`}
-                                      />
-                                    ))}
-                                    {outgoing.length > 3 && (
-                                      <Chip size="small" variant="outlined" label={`+${outgoing.length - 3} more`} />
-                                    )}
-                                  </Stack>
-                                ) : (
-                                  <Typography variant="caption" color="text.secondary">
-                                    No outgoing links at this depth
-                                  </Typography>
-                                )}
-                              </Stack>
-                            </Paper>
-                          );
-                        })}
-                      </Stack>
-                    </Grid>
-                  );
-                })}
-              </Grid>
-
-              <Divider sx={{ my: 2 }} />
-
-              {selectedNode ? (
-                <Box>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1}>
-                    <Box>
-                      <Typography variant="h6">Drilldown</Typography>
-                      <Typography variant="subtitle1">{getNodeLabel(selectedNode)}</Typography>
-                      <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                        {selectedNode.type && <Chip size="small" label={selectedNode.type} variant="outlined" />}
-                        {selectedNode.status && <Chip size="small" label={selectedNode.status} color="info" variant="outlined" />}
-                      </Stack>
-                    </Box>
-                    <Button
-                      startIcon={<AltRouteIcon />}
-                      variant="outlined"
-                      onClick={() => loadFlowByArtifactId(selectedNode.id)}
-                    >
-                      Explore from this node
-                    </Button>
-                  </Stack>
-
-                  <Grid container spacing={2} sx={{ mt: 1 }}>
-                    <Grid item xs={12} md={6}>
-                      <Typography variant="subtitle2">Outgoing links</Typography>
-                      {selectedOutgoing.length === 0 ? (
-                        <Typography variant="body2" color="text.secondary">
-                          No outgoing links within the selected depth.
-                        </Typography>
-                      ) : (
-                        <Stack spacing={1} sx={{ mt: 1 }}>
-                          {selectedOutgoing.map(edge => {
-                            const target = nodeLookup.get(edge.to);
-                            return (
-                              <Paper key={`${edge.from}-${edge.to}-${edge.type}`} variant="outlined" sx={{ p: 1.5 }}>
-                                <Stack spacing={0.5}>
-                                  <Stack direction="row" spacing={1} alignItems="center">
-                                    <Chip size="small" label={edge.type} color="primary" variant="outlined" />
-                                    <Typography variant="body2">{getNodeLabel(target)}</Typography>
-                                  </Stack>
-                                  <Typography variant="caption" color="text.secondary">
-                                    Confidence: {formatConfidence(edge.confidence)}
-                                  </Typography>
-                                </Stack>
-                              </Paper>
-                            );
-                          })}
-                        </Stack>
-                      )}
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <Typography variant="subtitle2">Incoming links (within depth)</Typography>
-                      {selectedIncoming.length === 0 ? (
-                        <Typography variant="body2" color="text.secondary">
-                          No incoming links captured for this branch.
-                        </Typography>
-                      ) : (
-                        <Stack spacing={1} sx={{ mt: 1 }}>
-                          {selectedIncoming.map(edge => {
-                            const source = nodeLookup.get(edge.from);
-                            return (
-                              <Paper key={`${edge.from}-${edge.to}-${edge.type}-incoming`} variant="outlined" sx={{ p: 1.5 }}>
-                                <Stack spacing={0.5}>
-                                  <Stack direction="row" spacing={1} alignItems="center">
-                                    <Chip size="small" label={edge.type} color="secondary" variant="outlined" />
-                                    <Typography variant="body2">{getNodeLabel(source)}</Typography>
-                                  </Stack>
-                                  <Typography variant="caption" color="text.secondary">
-                                    Confidence: {formatConfidence(edge.confidence)}
-                                  </Typography>
-                                </Stack>
-                              </Paper>
-                            );
-                          })}
-                        </Stack>
-                      )}
-                    </Grid>
-                  </Grid>
-                </Box>
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  Select a node to inspect link details and drill further.
-                </Typography>
-              )}
-            </>
-          )}
-        </Paper>
-      </Box>
+      <FlowExplorer />
           </>
         )}
       </Box>
