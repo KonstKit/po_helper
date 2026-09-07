@@ -85,8 +85,13 @@ services:
       - ./backend/app:/app/app
     restart: unless-stopped
     networks:
-      - po_helper_network
-      - po_net
+      po_helper_network:
+      # Pin the backend away from 172.28.0.2, which the frontend nginx
+      # proxy must own (uvicorn --forwarded-allow-ips trusts it by
+      # literal IP); unpinned assignment made the backend race the
+      # frontend for that address.
+      po_net:
+        ipv4_address: 172.28.0.3
     deploy:
       resources:
         limits:
