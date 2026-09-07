@@ -43,7 +43,8 @@ export const changePassword = async (payload: {
 // =============================================================================
 
 export interface LoginResponse {
-  access_token: string;
+  /** M4: absent by default (cookie-only session); present only in dual mode. */
+  access_token?: string;
   token_type?: string;
   mfa_required?: boolean;
   temp_token?: string;

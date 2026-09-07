@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     # tokens persisted server-side (token_sessions), enabling logout
     # revocation, logout-everywhere and password-change revocation.
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    # JWT storage M4: session issuance endpoints (login / refresh / MFA
+    # verify-login / OAuth callbacks) no longer return tokens in the JSON
+    # body; browsers rely on the httpOnly cookies. Flip to true only as a
+    # deployment rollback to the dual-mode body payload.
+    AUTH_BODY_TOKENS_ENABLED: bool = False
     ENVIRONMENT: str = Field(default="development", alias="ENVIRONMENT")
 
     # Database URL - reads from environment, defaults to SQLite for local dev

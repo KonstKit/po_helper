@@ -32,6 +32,10 @@ os.environ["GOOGLE_CLIENT_ID"] = ""
 os.environ["GOOGLE_CLIENT_SECRET"] = ""
 os.environ["MICROSOFT_CLIENT_ID"] = ""
 os.environ["MICROSOFT_CLIENT_SECRET"] = ""
+# The bulk of the suite exercises the dual-mode rollback configuration
+# (bearer body tokens still issued). The M4 default (cookie-only bodies)
+# has its own contract tests in test_jwt_m4.py.
+os.environ["AUTH_BODY_TOKENS_ENABLED"] = "true"
 
 import app.models  # noqa: F401  # Register all ORM models before the app/engine loads.
 

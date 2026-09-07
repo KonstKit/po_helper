@@ -2,10 +2,9 @@
 
 Status: M1 implemented (httpOnly cookie issuance, dual mode; see the
 Resolution log at the bottom). M2 (cookie-based browser session) is
-DEFERRED: the implementation surfaced that analytics event
-attribution cannot be safely bound to a cookie identity without
-server-validated sessions (M3) — multiple cross-tab attribution
-races were reproduced in review. M3 and M4 remain pending approval.
+STATUS (2026-09-07): M1-M4 are implemented and merged. M4 ships as
+AUTH_BODY_TOKENS_ENABLED=false (cookie-only session bodies) with the
+dual-mode body payload available as a deployment rollback flag.
 Original draft:
 (wave E4 of docs/SHOULD_FIX_ROADMAP.md; implementation
 pending approval). Scope: backend auth issuance, frontend axios layer,
