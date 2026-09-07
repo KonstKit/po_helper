@@ -108,11 +108,9 @@ const Login = () => {
       try {
         if (provider === 'google') {
           analytics.bumpAuthGeneration();
-analytics.bumpAuthGeneration();
           await googleOAuthCallback(code, state);
         } else if (provider === 'microsoft') {
           analytics.bumpAuthGeneration();
-analytics.bumpAuthGeneration();
           await microsoftOAuthCallback(code, state);
         } else {
           throw new Error('Unknown OAuth provider');
@@ -175,7 +173,6 @@ analytics.bumpAuthGeneration();
       const pendingClear = waitForCookieClear();
       if (pendingClear) await pendingClear;
       analytics.bumpAuthGeneration();
-analytics.bumpAuthGeneration();
       const response = await loginWithPassword({ username: email, password });
 
       // Check if MFA is required
@@ -214,7 +211,6 @@ analytics.bumpAuthGeneration();
 
     try {
       analytics.bumpAuthGeneration();
-analytics.bumpAuthGeneration();
       await verifyMFALogin(mfaCode, mfaTempToken);
       // The verify response set the httpOnly auth cookie (M2).
       const profile = await getCurrentUser();

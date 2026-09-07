@@ -189,6 +189,25 @@ async def _issue_refresh_session(
     return refresh_token
 
 
+def _session_response(access_token: str, refresh_token: str) -> JSONResponse:
+    """Build the session issuance response (JWT storage M4).
+
+    Default: the session travels only in the httpOnly auth/refresh
+    cookies and the body carries no credentials. Set
+    AUTH_BODY_TOKENS_ENABLED=true to restore the dual-mode body payload
+    as a deployment rollback."""
+    if settings.AUTH_BODY_TOKENS_ENABLED:
+        payload = Token(access_token=access_token, token_type="bearer").model_dump()
+        payload["refresh_token"] = refresh_token
+        content = payload
+    else:
+        content = {"token_type": "bearer"}
+    response = JSONResponse(content=content)
+    set_refresh_cookie(response, refresh_token)
+    set_auth_cookie(response, access_token)
+    return response
+
+
 @router.post("/login")
 @limiter.limit(settings.RATE_LIMIT_AUTH)
 async def login(
@@ -242,14 +261,7 @@ async def login(
     refresh_token = await _issue_refresh_session(db, user, request)
     await db.commit()  # token_sessions row must survive the request
 
-    # Dual mode (M1): body token still returned for backward compat.
-    """The httpOnly cookie is the browser session."""
-    token_payload = Token(access_token=access_token, token_type="bearer").model_dump()
-    token_payload["refresh_token"] = refresh_token
-    response = JSONResponse(content=token_payload)
-    set_refresh_cookie(response, refresh_token)
-    set_auth_cookie(response, access_token)
-    return response
+    return _session_response(access_token, refresh_token)
 
 
 class WSTicketResponse(BaseModel):
@@ -387,12 +399,7 @@ async def refresh(
     )
     await db.commit()
 
-    payload = Token(access_token=access_token, token_type="bearer").model_dump()
-    payload["refresh_token"] = refresh_token
-    response = JSONResponse(content=payload)
-    set_refresh_cookie(response, refresh_token)
-    set_auth_cookie(response, access_token)
-    return response
+    return _session_response(access_token, refresh_token)
 
 
 @router.get("/sessions")
@@ -675,14 +682,9 @@ async def google_oauth_callback(
         # M3: server-side refresh session for the OAuth login.
         refresh_token = await _issue_refresh_session(db, user, request)
         await db.commit()  # token_sessions row must survive the request
-        payload = Token(access_token=jwt_token, token_type="bearer").model_dump()
-        payload["refresh_token"] = refresh_token
-        response = JSONResponse(content=payload)
         # Keep the state-cookie deletion (single-use binding cookie).
         _clear_oauth_state_cookie(response)
-        set_refresh_cookie(response, refresh_token)
-        set_auth_cookie(response, jwt_token)
-        return response
+        return _session_response(jwt_token, refresh_token)
 
     except OAuth2Error as e:
         logger.error(f"Google OAuth2 error: {e.error} - {e.description}")
@@ -767,14 +769,9 @@ async def microsoft_oauth_callback(
         # M3: server-side refresh session for the OAuth login.
         refresh_token = await _issue_refresh_session(db, user, request)
         await db.commit()  # token_sessions row must survive the request
-        payload = Token(access_token=jwt_token, token_type="bearer").model_dump()
-        payload["refresh_token"] = refresh_token
-        response = JSONResponse(content=payload)
         # Keep the state-cookie deletion (single-use binding cookie).
         _clear_oauth_state_cookie(response)
-        set_refresh_cookie(response, refresh_token)
-        set_auth_cookie(response, jwt_token)
-        return response
+        return _session_response(jwt_token, refresh_token)
 
     except OAuth2Error as e:
         logger.error(f"Microsoft OAuth2 error: {e.error} - {e.description}")
@@ -1356,9 +1353,4 @@ async def verify_mfa_login(
     refresh_token = await _issue_refresh_session(db, user, request)
     await db.commit()  # token_sessions row must survive the request
 
-    payload = Token(access_token=access_token, token_type="bearer").model_dump()
-    payload["refresh_token"] = refresh_token
-    response = JSONResponse(content=payload)
-    set_refresh_cookie(response, refresh_token)
-    set_auth_cookie(response, access_token)
-    return response
+    return _session_response(access_token, refresh_token)
