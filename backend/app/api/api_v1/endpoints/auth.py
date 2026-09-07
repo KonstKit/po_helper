@@ -241,12 +241,11 @@ async def login(
     refresh_token = await _issue_refresh_session(db, user, request)
     await db.commit()  # token_sessions row must survive the request
 
-    # Validate via response model, then return as Response for SlowAPI headers
+    # Dual mode (M1): body token still returned for backward compat.
+    """The httpOnly cookie is the browser session."""
     token_payload = Token(access_token=access_token, token_type="bearer").model_dump()
     token_payload["refresh_token"] = refresh_token
     response = JSONResponse(content=token_payload)
-    # Dual mode (RFC M1): body token kept for pre-M2 clients, the browser
-    # session uses the httpOnly cookie.
     set_auth_cookie(response, access_token)
     return response
 
