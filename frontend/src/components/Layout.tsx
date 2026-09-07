@@ -289,7 +289,7 @@ export default function Layout() {
                             sx={{ pl: 4 }}
                           >
                             <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
-                            <ListItemText primary="item.text" />
+                            <ListItemText primary={item.text} />
                             {item.children && (
                               <Box
                                 component="span"
