@@ -53,11 +53,13 @@ async def get_active_session_by_token(db: AsyncSession, refresh_token: str) -> T
     token_hash = _hash_refresh_token(refresh_token)
     cutoff = datetime.now(timezone.utc)
     result = await db.execute(
-        select(TokenSession).where(
+        select(TokenSession)
+        .where(
             TokenSession.refresh_token_hash == token_hash,
             TokenSession.revoked_at.is_(None),
             cutoff < TokenSession.expires_at,
-        ).with_for_update()
+        )
+        .with_for_update()
     )
     return result.scalar_one_or_none()
 

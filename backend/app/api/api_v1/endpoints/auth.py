@@ -32,6 +32,7 @@ from app.core.oauth_state import (
 from app.core.ws_tickets import issue_ws_ticket
 from app.core.auth_cookies import (
     clear_auth_cookie,
+    clear_refresh_cookie,
     get_refresh_cookie_token,
     set_auth_cookie,
     set_refresh_cookie,
@@ -246,6 +247,7 @@ async def login(
     token_payload = Token(access_token=access_token, token_type="bearer").model_dump()
     token_payload["refresh_token"] = refresh_token
     response = JSONResponse(content=token_payload)
+    set_refresh_cookie(response, refresh_token)
     set_auth_cookie(response, access_token)
     return response
 
@@ -280,7 +282,8 @@ async def logout(
 ) -> JSONResponse:
     response = JSONResponse(content={"detail": "Logged out"})
     clear_auth_cookie(response)
-    # M3: revoke the presented refresh session, if the client sent one.
+    # M3: revoke the presented refresh session (from body or cookie) and
+    # always clear the refresh cookie on logout.
     body_token = None
     try:
         body = await request.json()
@@ -291,11 +294,14 @@ async def logout(
         candidate = body.get("refresh_token")
         if isinstance(candidate, str):
             body_token = candidate
-    if body_token:
-        session = await get_active_session_by_token(db, body_token)
+    cookie_token = get_refresh_cookie_token(request)
+    presented = body_token or cookie_token
+    if presented:
+        session = await get_active_session_by_token(db, presented)
         if session:
             await revoke_session(db, session)
             await db.commit()
+    clear_refresh_cookie(response)
     return response
 
 

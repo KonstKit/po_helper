@@ -418,7 +418,7 @@ async def test_jira_sync_forbidden_for_scoped_token_without_permission(client):
         scoped_response = await client.post(
             "/api/v1/auth/scoped-token",
             headers={"Authorization": f"Bearer {po_token}"},
-            json={"scopes": ["project:view"], "expires_minutes": 15},
+            json={"scopes": ["project:view"], "expires_minutes": 5},
         )
     assert scoped_response.status_code == 200, scoped_response.text
     scoped = scoped_response.json()["access_token"]

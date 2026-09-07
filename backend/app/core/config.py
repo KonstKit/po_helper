@@ -26,7 +26,9 @@ class Settings(BaseSettings):
     SECRET_KEY_PLACEHOLDER: ClassVar[str] = "your-secret-key-here-change-in-production"
     SECRET_KEY: str = Field(default=SECRET_KEY_PLACEHOLDER, min_length=32)
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = (
+        10  # M4: short-lived access token paired with refresh rotation
+    )
     # httpOnly auth cookie (JWT storage migration M1, docs/RFC_JWT_STORAGE.md).
     # The bearer body token is still returned (dual mode) until M4; the
     # browser session relies on the cookie from M2 on. SECURE must be true
