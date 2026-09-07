@@ -190,8 +190,28 @@ export default function Layout() {
     return readStoredJson<Record<string, boolean>>('navigation_collapsed_groups', {});
   });
 
-  // Track which items with children are expanded
-  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+  // Track which items with children are expanded. Seeded from the current
+  // route once at mount so a reload on a child page starts with its
+  // parent submenu open; manual toggling is authoritative afterwards.
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>(() => {
+    const seeded: Record<string, boolean> = {};
+    navigationGroups.forEach((group) => {
+      group.items.forEach((item) => {
+        if (item.children && location.pathname.startsWith(item.path)) {
+          seeded[item.text] = true;
+        }
+      });
+    });
+    return seeded;
+  });
+
+  // Navigate from the drawer; the mobile drawer must close on any nav.
+  const go = (path: string) => {
+    navigate(path);
+    if (mobileOpen) {
+      setMobileOpen(false);
+    }
+  };
 
   const toggleGroup = (label: string) => {
     const newState = {
@@ -203,10 +223,10 @@ export default function Layout() {
   };
 
   const toggleItem = (itemText: string) => {
-    setExpandedItems({
-      ...expandedItems,
-      [itemText]: !expandedItems[itemText],
-    });
+    setExpandedItems((prev) => ({
+      ...prev,
+      [itemText]: !prev[itemText],
+    }));
   };
 
   const handleDrawerToggle = () => {
@@ -242,7 +262,7 @@ export default function Layout() {
               <>
                 {group.items.map((item) => (
                   <ListItem key={item.text} disablePadding>
-                    <ListItemButton onClick={() => navigate(item.path)}>
+                    <ListItemButton onClick={() => go(item.path)}>
                       <ListItemIcon>{item.icon}</ListItemIcon>
                       <ListItemText primary={item.text} />
                     </ListItemButton>
@@ -274,14 +294,29 @@ export default function Layout() {
                   <List component="div" disablePadding>
                     {group.items.map((item) => (
                       <React.Fragment key={item.text}>
-                        <ListItem disablePadding>
+                        <ListItem
+                          disablePadding
+                          secondaryAction={
+                            item.children && (
+                              <IconButton
+                                size='small'
+                                edge='end'
+                                aria-label={expandedItems[item.text] ? 'Collapse submenu' : 'Expand submenu'}
+                                aria-expanded={Boolean(expandedItems[item.text])}
+                                onClick={() => toggleItem(item.text)}
+                              >
+                                {expandedItems[item.text] ? <ExpandLess /> : <ExpandMore />}
+                              </IconButton>
+                            )
+                          }
+                        >
                           <ListItemButton
                             onClick={() => {
                               // A parent entry is a real destination: clicking
                               // it must navigate, not merely toggle the
-                              // submenu. Collapse stays available on the
-                              // chevron (stopPropagation below).
-                              navigate(item.path);
+                              // submenu. Collapse lives on the IconButton in
+                              // secondaryAction, outside this row event path.
+                              go(item.path);
                               if (item.children) {
                                 setExpandedItems((prev) => ({ ...prev, [item.text]: true }));
                               }
@@ -290,19 +325,6 @@ export default function Layout() {
                           >
                             <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
                             <ListItemText primary={item.text} />
-                            {item.children && (
-                              <Box
-                                component="span"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleItem(item.text);
-                                }}
-                                sx={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}
-                                aria-label={expandedItems[item.text] ? 'Collapse submenu' : 'Expand submenu'}
-                              >
-                                {expandedItems[item.text] ? <ExpandLess /> : <ExpandMore />}
-                              </Box>
-                            )}
                           </ListItemButton>
                         </ListItem>
                         {item.children && (
@@ -310,7 +332,7 @@ export default function Layout() {
                             <List component="div" disablePadding>
                               {item.children.map((child) => (
                                 <ListItem key={child.text} disablePadding>
-                                  <ListItemButton onClick={() => navigate(child.path)} sx={{ pl: 8 }}>
+                                  <ListItemButton onClick={() => go(child.path)} sx={{ pl: 8 }}>
                                     <ListItemIcon sx={{ minWidth: 40 }}>{child.icon}</ListItemIcon>
                                     <ListItemText primary={child.text} />
                                   </ListItemButton>
