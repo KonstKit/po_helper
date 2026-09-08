@@ -18,6 +18,11 @@ Disable MFA for all accounts first (mfa_enabled=false, mfa_secret=NULL,
 mfa_backup_codes=NULL), then downgrade.
 
 batch_alter_table keeps SQLite (no ALTER COLUMN) and PostgreSQL happy.
+
+The wave-B guard CASTs the JSON column to VARCHAR before LIKE:
+PostgreSQL has no `json ~~ text` operator, SQLite is TEXT-affinity
+either way. PostgreSQL upgrade/rollback cycle (039 -> 034 -> 039) was
+validated against a live PostgreSQL 15 database on 2026-09-08.
 """
 
 import sqlalchemy as sa
@@ -38,7 +43,7 @@ def _wave_b_data_exists(bind) -> bool:
         sa.text(
             "SELECT EXISTS (SELECT 1 FROM users "
             "WHERE mfa_secret LIKE 'encgcm:%' "
-            "   OR mfa_backup_codes LIKE '%$2%')"
+            "   OR CAST(mfa_backup_codes AS VARCHAR) LIKE '%$2%')"
         )
     )
     return bool(result.scalar())

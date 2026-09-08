@@ -1,6 +1,6 @@
 """rewrite_legacy_transform_types
 
-Revision ID: 034_rewrite_legacy_transform_types
+Revision ID: 034_rewrite_legacy_types
 Revises: 033_add_analytics_event
 Create Date: 2026-05-08
 
@@ -24,7 +24,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "034_rewrite_legacy_transform_types"
+revision = "034_rewrite_legacy_types"
 down_revision = "033_add_analytics_event"
 branch_labels = None
 depends_on = None
@@ -75,7 +75,7 @@ def _rewrite_flow(flow: Dict[str, Any], audit_timestamp: str) -> Tuple[Dict[str,
         audit = dict(new_config.get(AUDIT_KEY) or {})
         audit["previous_value"] = value
         audit["rewritten_at"] = audit_timestamp
-        audit["rewritten_by"] = "alembic/034_rewrite_legacy_transform_types"
+        audit["rewritten_by"] = "alembic/034_rewrite_legacy_types"
         new_config[AUDIT_KEY] = audit
 
         new_data = dict(data)

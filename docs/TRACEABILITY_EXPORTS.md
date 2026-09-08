@@ -64,5 +64,8 @@ by these constants, so an oversized matrix cannot exhaust memory — verified by
 
 ## Residual / handoff
 
-- PostgreSQL is not exercised in-session (SQLite test DB); large-matrix
-  performance under a production dataset is a separate load-test gate.
+- Large-matrix performance under a production dataset remains an open
+  load-test gate (NOT executed as of 2026-09-08; the docker stack exists,
+  so it can now be run there).
+- PostgreSQL runtime itself: validated 2026-09-08 on the docker stack —
+  see `TRACEABILITY_BACKEND_VALIDATION.md`.

@@ -20,10 +20,10 @@ def _load_migration_module():
         Path(__file__).resolve().parent.parent
         / "alembic"
         / "versions"
-        / "034_rewrite_legacy_transform_types.py"
+        / "034_rewrite_legacy_types.py"
     )
     spec = importlib.util.spec_from_file_location(
-        "alembic_034_rewrite_legacy_transform_types", revision_path
+        "alembic_034_rewrite_legacy_types", revision_path
     )
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
@@ -58,7 +58,7 @@ def test_rewrites_unsupported_to_passthrough_with_audit():
     audit = config[migration.AUDIT_KEY]
     assert audit["previous_value"] == "uppercase"
     assert audit["rewritten_at"] == TS
-    assert audit["rewritten_by"] == "alembic/034_rewrite_legacy_transform_types"
+    assert audit["rewritten_by"] == "alembic/034_rewrite_legacy_types"
 
 
 def test_passthrough_is_left_untouched():

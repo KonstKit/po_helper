@@ -9,8 +9,8 @@ record what initiated each run: manual | webhook | scheduled | post_sync
 (plan_76 Step 4). Nullable — pre-existing rows keep NULL ("unknown").
 
 Idempotent: re-running upgrade after a partial apply is a no-op if the column
-already exists. SQLite/offline validated in-session; PostgreSQL validation is
-handed off.
+already exists. SQLite/offline validated in-session; PostgreSQL validated on a
+live PostgreSQL 15 database (2026-09-08 — see TRACEABILITY_BACKEND_VALIDATION.md).
 """
 
 from alembic import op
