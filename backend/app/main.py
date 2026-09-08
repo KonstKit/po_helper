@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 import sentry_sdk
 from fastapi import FastAPI, Request
+import sqlalchemy as sa
 from fastapi.middleware.cors import CORSMiddleware
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
@@ -112,6 +113,41 @@ def _get_engine_backend_name() -> str | None:
     if engine_url is None:
         return None
     return engine_url.get_backend_name()
+
+
+# Superseded Alembic revision id: renamed to fit the 32-char limit of
+# alembic_version.version_num on PostgreSQL (see 034_rewrite_legacy_types).
+LEGACY_ALEMBIC_REVISION = "034_rewrite_legacy_transform_types"
+CURRENT_ALEMBIC_REVISION = "034_rewrite_legacy_types"
+
+
+async def _remap_legacy_alembic_revision(conn) -> None:
+    """Remap a superseded Alembic revision id in alembic_version.
+
+    Databases stamped before the 034 rename hold an id that no longer
+    resolves in the revision tree; alembic CLI would fail with
+    "Can`t locate revision" before any upgrade could run. Remapping
+    transparently at startup keeps those databases upgradeable.
+    """
+
+    def _remap(sync_conn):
+        inspector = sa.inspect(sync_conn)
+        if "alembic_version" not in inspector.get_table_names():
+            return
+        result = sync_conn.execute(
+            sa.text(
+                "UPDATE alembic_version SET version_num = :new_id " "WHERE version_num = :old_id"
+            ),
+            {"new_id": CURRENT_ALEMBIC_REVISION, "old_id": LEGACY_ALEMBIC_REVISION},
+        )
+        if result.rowcount:
+            logger.warning(
+                "Remapped legacy Alembic revision %s -> %s",
+                LEGACY_ALEMBIC_REVISION,
+                CURRENT_ALEMBIC_REVISION,
+            )
+
+    await conn.run_sync(_remap)
 
 
 async def _ensure_postgres_alembic_runtime_state() -> None:
@@ -472,6 +508,8 @@ async def _ensure_system_roles() -> None:
 async def _ensure_tables():
     # Keep auto-bootstrap only for SQLite. PostgreSQL must be migration-managed.
     try:
+        async with engine.begin() as conn:
+            await _remap_legacy_alembic_revision(conn)
         backend_name = _get_engine_backend_name()
         if backend_name == "sqlite":
             async with engine.begin() as conn:
