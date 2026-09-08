@@ -297,7 +297,7 @@ class Settings(BaseSettings):
     # When True (default), an unsupported `transform_type` on a transformNode
     # raises a terminal execution error. Set to False during a rolling
     # deploy where new code may run before Alembic revision
-    # 034_rewrite_legacy_transform_types has migrated existing flow_json
+    # 034_rewrite_legacy_types has migrated existing flow_json
     # rows; in that mode an unsupported value emits a warning and passes
     # artifacts through, matching pre-plan_69 behavior. Flip back to True
     # once the migration completes.

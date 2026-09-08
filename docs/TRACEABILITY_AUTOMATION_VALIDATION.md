@@ -2,7 +2,16 @@
 
 Covers scheduled, webhook, post-sync, and manual rule execution. Per the
 plan_76 AI-executor constraint, **in-session** acceptance is limited to unit and
-mocked trigger coverage; live worker/broker/scheduler validation is handed off.
+mocked trigger coverage.
+
+UPDATE 2026-09-08: live worker/broker/scheduler validation was performed on the
+docker stack (PostgreSQL 15 + Redis 7 + celery worker + celery-beat):
+- `celery inspect ping` — worker online;
+- beat fired `traceability.scheduled_rule_execution` on its every-minute
+  schedule; the task succeeded (0 rules checked, empty schedule);
+- explicit broker round-trip: `maintenance.cleanup_exports` dispatched from
+  the API container with `CELERY_TASK_ALWAYS_EAGER=false`, executed by the
+  worker, result `SUCCESS` fetched from the result backend.
 
 ## Policies (read from current repository behavior)
 

@@ -1,7 +1,7 @@
 """add_traceability_review_items
 
 Revision ID: 035_add_review_items
-Revises: 034_rewrite_legacy_transform_types
+Revises: 034_rewrite_legacy_types
 Create Date: 2026-05-29
 
 Adds the ``traceability_review_items`` table backing the manual-review queue
@@ -14,8 +14,9 @@ Deduplication is enforced by a partial unique index over
 up duplicates. Both SQLite and PostgreSQL support partial indexes.
 
 Downgrade drops the indexes before the table (plan_70 step 2B). SQLite/offline
-validation is performed in-session; PostgreSQL upgrade/rollback validation is
-handed off to a runtime with a PostgreSQL database.
+validation was performed in-session; PostgreSQL upgrade/rollback was validated
+on a live PostgreSQL 15 database (2026-09-08, two full 039 -> 034 -> 039
+cycles — see TRACEABILITY_BACKEND_VALIDATION.md).
 """
 
 from alembic import op
@@ -23,7 +24,7 @@ import sqlalchemy as sa
 
 
 revision = "035_add_review_items"
-down_revision = "034_rewrite_legacy_transform_types"
+down_revision = "034_rewrite_legacy_types"
 branch_labels = None
 depends_on = None
 

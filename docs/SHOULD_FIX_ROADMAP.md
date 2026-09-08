@@ -27,8 +27,10 @@
 > D4: silent-except baseline 147 + non-regression гейт), **волна E выполнена**
 > (E1: React Query провайдер + useProjects, 5 страниц мигрированы; E2: cancelled-гварды
 > Analytics/Testing; E3: 22×void err → логирование; E4: RFC docs/RFC_JWT_STORAGE.md;
-> E5: types.ts 1856 строк → 9 доменных модулей + барель). E6 (ProjectDetail
-> декомпозиция) — follow-up.
+> E5: types.ts 1856 строк → 9 доменных модулей + барель). E6 выполнена: ProjectDetail
+> 1562 -> 774 строк — PR #13 и #14; Traceability.tsx 1280 -> 462 строк — PR #26,
+> извлечены FlowExplorer, CoverageSnapshot, ProjectScopePanel и traceabilityUtils.
+> Роадмап закрыт полностью — 2026-09-08.
 > Статус волн: A выполнена (PR #7), B выполнена (PR #8), C выполнена (PR #9,
 
 > забатчены; C2: закрыт ревертом — owner сериализуется как owner_id,

@@ -69,7 +69,10 @@ review queue is for triaging which artifacts need human attention.
 
 - SQLite / offline migration upgrade+downgrade and partial-unique dedup
   validated in-session.
-- PostgreSQL upgrade/rollback validation is **handed off** to a runtime with a
-  PostgreSQL database (no production-like DB in the AI session).
+- PostgreSQL upgrade/rollback: VALIDATED on a live PostgreSQL 15 database
+  (2026-09-08, docker stack) — see `TRACEABILITY_BACKEND_VALIDATION.md`; the
+  035 downgrade path required the revision-id rename
+  `034_rewrite_legacy_transform_types` -> `034_rewrite_legacy_types`
+  (the old id exceeded the 32-char `alembic_version.version_num`).
 - Backend coverage: `backend/tests/test_traceability_review.py` (engine
   persistence + dedup, status-graph, API lifecycle, RBAC, audit).

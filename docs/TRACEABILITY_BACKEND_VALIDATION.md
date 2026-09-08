@@ -189,10 +189,18 @@ flagged real issues, now fixed:
 
 ## Residual risks / handed-off validation
 
-- **PostgreSQL migrations 035/036** upgrade/rollback validated only on
-  SQLite/offline in-session; production PostgreSQL validation is handed off.
-- **Live Celery/broker** automation (beat schedule, worker dispatch) is handed
-  off — see `TRACEABILITY_AUTOMATION_VALIDATION.md`.
+- **PostgreSQL migrations 035-039** upgrade/rollback: VALIDATED on a live
+  PostgreSQL 15 database (2026-09-08, docker stack). Two portability bugs
+  found and fixed in the process: the 038 wave-B guard compared a JSON
+  column with LIKE (now CAST to VARCHAR), and revision 034's id exceeded
+  the 32-char `alembic_version.version_num` (renamed to
+  `034_rewrite_legacy_types`; see PR with this change). Two full
+  039 -> 034 -> 039 cycles ran clean.
+- **Live Celery/broker** automation (beat schedule, worker dispatch): VALIDATED
+  on the docker stack (2026-09-08) — worker ping OK, beat fired
+  `traceability.scheduled_rule_execution` every minute, explicit broker
+  round-trip of `maintenance.cleanup_exports` returned SUCCESS via the
+  result backend. Details in `TRACEABILITY_AUTOMATION_VALIDATION.md`.
 - **Confluence-sync tests (resolved):** `test_confluence_tasks.py` previously had
   2 failures from a stale test contract — `_process_page` returns
   `(created, page_row)`, but the tests still treated the result as a bare `bool`
