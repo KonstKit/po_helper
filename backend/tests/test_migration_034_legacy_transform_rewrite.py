@@ -33,6 +33,36 @@ def _load_migration_module():
 
 
 migration = _load_migration_module()
+
+
+@pytest.mark.asyncio
+async def test_legacy_alembic_revision_remap(client):
+    '''DBs stamped before the 034 rename hold an unresolvable id;
+    startup must remap it to the current revision id.'''
+    from sqlalchemy import text
+
+    from app.core.database import engine
+    from app.main import CURRENT_ALEMBIC_REVISION, LEGACY_ALEMBIC_REVISION
+    from app.main import _remap_legacy_alembic_revision
+
+    async with engine.begin() as conn:
+        await conn.execute(text('CREATE TABLE IF NOT EXISTS alembic_version '
+                            '(version_num VARCHAR(32) NOT NULL)'))
+        await conn.execute(text('DELETE FROM alembic_version'))
+        await conn.execute(
+            text('INSERT INTO alembic_version (version_num) VALUES (:v)'),
+            {'v': LEGACY_ALEMBIC_REVISION},
+        )
+    async with engine.begin() as conn:
+        await _remap_legacy_alembic_revision(conn)
+        value = (await conn.execute(text('SELECT version_num FROM alembic_version'))).scalar()
+    assert value == CURRENT_ALEMBIC_REVISION
+
+    # idempotent: a current id is never touched
+    async with engine.begin() as conn:
+        await _remap_legacy_alembic_revision(conn)
+        value = (await conn.execute(text('SELECT version_num FROM alembic_version'))).scalar()
+    assert value == CURRENT_ALEMBIC_REVISION
 TS = "2026-05-08T00:00:00+00:00"
 
 

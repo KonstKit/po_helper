@@ -91,4 +91,3 @@ The access token lives in `localStorage` (`services/api/client.ts`,
   attribution races in review (documented in PR #18 discussion).
   Revisit together with M3 (token_sessions + revocation), which gives
   the server-authoritative identity needed to attribute events safely.
-
