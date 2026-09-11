@@ -12,6 +12,7 @@ from app.core.database import AsyncSessionLocal
 from app.models.analytics import AnalyticsEvent
 from app.models.traceability import Baseline, BaselineItem
 from app.services.analytics.export_service import cleanup_old_exports
+from app.services.token_session_maintenance import prune_token_sessions
 from app.services.sync_tracking import recover_stale_running_sync_tasks
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,21 @@ def cleanup_exports_task() -> int:
 
     deleted = run_async(_cleanup())
     logger.info("maintenance.cleanup_exports deleted=%s", deleted)
+    return deleted
+
+
+@celery_app.task(name="maintenance.cleanup_token_sessions", **TASK_RETRY_KWARGS)
+def cleanup_token_sessions_task() -> int:
+    async def _cleanup() -> int:
+        async with AsyncSessionLocal() as db:
+            return await prune_token_sessions(
+                db,
+                revoked_before=datetime.now(timezone.utc) - timedelta(days=7),
+                expired_before=datetime.now(timezone.utc),
+            )
+
+    deleted = run_async(_cleanup())
+    logger.info("maintenance.cleanup_token_sessions deleted=%s", deleted)
     return deleted
 
 

@@ -91,6 +91,10 @@ celery_app.conf.update(
             "task": "maintenance.cleanup_baselines",
             "schedule": crontab(minute=30, hour=2),
         },
+        "cleanup-token-sessions-daily": {
+            "task": "maintenance.cleanup_token_sessions",
+            "schedule": crontab(minute=15, hour=3),
+        },
         "cleanup-analytics-events-daily": {
             "task": "maintenance.cleanup_analytics_events",
             "schedule": crontab(minute=45, hour=2),

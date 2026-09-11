@@ -25,6 +25,8 @@ from app.core.auth_cookies import get_auth_cookie_token
 from app.core.config import settings as app_settings
 from app.models.rbac import Permissions
 from app.models import Project, Role, User
+from app.models.token_session import TokenSession
+from datetime import datetime, timezone
 from app.utils import handle_api_error
 
 logger = logging.getLogger(__name__)
@@ -249,6 +251,31 @@ async def _get_or_create_demo_user(db: AsyncSession) -> User:
         raise
 
 
+async def _assert_live_session(db: AsyncSession, sid: object) -> None:
+    """Reject tokens whose bound token_session is revoked or expired.
+
+    Session-bearing tokens (sid claim) die the moment their session is
+    revoked (logout, password change, session revoke, rotation) instead
+    of staying valid until TTL expiry. Tokens without a sid (scoped
+    machine tokens, pre-sid issuances) pass through unchanged.
+    """
+    if not sid:
+        return
+    cutoff = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(TokenSession.id).where(
+            TokenSession.id == sid,
+            TokenSession.revoked_at.is_(None),
+            cutoff < TokenSession.expires_at,
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+
+
 async def get_current_user(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -281,6 +308,7 @@ async def _resolve_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="MFA verification required",
             )
+        await _assert_live_session(db, payload.get("sid"))
         email = payload.get("sub")
         if not email:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
@@ -314,6 +342,7 @@ async def _resolve_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="MFA verification required",
             )
+        await _assert_live_session(db, payload.get("sid"))
         email = payload.get("sub")
         if not email:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")

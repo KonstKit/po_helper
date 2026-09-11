@@ -11,10 +11,12 @@
 сознательно — это дизайн-изменения, а не баги.
 
 ### 1.1. sid-claim: мгновенная ревокация access-токенов
+> ЗАКРЫТО 2026-09-11: access-токены несут sid = token_sessions.id;
 - Сейчас access-токен жив до конца TTL, даже если его сессия ревоцирована
   через logout / revoke / смену пароля — окно до 10 минут.
 - Критерий: access-токен несёт sid = token_sessions.id;
-  deps проверяет revoked_at IS NULL; ротация переносит sid.
+  deps проверяет revoked_at IS NULL; ротация переносит sid. Регрессионные
+> тесты: test_token_sessions_sid_claim.py.
 
 ### 1.2. Refresh-reuse: grace window + family scope
 - Сейчас повтор presentation отозванного refresh-токена ревоцирует ВСЕ
@@ -36,9 +38,12 @@
 - Критерий: дефолт конфорта = M4; dual-mode помечен явной фикстурой.
 
 ### 1.4. Pruning token_sessions
+> ЗАКРЫТО 2026-09-11: задача maintenance.cleanup_token_sessions
 - Строки не удаляются; при ротации каждые ~10 минут это десятки строк
   на пользователя в день.
-- Критерий: celery-beat задача или opportunistic-чистка в
+  в beat-расписании (ежедневно 03:15 UTC): удаляет истёкшие и
+> ревоцированные более 7 дней назад строки. Хелпер:
+> services/token_session_maintenance.prune_token_sessions (покрыт тестом).
   create_token_session: expires_at в прошлом OR revoked_at старше 7 дней.
 
 ### 1.5. __Host- префиксы cookie
