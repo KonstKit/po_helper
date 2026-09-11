@@ -177,16 +177,20 @@ async def _issue_refresh_session(
     db: AsyncSession,
     user: User,
     request: Request,
-) -> str:
-    """Create a server-side session and return the plaintext refresh token."""
+) -> tuple[str, int]:
+    """Create a server-side session; return (plaintext token, session id).
+
+    The session id travels as the JWT sid claim so revoking the session
+    invalidates the already-issued access token immediately instead of
+    leaving it valid until TTL expiry."""
     refresh_token, _ = new_refresh_token()
-    await create_token_session(
+    session = await create_token_session(
         db,
         user_id=user.id,
         refresh_token=refresh_token,
         user_agent=request.headers.get("user-agent"),
     )
-    return refresh_token
+    return refresh_token, session.id
 
 
 def _session_response(access_token: str, refresh_token: str) -> JSONResponse:
@@ -255,13 +259,16 @@ async def login(
             }
         )
 
+    # M3: server-side refresh session (rotation + revocation). Issued
+    # before the JWT so the sid claim can bind the access token to it.
+    refresh_token, session_id = await _issue_refresh_session(db, user, request)
+    await db.commit()  # token_sessions row must survive the request
+
     # No MFA - issue regular access token
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
-
-    # M3: server-side refresh session (rotation + revocation).
-    refresh_token = await _issue_refresh_session(db, user, request)
-    await db.commit()  # token_sessions row must survive the request
+    access_token = create_access_token(
+        data={"sub": user.email, "sid": session_id}, expires_delta=access_token_expires
+    )
 
     return _session_response(access_token, refresh_token)
 
@@ -387,18 +394,18 @@ async def refresh(
             detail="Invalid or expired refresh token",
         )
     session.last_used_at = datetime.now(timezone.utc)
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.email},
-        expires_delta=access_token_expires,
-    )
     refresh_token, _ = new_refresh_token()
-    await create_token_session(
+    new_session = await create_token_session(
         db,
         user_id=user.id,
         refresh_token=refresh_token,
         user_agent=request.headers.get("user-agent"),
         last_used_at=datetime.now(timezone.utc),
+    )
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.email, "sid": new_session.id},
+        expires_delta=access_token_expires,
     )
     await db.commit()
 
@@ -676,15 +683,16 @@ async def google_oauth_callback(
         # Process OAuth login
         user = await _process_oauth_login(db, user_info)
 
+        # M3: server-side refresh session for the OAuth login. Issued
+        # before the JWT so the sid claim can bind the access token to it.
+        refresh_token, session_id = await _issue_refresh_session(db, user, request)
+        await db.commit()  # token_sessions row must survive the request
+
         # Generate JWT token
         jwt_token = create_access_token(
-            data={"sub": user.email},
+            data={"sub": user.email, "sid": session_id},
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         )
-
-        # M3: server-side refresh session for the OAuth login.
-        refresh_token = await _issue_refresh_session(db, user, request)
-        await db.commit()  # token_sessions row must survive the request
         resp = _session_response(jwt_token, refresh_token)
         # Single-use: consume the binding cookie on the response we RETURN.
         # Headers set on the injected parameter are dropped when an endpoint
@@ -767,15 +775,16 @@ async def microsoft_oauth_callback(
         # Process OAuth login
         user = await _process_oauth_login(db, user_info)
 
+        # M3: server-side refresh session for the OAuth login. Issued
+        # before the JWT so the sid claim can bind the access token to it.
+        refresh_token, session_id = await _issue_refresh_session(db, user, request)
+        await db.commit()  # token_sessions row must survive the request
+
         # Generate JWT token
         jwt_token = create_access_token(
-            data={"sub": user.email},
+            data={"sub": user.email, "sid": session_id},
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         )
-
-        # M3: server-side refresh session for the OAuth login.
-        refresh_token = await _issue_refresh_session(db, user, request)
-        await db.commit()  # token_sessions row must survive the request
         resp = _session_response(jwt_token, refresh_token)
         # Single-use: consume the binding cookie on the response we RETURN.
         # Headers set on the injected parameter are dropped when an endpoint
@@ -1350,16 +1359,17 @@ async def verify_mfa_login(
     # Persist the anti-replay counter (TOTP) / consumed backup code
     await db.commit()
 
+    # M3: server-side refresh session for the MFA login. Issued before
+    # the JWT so the sid claim can bind the access token to it.
+    refresh_token, session_id = await _issue_refresh_session(db, user, request)
+    await db.commit()  # token_sessions row must survive the request
+
     # Generate full access token
     access_token = create_access_token(
-        data={"sub": user.email},
+        data={"sub": user.email, "sid": session_id},
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
 
     logger.info(f"MFA login completed for user {email}")
-
-    # M3: server-side refresh session for the MFA login.
-    refresh_token = await _issue_refresh_session(db, user, request)
-    await db.commit()  # token_sessions row must survive the request
 
     return _session_response(access_token, refresh_token)
